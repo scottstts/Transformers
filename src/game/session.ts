@@ -47,7 +47,7 @@ export class GameSession {
     pmrem.dispose()
 
     this.cameraRig = new FollowCamera(this.camera, renderer.domElement, this.state.yaw, this.player.robotOffset)
-    this.input = new GameInput(() => this.toggleForm(), () => this.effects.audio.resume())
+    this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.effects.audio.resume())
     const color = pass(this.scene, this.camera).getTextureNode('output')
     const vignette = float(1).sub(smoothstep(0.45, 0.95, uv().sub(0.5).length()).mul(0.35))
     this.pipeline = new RenderPipeline(renderer)
@@ -78,7 +78,7 @@ export class GameSession {
     const state = this.state
     const previous = advanceTransformation(state, dt, this.player.transformationDuration)
     const busy = isTransforming(state)
-    if (state.progress < 0.5) updateCar(state, this.input, this.camera, dt, busy || state.mode === 'robot')
+    if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot')
     else updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.player.robotOffset)
     resolveCircleCollisions(state, this.world.colliders, this.player.robotOffset)
 
@@ -99,7 +99,7 @@ export class GameSession {
     this.effects.timeline(previous, state.progress)
     this.effects.update(dt, state)
 
-    this.cameraRig.update(dt, state, this.bot.root)
+    this.cameraRig.update(dt, state, this.bot.root, this.input.driving && !busy && state.mode === 'car')
     this.world.update(this.camera, this.cameraRig.focusPoint(state, this.bot.root))
     this.effects.shakeCamera(this.camera, dt)
     this.pipeline.render()

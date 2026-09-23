@@ -9,31 +9,28 @@ export class FollowCamera {
   private yaw: number
   private pitch = 0.16
   private zoom = 1
-  private dragging = false
-  private lastDrag = -10
-  private pointerX = 0
-  private pointerY = 0
+  private lastLook = -10
   private initialized = false
+  private radius = 10.5
   private readonly target = new Vector3()
   private readonly position = new Vector3()
-  private readonly desired = new Vector3()
   private readonly localFocus = new Vector3()
   private readonly focus = new Vector3()
-  private readonly onPointerDown = (event: PointerEvent): void => {
-    this.dragging = true
-    this.pointerX = event.clientX
-    this.pointerY = event.clientY
-    this.canvas.setPointerCapture(event.pointerId)
+  private readonly onPointerDown = (): void => { this.activate() }
+  private readonly onPointerLockChange = (): void => {
+    if (document.pointerLockElement !== this.canvas) return
+    const offset = this.camera.position.clone().sub(this.target)
+    this.yaw = Math.atan2(offset.x, offset.z)
+    this.pitch = clamp(Math.atan2(offset.y, Math.hypot(offset.x, offset.z)), -0.05, 1.1)
+    this.lastLook = performance.now() / 1000
   }
-  private readonly onPointerMove = (event: PointerEvent): void => {
-    if (!this.dragging) return
-    this.yaw -= (event.clientX - this.pointerX) * 0.005
-    this.pitch = clamp(this.pitch + (event.clientY - this.pointerY) * 0.004, -0.05, 1.1)
-    this.pointerX = event.clientX
-    this.pointerY = event.clientY
-    this.lastDrag = performance.now() / 1000
+  private readonly onMouseMove = (event: MouseEvent): void => {
+    if (document.pointerLockElement !== this.canvas) return
+    if (event.movementX === 0 && event.movementY === 0) return
+    this.yaw -= event.movementX * 0.005
+    this.pitch = clamp(this.pitch + event.movementY * 0.004, -0.05, 1.1)
+    this.lastLook = performance.now() / 1000
   }
-  private readonly onPointerUp = (): void => { this.dragging = false }
   private readonly onWheel = (event: WheelEvent): void => {
     this.zoom = clamp(this.zoom * Math.exp(event.deltaY * 0.001), 0.5, 2.2)
   }
@@ -44,10 +41,22 @@ export class FollowCamera {
     this.robotOffset = robotOffset
     this.yaw = initialYaw + Math.PI
     canvas.addEventListener('pointerdown', this.onPointerDown)
-    canvas.addEventListener('pointermove', this.onPointerMove)
-    canvas.addEventListener('pointerup', this.onPointerUp)
-    canvas.addEventListener('pointercancel', this.onPointerUp)
+    document.addEventListener('pointerlockchange', this.onPointerLockChange)
+    document.addEventListener('mousemove', this.onMouseMove)
     canvas.addEventListener('wheel', this.onWheel, { passive: true })
+  }
+
+  get locked(): boolean { return document.pointerLockElement === this.canvas }
+
+  activate(): void {
+    if (this.locked || !this.canvas.isConnected) return
+    try {
+      void Promise.resolve(this.canvas.requestPointerLock()).catch(() => {
+        // The entry veil or canvas click can retry with a user gesture.
+      })
+    } catch {
+      // A canvas click can retry after the browser has a user gesture.
+    }
   }
 
   focusPoint(state: MotionState, root: Object3D): Vector3 {
@@ -56,28 +65,30 @@ export class FollowCamera {
     return this.focus.copy(this.localFocus).applyMatrix4(root.matrixWorld)
   }
 
-  update(dt: number, state: MotionState, root: Object3D): void {
+  update(dt: number, state: MotionState, root: Object3D, driving = false): void {
     const now = performance.now() / 1000
-    if (state.progress < 0.5 && !this.dragging && state.speed > 2 && now - this.lastDrag > 1.5) {
-      this.yaw += wrap(state.yaw + Math.PI - this.yaw) * (1 - Math.exp(-dt * 1.2))
-      this.pitch = damp(this.pitch, 0.16, 0.8, dt)
+    if (state.progress < 0.5 && driving && now - this.lastLook > 0.3) {
+      this.yaw += wrap(state.yaw + Math.PI - this.yaw) * (1 - Math.exp(-dt * 2.4))
+      this.pitch = damp(this.pitch, 0.16, 1.6, dt)
     }
     const k = easedRange(state.progress, 0.1, 0.6)
-    const distance = lerp(10.5, 17, k) * this.zoom + Math.abs(state.speed) * 0.05 * (1 - k)
+    const distance = lerp(10.5, 17, k) * this.zoom
     const focus = this.focusPoint(state, root)
-    const pitch = this.pitch + lerp(0, 0.02, k)
-    this.desired.set(
-      focus.x + Math.sin(this.yaw) * Math.cos(pitch) * distance,
-      Math.max(focus.y + Math.sin(pitch) * distance, 0.5),
-      focus.z + Math.cos(this.yaw) * Math.cos(pitch) * distance,
-    )
     if (!this.initialized) {
       this.target.copy(focus)
-      this.position.copy(this.desired)
+      this.radius = distance
       this.initialized = true
+    } else {
+      this.target.lerp(focus, 1 - Math.exp(-dt * 8))
+      this.radius = damp(this.radius, distance, 8, dt)
     }
-    this.target.lerp(focus, 1 - Math.exp(-dt * 8))
-    this.position.lerp(this.desired, 1 - Math.exp(-dt * 6))
+    const minimumPitch = Math.asin(clamp((0.5 - this.target.y) / this.radius, -1, 1))
+    const pitch = Math.max(this.pitch + lerp(0, 0.02, k), minimumPitch)
+    this.position.set(
+      this.target.x + Math.sin(this.yaw) * Math.cos(pitch) * this.radius,
+      this.target.y + Math.sin(pitch) * this.radius,
+      this.target.z + Math.cos(this.yaw) * Math.cos(pitch) * this.radius,
+    )
     this.camera.position.copy(this.position)
     this.camera.lookAt(this.target)
     const fov = lerp(42, 48, clamp(Math.abs(state.speed) / 40, 0, 1) * (1 - k))
@@ -89,9 +100,9 @@ export class FollowCamera {
 
   dispose(): void {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
-    this.canvas.removeEventListener('pointermove', this.onPointerMove)
-    this.canvas.removeEventListener('pointerup', this.onPointerUp)
-    this.canvas.removeEventListener('pointercancel', this.onPointerUp)
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange)
+    document.removeEventListener('mousemove', this.onMouseMove)
     this.canvas.removeEventListener('wheel', this.onWheel)
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock()
   }
 }

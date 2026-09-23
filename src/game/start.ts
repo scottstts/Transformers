@@ -2,7 +2,7 @@ import { GpuHost } from '../platform/webgpu'
 import { GameSession } from './session'
 import { PerspectiveCamera } from 'three/webgpu'
 
-export async function startGame(setStage: (stage: string) => void): Promise<void> {
+export async function startGame(setStage: (stage: string) => void): Promise<GameSession> {
   const mount = document.querySelector<HTMLElement>('#app')
   if (!mount) throw new Error('Missing game mount')
   const sizingCamera = new PerspectiveCamera(42, 1, 0.1, 6000)
@@ -19,6 +19,7 @@ export async function startGame(setStage: (stage: string) => void): Promise<void
     host.ready()
     setStage('Running')
     host.renderer.setAnimationLoop(() => session.frame())
+    return session
   } catch (error) {
     host.dispose()
     throw error

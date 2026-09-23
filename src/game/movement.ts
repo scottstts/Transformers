@@ -5,44 +5,31 @@ import { GameInput } from './input'
 
 const WHEELBASE = 3.81
 
-export function updateCar(state: MotionState, input: GameInput, camera: PerspectiveCamera, dt: number, locked: boolean): void {
-  const dir = locked ? null : input.movementDirection(camera)
+export interface CarControls {
+  readonly driveThrottle: number
+  readonly driveSteering: number
+  readonly running: boolean
+}
+
+export function updateCar(state: MotionState, input: CarControls, dt: number, locked: boolean): void {
   const boost = input.running
   const v = state.speed
-  let throttle = 0
-  let steerIn = 0
-  let brake = false
-
-  if (dir) {
-    const want = Math.atan2(dir.x, dir.z)
-    const diff = wrap(want - state.yaw)
-    if (state.gear > 0 && Math.abs(diff) > 2.05 && v < 1.5) state.gear = -1
-    else if (state.gear < 0 && Math.abs(diff) < 1.2 && v > -1.5) state.gear = 1
-
-    if ((state.gear > 0 && Math.abs(diff) > 2.05 && v > 1.5) ||
-        (state.gear < 0 && Math.abs(diff) < 1.2 && v < -1.5)) brake = true
-    else if (state.gear > 0) {
-      throttle = 1
-      steerIn = clamp(diff * 1.8, -1, 1)
-    } else {
-      throttle = -1
-      steerIn = -clamp(wrap(want - state.yaw - Math.PI) * 1.8, -1, 1)
-    }
-  }
+  const throttle = locked ? 0 : input.driveThrottle
+  const steerIn = locked ? 0 : input.driveSteering
 
   const maxSpeed = boost ? 52 : 36
   let acceleration: number
   if (throttle > 0) acceleration = v < -0.3 ? 18 : (boost ? 12 : 8.5) * (1 - Math.pow(clamp(v / maxSpeed, 0, 1), 2))
   else if (throttle < 0) acceleration = v > 0.3 ? -18 : -6 * (1 - clamp(-v / 10, 0, 1))
   else acceleration = -Math.sign(v) * Math.min(Math.abs(v) / dt, 1.4 + Math.abs(v) * 0.03)
-  if (locked || brake) acceleration = -Math.sign(v) * Math.min(Math.abs(v) / dt, 16)
+  if (locked) acceleration = -Math.sign(v) * Math.min(Math.abs(v) / dt, 16)
 
   state.speed = v + acceleration * dt
   if (!throttle && Math.abs(state.speed) < 0.05) state.speed = 0
-  state.throttle = throttle || (brake ? -0.5 : 0)
+  state.throttle = throttle
   state.accel = damp(state.accel, acceleration, 6, dt)
   const maxSteer = 0.58 / (1 + Math.abs(state.speed) * 0.045)
-  state.steer = damp(state.steer, steerIn * maxSteer, 7, dt)
+  state.steer = damp(state.steer, -steerIn * maxSteer, 7, dt)
   state.yawRate = state.speed * Math.tan(state.steer) / WHEELBASE
   state.yaw += state.yawRate * dt
   state.spin += state.speed / 0.445 * dt

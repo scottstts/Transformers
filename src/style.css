@@ -2,8 +2,7 @@
 * { box-sizing: border-box; }
 html, body, #app { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 body { background: #cbbfae; }
-#app canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
-#app canvas:active { cursor: grabbing; }
+#app canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .veil { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: #d7ccbd; color: #494541; transition: opacity 0.6s ease, visibility 0s 0.6s; }
 #boot-status { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; }
 body.ready .veil { opacity: 0; visibility: hidden; }
