@@ -2,16 +2,18 @@ import { PerspectiveCamera, Vector3, type Object3D } from 'three/webgpu'
 import type { MotionState } from './types'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
 
+const CAR_DISTANCE = 7.875
+const ROBOT_DISTANCE = 12.75
+
 export class FollowCamera {
   private readonly camera: PerspectiveCamera
   private readonly canvas: HTMLCanvasElement
   private readonly robotOffset: number
   private yaw: number
   private pitch = 0.16
-  private zoom = 1
   private lastLook = -10
   private initialized = false
-  private radius = 10.5
+  private radius = CAR_DISTANCE
   private readonly target = new Vector3()
   private readonly position = new Vector3()
   private readonly localFocus = new Vector3()
@@ -31,10 +33,6 @@ export class FollowCamera {
     this.pitch = clamp(this.pitch + event.movementY * 0.004, -0.05, 1.1)
     this.lastLook = performance.now() / 1000
   }
-  private readonly onWheel = (event: WheelEvent): void => {
-    this.zoom = clamp(this.zoom * Math.exp(event.deltaY * 0.001), 0.5, 2.2)
-  }
-
   constructor(camera: PerspectiveCamera, canvas: HTMLCanvasElement, initialYaw: number, robotOffset: number) {
     this.camera = camera
     this.canvas = canvas
@@ -43,7 +41,6 @@ export class FollowCamera {
     canvas.addEventListener('pointerdown', this.onPointerDown)
     document.addEventListener('pointerlockchange', this.onPointerLockChange)
     document.addEventListener('mousemove', this.onMouseMove)
-    canvas.addEventListener('wheel', this.onWheel, { passive: true })
   }
 
   get locked(): boolean { return document.pointerLockElement === this.canvas }
@@ -72,7 +69,7 @@ export class FollowCamera {
       this.pitch = damp(this.pitch, 0.16, 1.6, dt)
     }
     const k = easedRange(state.progress, 0.1, 0.6)
-    const distance = lerp(10.5, 17, k) * this.zoom
+    const distance = lerp(CAR_DISTANCE, ROBOT_DISTANCE, k)
     const focus = this.focusPoint(state, root)
     if (!this.initialized) {
       this.target.copy(focus)
@@ -102,7 +99,6 @@ export class FollowCamera {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     document.removeEventListener('pointerlockchange', this.onPointerLockChange)
     document.removeEventListener('mousemove', this.onMouseMove)
-    this.canvas.removeEventListener('wheel', this.onWheel)
     if (document.pointerLockElement === this.canvas) document.exitPointerLock()
   }
 }

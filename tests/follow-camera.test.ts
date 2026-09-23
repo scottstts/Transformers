@@ -33,20 +33,24 @@ describe('follow camera', () => {
     const focus = new Vector3(0, 1.1, 0)
 
     rig.update(1 / 60, state, root)
-    expect(camera.position.distanceTo(focus)).toBeCloseTo(10.5, 5)
+    expect(camera.position.distanceTo(focus)).toBeCloseTo(7.875, 5)
 
     documentListeners.get('mousemove')?.({ movementX: 300, movementY: -25 } as MouseEvent)
     rig.update(1 / 60, state, root, true)
     const pannedX = camera.position.x
     expect(pannedX).toBeGreaterThan(0)
-    expect(camera.position.distanceTo(focus)).toBeCloseTo(10.5, 5)
+    expect(camera.position.distanceTo(focus)).toBeCloseTo(7.875, 5)
 
     clock.mockReturnValue(1000)
     for (let i = 0; i < 60; i++) rig.update(1 / 60, state, root, false)
     expect(camera.position.x).toBeCloseTo(pannedX, 5)
     for (let i = 0; i < 120; i++) rig.update(1 / 60, state, root, true)
     expect(Math.abs(camera.position.x)).toBeLessThan(Math.abs(pannedX) * 0.02)
-    expect(camera.position.distanceTo(focus)).toBeCloseTo(10.5, 5)
+    expect(camera.position.distanceTo(focus)).toBeCloseTo(7.875, 5)
+
+    state.progress = 1
+    for (let i = 0; i < 120; i++) rig.update(1 / 60, state, root)
+    expect(camera.position.distanceTo(new Vector3(0, 3.9, 0))).toBeCloseTo(12.75, 4)
     rig.dispose()
   })
 })
