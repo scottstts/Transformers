@@ -1,510 +1,270 @@
-import { Bone } from './bone.ts';
-import { evalTrack } from '../animation/track.ts';
-import * as THREE from 'three/webgpu';
-import { buildCar, wheelGeometry, C } from './vehicle-body.ts';
-import { boneList, buildStructure, LEG, HIP, ROBOT_Z } from './humanoid.ts';
-import { TRACKS, PANELS } from '../animation/choreography.ts';
+import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material } from 'three/webgpu'
+import type { CybertruckAsset } from '../asset/loader'
+import { supportPoints } from '../asset/loader'
+import type { NodeKind, RigDims } from '../asset/format'
+import { RobotRig, type GaitPose } from './rig'
 
-const deg = THREE.MathUtils.degToRad;
-const clamp = THREE.MathUtils.clamp;
-
-/* =====================================================================
- *  Transformer engine
+/**
+ * The Cybertruck transformer at runtime.
  *
- *  - Endoskeleton bones are driven by keyframed tracks over T (0 = truck,
- *    1 = robot), with the legs solved by IK towards keyed foot targets.
- *    At T = 1 the tracks hand over to live locomotion.
- *  - Every car panel is mounted on a bone. Its car pose is exact at T = 0;
- *    towards T = 1 it travels through a list of mechanical steps (hinges
- *    and slides in the bone's frame) with their own timing windows.
- *  - The whole assembly rests on the ground: the lowest point touches it.
- * ===================================================================== */
+ * Every rigid body of the mechanism (skeleton bone, car assembly, wheel,
+ * lifter stage) is a node whose local transform relative to its parent was
+ * baked from the audited Blender build for every frame of T (0 = truck,
+ * 1 = robot). Playback samples those tracks; near T = 1 the skeleton blends
+ * into the live gait (stand pose + gait channels + leg IK), so walking and
+ * transforming back share one continuous pose. In car mode the body rides the
+ * suspension matrix while the wheels stay unsprung, spin and steer.
+ *
+ * Node matrices are composed here (flattened, parents first) in the authoring
+ * frame (x = robot left, -y = forward, z = up); one fixed rotation puts the
+ * model into three.js's y-up, +z-forward space.
+ */
 
-const smooth = ( u ) => u * u * u * ( u * ( u * 6 - 15 ) + 10 );
-const lockEase = ( u ) => {
+type Side = 'R' | 'L'
 
-	// travel with a small overshoot, then settle: the "clunk" into place
-	const e = smooth( u );
-	return e + Math.sin( Math.PI * clamp( ( u - 0.55 ) / 0.45, 0, 1 ) ) * 0.045 * ( 1 - u * 0.3 );
+/** A planted foot's outline on the ground. */
+export interface Sole {
+  center: Vector3
+  forward: Vector3
+  length: number
+  width: number
+}
 
-};
+export interface Contacts {
+  wheels: Array<{ p: Vector3; front: boolean }>
+  feet: Record<Side, Vector3>
+}
 
-const _v = new THREE.Vector3();
-const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _m3 = new THREE.Matrix4();
+const GAIT_BLEND_FROM = 0.9
+const CAR_FADE = 0.06
+const TO_THREE = new Matrix4().makeRotationX(-Math.PI / 2)
+const FROM_THREE = TO_THREE.clone().invert()
+const FOOT_NODES = ['bone:foot.L', 'bone:foot.R', 'asm:toecap.L', 'asm:toecap.R']
 
-const mirrorRot = ( v ) => [ v[ 0 ], - v[ 1 ], - v[ 2 ] ];
+const smooth = (u: number): number => u * u * u * (u * (u * 6 - 15) + 10)
 
 export class CybertruckModel {
-	M: Record<string, THREE.Material>;
-	root: THREE.Group;
-	T = 0;
-	steer = 0;
-	spin = 0;
-	suspension: THREE.Matrix4;
-	G: THREE.Matrix4;
-	lift = 0;
-	bones: Record<string, Bone> = {};
-	boneOrder: Bone[] = [];
-	fold: Record<string, THREE.Matrix4> = {};
-	panels: any[] = [];
-	wheels: any[] = [];
-	_Ginv: THREE.Matrix4;
-
-	constructor( M ) {
-
-		this.M = M;
-		this.root = new THREE.Group();
-		this.T = 0;
-		this.steer = 0;
-		this.spin = 0;
-		this.suspension = new THREE.Matrix4();
-		this.G = new THREE.Matrix4();
-		this.lift = 0;
-
-		// bones
-		this.bones = {};
-		this.boneOrder = [];
-		for ( const [ n, p, off ] of boneList() ) {
-
-			const b = new Bone( n, p ? this.bones[ p ] : null, off );
-			this.bones[ n ] = b;
-			this.boneOrder.push( b );
-			this.root.add( b.group );
-
-		}
-
-		// robot structure
-		const S = buildStructure( M );
-		for ( const bn in S ) for ( const [ g, m ] of S[ bn ] ) this.addMesh( this.bones[ bn ].group, g, m );
-
-		// fold pose (T = 0, no suspension) defines where each bone sits in the truck
-		this.poseSkeleton( 0, null );
-		this.fold = {};
-		for ( const b of this.boneOrder ) this.fold[ b.name ] = b.world.clone();
-
-		// panels
-		const car = buildCar( M );
-		this.panels = [];
-		const names = Object.keys( car );
-		for ( const name of names ) if ( ! PANELS[ name ].follow ) this.addPanel( name, car[ name ] );
-		for ( const name of names ) if ( PANELS[ name ].follow ) this.addPanel( name, car[ name ] );
-		this.buildWheels();
-		this.pose( 0, null );
-
-	}
-
-	addMesh( parent, g, m ) {
-
-		const mesh = new THREE.Mesh( g, m );
-		g.computeBoundingBox();
-		// small parts don't earn a place in the shadow pass
-		mesh.castShadow = ! m.userData.emissive && g.boundingBox.getSize( _v ).length() > 0.3;
-		mesh.receiveShadow = true;
-		mesh.userData.support = support( g );
-		parent.add( mesh );
-		return mesh;
-
-	}
-
-	addPanel( name: string, def: { parts?: Array<[THREE.BufferGeometry, THREE.Material]> }, extra: { center?: THREE.Vector3; wheel?: { center: THREE.Vector3; front: boolean } } = {} ) {
-
-		const spec = PANELS[ name ];
-		if ( ! spec ) throw new Error( 'no choreography for panel ' + name );
-		const bone = this.bones[ spec.bone ];
-		const group = new THREE.Group();
-		group.matrixAutoUpdate = false;
-		this.root.add( group );
-		const center = new THREE.Vector3();
-		const box = new THREE.Box3();
-		for ( const [ g, m ] of def.parts || [] ) {
-
-			this.addMesh( group, g, m );
-			box.union( g.boundingBox );
-
-		}
-
-		if ( extra.center ) center.copy( extra.center ); else box.getCenter( center );
-		const A = this.fold[ spec.bone ].clone().invert();
-		const p: any = { name, bone, group, A, steps: [], wheel: extra.wheel || null };
-
-		// resolve steps (own + followed) into bone-space transforms with fixed pivots
-		const steps = spec.steps || [];
-		const c = center.clone().applyMatrix4( A );
-		for ( const st of steps ) {
-
-			const s: any = { a: st.at[ 0 ], b: st.at[ 1 ], ease: st.ease === 'lock' ? lockEase : smooth };
-			if ( st.rot ) {
-
-				s.axis = new THREE.Vector3( st.rot[ 0 ] === 'x' ? 1 : 0, st.rot[ 0 ] === 'y' ? 1 : 0, st.rot[ 0 ] === 'z' ? 1 : 0 );
-				s.angle = deg( st.rot[ 1 ] );
-				const pv = st.pivot || 'c';
-				s.pivot = pv === 'c' ? c.clone() : Array.isArray( pv ) && pv[ 0 ] === 'c' ? c.clone().add( new THREE.Vector3( pv[ 1 ], pv[ 2 ], pv[ 3 ] ) ) : new THREE.Vector3( ...pv );
-				s.full = new THREE.Matrix4().makeTranslation( s.pivot.x, s.pivot.y, s.pivot.z ).multiply( new THREE.Matrix4().makeRotationAxis( s.axis, s.angle ) ).multiply( new THREE.Matrix4().makeTranslation( - s.pivot.x, - s.pivot.y, - s.pivot.z ) );
-
-			} else if ( st.move ) {
-
-				s.move = new THREE.Vector3( ...st.move );
-				s.full = new THREE.Matrix4().makeTranslation( s.move.x, s.move.y, s.move.z );
-
-			} else if ( st.pop ) {
-
-				s.pop = new THREE.Vector3( ...st.pop );
-				s.full = new THREE.Matrix4();
-
-			}
-
-			c.applyMatrix4( s.full );
-			p.steps.push( s );
-
-		}
-
-		if ( spec.follow ) {
-
-			const host = this.panels.find( ( q ) => q.name === spec.follow );
-			if ( ! host ) throw new Error( spec.follow + ' must be built before ' + name );
-			p.steps.push( ...host.steps );
-
-		}
-
-		this.panels.push( p );
-		return p;
-
-	}
-
-	buildWheels() {
-
-		const wg = wheelGeometry( this.M );
-		this.wheels = [];
-		for ( const [ S, s ] of [ [ 'R', 1 ], [ 'L', - 1 ] ] as const ) {
-
-			for ( const [ front, z ] of [ [ true, C.FA ], [ false, C.RA ] ] as const ) {
-
-				const name = ( front ? 'wheelF' : 'wheelR' ) + S;
-				const def = { parts: wg.map( ( [ g, m ] ): [THREE.BufferGeometry, THREE.Material] => {
-
-					const gg = g.clone();
-					if ( s < 0 ) gg.rotateY( Math.PI );
-					return [ gg, m ];
-
-				} ) };
-				const center = new THREE.Vector3( s * C.WX, C.WR, z );
-				const p = this.addPanel( name, def, { wheel: { center, front }, center: new THREE.Vector3() } );
-				// geometry sits at the origin: A maps wheel-local -> bone, rebuilt each frame in car mode
-				p.carPose = new THREE.Matrix4();
-				this.wheels.push( p );
-
-			}
-
-		}
-
-	}
-
-	/* ------------------------------------------------------------------ */
-	/*  Skeleton pose from tracks (+ locomotion at T = 1)                  */
-	/* ------------------------------------------------------------------ */
-	poseSkeleton( T, gait ) {
-
-		const B = this.bones;
-		const st = standValues( gait );
-		const tr = ( name, key = name ) => evalTrack( TRACKS[ name ], T, st[ key ] );
-
-		// root
-		const r = tr( 'root' );
-		const rootM = _m.makeRotationX( deg( r[ 3 ] ) );
-		if ( r.length > 4 ) rootM.premultiply( _m2.makeRotationZ( deg( r[ 4 ] ) ) );
-		rootM.setPosition( r[ 0 ], r[ 1 ], r[ 2 ] );
-		B.pelvis.world.copy( rootM );
-
-		const setRot = ( b, v ) => b.euler.set( deg( v[ 0 ] ), deg( v[ 1 ] || 0 ), deg( v[ 2 ] || 0 ) );
-		setRot( B.spine, tr( 'spine' ) );
-		setRot( B.chest, tr( 'chest' ) );
-		const nk = tr( 'neck' );
-		setRot( B.neck, nk );
-		B.neck.move.set( 0, nk[ 3 ], 0 );
-		setRot( B.head, tr( 'head' ) );
-
-		for ( const [ S, s ] of [ [ 'R', 1 ], [ 'L', - 1 ] ] as const ) {
-
-			const mir = ( v ) => ( s > 0 ? v : mirrorRot( v ) );
-			const cl = tr( 'clav', 'clav' + S );
-			B[ 'clav' + S ].move.set( s * cl[ 0 ], cl[ 1 ], cl[ 2 ] );
-			setRot( B[ 'upper' + S ], mir( tr( 'upper', 'upper' + S ) ) );
-			B[ 'fore' + S ].euler.set( deg( tr( 'fore', 'fore' + S )[ 0 ] ), 0, 0 );
-			const h = tr( 'hand', 'hand' + S );
-			setRot( B[ 'hand' + S ], mir( h ) );
-			B[ 'hand' + S ].move.set( 0, h[ 3 ], 0 );
-			const c = tr( 'curl', 'curl' + S )[ 0 ];
-			for ( let f = 0; f < 4; f ++ ) {
-
-				const k = c * ( 0.85 + f * 0.08 );
-				B[ `f${ f }a${ S }` ].euler.set( 0, 0, - s * ( 0.35 * k + 0.08 * Math.max( 0, - c ) * ( f - 1.5 ) ) );
-				B[ `f${ f }b${ S }` ].euler.set( 0, 0, - s * 1.0 * k );
-				B[ `f${ f }c${ S }` ].euler.set( 0, 0, - s * 0.8 * k );
-
-			}
-
-			B[ 'thumbA' + S ].euler.set( 0.5 * c, 0, - s * 0.3 * Math.max( c, 0 ) );
-			B[ 'thumbB' + S ].euler.set( 0.45 * c, 0, 0 );
-			const toe = tr( 'toe', 'toe' + S );
-			B[ 'toe' + S ].euler.set( deg( toe[ 0 ] ), 0, 0 );
-			B[ 'toe' + S ].move.set( 0, 0, toe[ 1 ] );
-
-		}
-
-		// upper body first (legs need the pelvis only)
-		for ( const b of this.boneOrder ) if ( b !== B.pelvis && ! /^(thigh|shin|foot|toe)/.test( b.name ) ) b.update();
-
-		// legs: IK to keyed / gait foot targets
-		for ( const [ S, s ] of [ [ 'R', 1 ], [ 'L', - 1 ] ] as const ) {
-
-			const a = tr( 'ankle', 'ankle' + S );
-			const target = new THREE.Vector3( s * a[ 0 ], a[ 1 ], a[ 2 ] );
-			this.legIK( S, target, a[ 3 ], st[ 'footPitch' + S ] || 0 );
-
-		}
-
-	}
-
-	legIK( S, target, flat, footPitch ) {
-
-		const B = this.bones;
-		const thigh = B[ 'thigh' + S ], shin = B[ 'shin' + S ], foot = B[ 'foot' + S ], toe = B[ 'toe' + S ];
-		const inv = _m.copy( B.pelvis.world ).invert();
-		const d = target.clone().applyMatrix4( inv ).sub( thigh.offset );
-		const L1 = LEG.thigh, L2 = LEG.shin;
-		const roll = Math.atan2( d.x, - d.y );
-		const dp = d.clone().applyAxisAngle( new THREE.Vector3( 0, 0, 1 ), - roll );
-		const D = clamp( dp.length(), 0.3, L1 + L2 - 1e-4 );
-		const phi = Math.atan2( - dp.z, - dp.y );
-		const alpha = Math.acos( clamp( ( L1 * L1 + D * D - L2 * L2 ) / ( 2 * L1 * D ), - 1, 1 ) );
-		const knee = Math.PI - Math.acos( clamp( ( L1 * L1 + L2 * L2 - D * D ) / ( 2 * L1 * L2 ), - 1, 1 ) );
-		thigh.euler.set( phi - alpha, 0, roll, 'ZXY' );
-		shin.euler.set( knee, 0, 0 );
-		thigh.update();
-		shin.update();
-
-		// foot: blend from its folded (relative) pose to lying flat on the ground
-		foot.useQuat = true;
-		foot.quat.identity();
-		if ( flat > 0 ) {
-
-			const shinQ = new THREE.Quaternion().setFromRotationMatrix( shin.world );
-			const want = new THREE.Quaternion().setFromAxisAngle( new THREE.Vector3( 1, 0, 0 ), footPitch );
-			const flatQ = shinQ.invert().multiply( want );
-			foot.quat.slerp( flatQ, flat );
-
-		}
-
-		foot.update();
-		toe.update();
-
-	}
-
-	/* ------------------------------------------------------------------ */
-	/*  Full pose                                                          */
-	/* ------------------------------------------------------------------ */
-	pose( T, gait ) {
-
-		this.T = T;
-		this.poseSkeleton( T, gait );
-		for ( const b of this.boneOrder ) b.group.matrix.copy( b.world );
-
-		// panels
-		const carW = 1 - smooth( clamp( T / 0.06, 0, 1 ) );
-		const Ginv = ( this._Ginv ||= new THREE.Matrix4() ).copy( this.suspension ).invert();
-		for ( const p of this.panels ) {
-
-			const M = p.group.matrix;
-			if ( p.wheel ) {
-
-				// live car pose of the wheel (steer, spin, suspension-compensated), expressed in fold-bone space
-				const w = p.wheel;
-				// unsprung: wheel centres follow the body in x/z but stay at tyre radius
-				const c = w.center.clone();
-				if ( carW > 0 ) {
-
-					c.applyMatrix4( this.suspension );
-					c.y = C.WR;
-
-				}
-
-				p.carPose.makeRotationY( w.front ? this.steer * carW : 0 )
-					.multiply( _m.makeRotationX( this.spin ) )
-					.setPosition( c );
-				if ( carW > 0 ) p.carPose.premultiply( Ginv );
-				M.multiplyMatrices( p.A, p.carPose );
-
-			} else M.copy( p.A );
-
-			for ( const s of p.steps ) {
-
-				const u = clamp( ( T - s.a ) / ( s.b - s.a ), 0, 1 );
-				if ( u <= 0 ) continue;
-				if ( u >= 1 && ! s.pop ) {
-
-					M.premultiply( s.full );
-					continue;
-
-				}
-
-				const e = s.ease( u );
-				if ( s.axis ) {
-
-					_m.makeTranslation( s.pivot.x, s.pivot.y, s.pivot.z )
-						.multiply( _m2.makeRotationAxis( s.axis, s.angle * e ) )
-						.multiply( _m3.makeTranslation( - s.pivot.x, - s.pivot.y, - s.pivot.z ) );
-					M.premultiply( _m );
-
-				} else if ( s.move ) {
-
-					M.premultiply( _m.makeTranslation( s.move.x * e, s.move.y * e, s.move.z * e ) );
-
-				} else if ( s.pop ) {
-
-					const k = Math.sin( Math.PI * u );
-					M.premultiply( _m.makeTranslation( s.pop.x * k, s.pop.y * k, s.pop.z * k ) );
-
-				}
-
-			}
-
-			M.premultiply( p.bone.world );
-
-		}
-
-		// ground: suspension in car mode, contact solve otherwise
-		this.G.copy( this.suspension );
-		if ( T > 0 ) {
-
-			const lowest = this.lowest( T >= 1 );
-			this.lift = - lowest;
-			this.G.makeTranslation( 0, this.lift, 0 );
-			if ( carW > 0 ) this.G.multiply( this.suspension );
-
-		} else this.lift = 0;
-
-		for ( const b of this.boneOrder ) b.group.matrix.premultiply( this.G );
-		for ( const p of this.panels ) p.group.matrix.premultiply( this.G );
-		this.root.updateMatrixWorld( true );
-
-	}
-
-	/** lowest point of the assembly (support vertices), before the ground offset */
-	lowest( feetOnly ) {
-
-		let m = Infinity;
-		const v = _v;
-		const scan = ( group ) => {
-
-			for ( const mesh of group.children ) for ( const s of mesh.userData.support ) {
-
-				v.copy( s ).applyMatrix4( group.matrix );
-				if ( v.y < m ) m = v.y;
-
-			}
-
-		};
-
-		if ( feetOnly ) {
-
-			for ( const S of [ 'R', 'L' ] ) {
-
-				scan( this.bones[ 'foot' + S ].group );
-				scan( this.bones[ 'toe' + S ].group );
-				const n = this.panels.find( ( p ) => p.name === 'nose' + S );
-				scan( n.group );
-
-			}
-
-			return m;
-
-		}
-
-		for ( const b of this.boneOrder ) scan( b.group );
-		for ( const p of this.panels ) {
-
-			if ( p.wheel ) {
-
-				v.setFromMatrixPosition( p.group.matrix );
-				if ( v.y - C.WR < m ) m = v.y - C.WR;
-
-			} else scan( p.group );
-
-		}
-
-		return m;
-
-	}
-
-	/** world-space points for effects */
-	contacts() {
-
-		const out = { wheels: [], feet: {} };
-		for ( const w of this.wheels ) {
-
-			const p = new THREE.Vector3().setFromMatrixPosition( w.group.matrixWorld );
-			p.y -= C.WR;
-			out.wheels.push( { p, front: w.wheel.front } );
-
-		}
-
-		for ( const S of [ 'R', 'L' ] ) out.feet[ S ] = new THREE.Vector3( 0, - 0.3, 0 ).applyMatrix4( this.bones[ 'foot' + S ].group.matrixWorld );
-		return out;
-
-	}
-
+  /** game-world placement (position / yaw), owned by the session */
+  readonly root = new Group()
+  /** car-mode body suspension in game space (pitch / roll about the body), owned by the session */
+  readonly suspension = new Matrix4()
+  steer = 0
+  spin = 0
+  T = 0
+  lift = 0
+  readonly dims: RigDims
+  readonly duration: number
+
+  private readonly frame = new Group()
+  private readonly nodes: Group[] = []
+  private readonly byName: Record<string, number> = {}
+  private readonly parent: Int32Array
+  private readonly kind: NodeKind[]
+  private readonly world: Matrix4[]
+  private readonly rig: RobotRig
+  private readonly boneOf: Int32Array
+  private readonly wheels: Array<{ node: number; front: boolean }> = []
+  private readonly frontWheel: Uint8Array
+  private readonly contactPoints: Contacts
+  private readonly footSupport: Array<{ node: number; side: Side; points: Vector3[] }> = []
+  private readonly footNode: Record<Side, number>
+  private readonly tracks: Float32Array
+  private readonly liftTrack: Float32Array
+  private readonly frames: number
+
+  constructor(asset: CybertruckAsset, materials: Record<string, Material>) {
+    const { manifest } = asset
+    this.dims = manifest.rig.dims
+    this.duration = manifest.rig.dims.duration
+    this.tracks = asset.tracks
+    this.liftTrack = asset.lift
+    this.frames = manifest.frames
+    this.frame.matrixAutoUpdate = false
+    this.frame.matrix.copy(TO_THREE)
+    this.root.add(this.frame)
+
+    const count = manifest.nodes.length
+    this.parent = new Int32Array(count)
+    this.kind = manifest.nodes.map((n) => n.kind)
+    this.world = manifest.nodes.map(() => new Matrix4())
+    const byName = this.byName
+    manifest.nodes.forEach((record, i) => {
+      byName[record.name] = i
+      this.parent[i] = record.parent
+      const node = new Group()
+      node.name = record.name
+      node.matrixAutoUpdate = false
+      for (const { material, geometry } of asset.meshes[i]) {
+        const m = materials[material] ?? materials.plastic
+        const mesh = new Mesh(geometry, m)
+        mesh.matrixAutoUpdate = false
+        const radius = geometry.boundingSphere?.radius ?? 0
+        mesh.castShadow = !m.userData.emissive && radius > 0.12
+        mesh.receiveShadow = true
+        node.add(mesh)
+      }
+      this.frame.add(node)
+      this.nodes.push(node)
+      if (record.kind === 'wheel') this.wheels.push({ node: i, front: record.name.startsWith('wheel:wheelF') })
+    })
+    for (const name of FOOT_NODES) {
+      const i = byName[name]
+      if (i === undefined) throw new Error(`Cybertruck asset lacks ${name}`)
+      this.footSupport.push({ node: i, side: name.endsWith('.L') ? 'L' : 'R', points: supportPoints(asset.meshes[i].map((m) => m.geometry)) })
+    }
+    this.footNode = { L: byName['bone:foot.L'], R: byName['bone:foot.R'] }
+    this.frontWheel = new Uint8Array(count)
+    for (const w of this.wheels) this.frontWheel[w.node] = w.front ? 1 : 0
+    this.contactPoints = { wheels: this.wheels.map((w) => ({ p: new Vector3(), front: w.front })), feet: { L: new Vector3(), R: new Vector3() } }
+
+    this.rig = new RobotRig(manifest.rig.bones, manifest.rig.stand, manifest.rig.dims)
+    this.boneOf = new Int32Array(count).fill(-1)
+    manifest.nodes.forEach((record, i) => {
+      if (record.kind === 'bone') this.boneOf[i] = this.rig.index[record.name.slice(5)]
+    })
+    this.pose(0, null)
+  }
+
+  /** A mechanism node (bone, assembly, wheel or lifter stage) by its asset name. */
+  node(name: string): Group {
+    const i = this.byName[name]
+    if (i === undefined) throw new Error(`Cybertruck asset lacks ${name}`)
+    return this.nodes[i]
+  }
+
+  /** Pose the whole model at transformation time T; `gait` drives the robot at T = 1. */
+  pose(T: number, gait: GaitPose | null): void {
+    this.T = T
+    const fpos = MathUtils.clamp(T, 0, 1) * (this.frames - 1)
+    const f0 = Math.min(Math.floor(fpos), this.frames - 2)
+    const a = fpos - f0
+    const gw = gait ? smooth(MathUtils.clamp((T - GAIT_BLEND_FROM) / (1 - GAIT_BLEND_FROM), 0, 1)) : 0
+    if (gw > 0 && gait) this.rig.poseLive(gait)
+    const carW = 1 - smooth(MathUtils.clamp(T / CAR_FADE, 0, 1))
+
+    const count = this.nodes.length
+    const stride = count * 7
+    const tr = this.tracks
+    for (let i = 0; i < count; i++) {
+      const o0 = f0 * stride + i * 7
+      const o1 = o0 + stride
+      _t.set(tr[o0] + (tr[o1] - tr[o0]) * a, tr[o0 + 1] + (tr[o1 + 1] - tr[o0 + 1]) * a, tr[o0 + 2] + (tr[o1 + 2] - tr[o0 + 2]) * a)
+      _q.set(tr[o0 + 3], tr[o0 + 4], tr[o0 + 5], tr[o0 + 6])
+      _q1.set(tr[o1 + 3], tr[o1 + 4], tr[o1 + 5], tr[o1 + 6])
+      _q.slerp(_q1, a)
+      const bone = this.boneOf[i]
+      if (gw > 0 && bone >= 0) {
+        if (this.parent[i] < 0) {
+          this.rig.world[bone].decompose(_t1, _q1, _s)
+        } else {
+          const L = this.rig.local[bone]
+          _t1.copy(L.t).add(this.rig.offset[bone])
+          _q1.copy(L.q)
+        }
+        _t.lerp(_t1, gw)
+        _q.slerp(_q1, gw)
+      }
+      const local = _m.compose(_t, _q, ONE)
+      if (this.kind[i] === 'wheel') {
+        if (this.frontWheel[i] && carW > 0) local.multiply(_m1.makeRotationZ(this.steer * carW))
+        local.multiply(_m1.makeRotationX(this.spin))
+      }
+      const p = this.parent[i]
+      if (p < 0) this.world[i].copy(local)
+      else this.world[i].multiplyMatrices(this.world[p], local)
+    }
+
+    // ground: baked contact through the transformation, live foot contact at the stand
+    const baked = this.liftTrack[f0] + (this.liftTrack[f0 + 1] - this.liftTrack[f0]) * a
+    this.lift = gw > 0 ? baked + (this.liveLift() - baked) * gw : baked
+
+    // body on the suspension in car mode; wheels unsprung
+    _s1.copy(FROM_THREE).multiply(this.suspension).multiply(TO_THREE)
+    _s1.decompose(_t1, _q1, _s)
+    _t1.multiplyScalar(carW)
+    _q1.slerp(_IDENTITY_Q, 1 - carW)
+    const sprung = _m2.compose(_t1, _q1, ONE)
+    const lift = _m3.makeTranslation(0, 0, this.lift)
+    const liftSprung = _m4.multiplyMatrices(lift, sprung)
+    for (let i = 0; i < count; i++) {
+      this.nodes[i].matrix.multiplyMatrices(this.kind[i] === 'wheel' ? lift : liftSprung, this.world[i])
+    }
+    this.root.updateMatrixWorld(true)
+  }
+
+  /** Ground offset that puts the lowest foot / toe-cap support point on z = 0. */
+  private liveLift(): number {
+    let low = Infinity
+    for (const { node, points } of this.footSupport) {
+      const W = this.world[node]
+      for (const p of points) {
+        const z = _v.copy(p).applyMatrix4(W).z
+        if (z < low) low = z
+      }
+    }
+    return -low
+  }
+
+  /**
+   * Outline of a foot (sole and toe cap) on the ground, in game space: the
+   * support points within 6 cm of its lowest, boxed along the foot's heading.
+   */
+  sole(side: Side, out: Sole): Sole {
+    const foot = this.nodes[this.footNode[side]].matrixWorld
+    out.forward.set(0, -1, 0).transformDirection(foot).setY(0).normalize()
+    const f = out.forward
+    let low = Infinity
+    for (const s of this.footSupport) {
+      if (s.side !== side) continue
+      const W = this.nodes[s.node].matrixWorld
+      for (const p of s.points) low = Math.min(low, _v.copy(p).applyMatrix4(W).y)
+    }
+    let a0 = Infinity, a1 = -Infinity, c0 = Infinity, c1 = -Infinity
+    for (const s of this.footSupport) {
+      if (s.side !== side) continue
+      const W = this.nodes[s.node].matrixWorld
+      for (const p of s.points) {
+        _v.copy(p).applyMatrix4(W)
+        if (_v.y > low + 0.06) continue
+        const a = _v.x * f.x + _v.z * f.z
+        const c = -_v.x * f.z + _v.z * f.x
+        a0 = Math.min(a0, a); a1 = Math.max(a1, a)
+        c0 = Math.min(c0, c); c1 = Math.max(c1, c)
+      }
+    }
+    const a = (a0 + a1) / 2
+    const c = (c0 + c1) / 2
+    out.center.set(f.x * a - f.z * c, 0, f.z * a + f.x * c)
+    out.length = Math.max(0.3, a1 - a0)
+    out.width = Math.max(0.2, c1 - c0)
+    return out
+  }
+
+  /** World-space contact points for dust and footstep effects. */
+  contacts(): Contacts {
+    const out = this.contactPoints
+    this.wheels.forEach((w, k) => {
+      out.wheels[k].p.setFromMatrixPosition(this.nodes[w.node].matrixWorld)
+      out.wheels[k].p.y -= this.dims.wheelRadius
+    })
+    for (const side of ['L', 'R'] as const) {
+      out.feet[side].set(0, 0, -this.dims.ankleZ).applyMatrix4(this.nodes[this.footNode[side]].matrixWorld)
+    }
+    return out
+  }
 }
 
-/** 26-direction support vertices of a geometry (for cheap ground contact) */
-function support( g ) {
-
-	const pos = g.attributes.position;
-	const dirs = [];
-	for ( let x = - 1; x <= 1; x ++ ) for ( let y = - 1; y <= 1; y ++ ) for ( let z = - 1; z <= 1; z ++ ) if ( x || y || z ) dirs.push( new THREE.Vector3( x, y, z ).normalize() );
-	const best = dirs.map( () => [ - Infinity, null ] );
-	const v = new THREE.Vector3();
-	for ( let i = 0; i < pos.count; i ++ ) {
-
-		v.fromBufferAttribute( pos, i );
-		for ( let d = 0; d < dirs.length; d ++ ) {
-
-			const k = v.dot( dirs[ d ] );
-			if ( k > best[ d ][ 0 ] ) best[ d ] = [ k, i ];
-
-		}
-
-	}
-
-	const uniq = [ ...new Set( best.map( ( b ) => b[ 1 ] ) ) ];
-	return uniq.map( ( i ) => new THREE.Vector3().fromBufferAttribute( pos, i ) );
-
-}
-
-/** values the tracks blend into at T = 1: the live, walking robot */
-function standValues( g ) {
-
-	const gg = g || { legs: { R: { step: 0, up: 0, pitch: 0 }, L: { step: 0, up: 0, pitch: 0 } }, crouch: 0.1, sway: 0, bob: 0, lean: 0, twist: 0, arms: { R: 0, L: 0 }, elbow: { R: 0, L: 0 }, headYaw: 0, headPitch: 0, curl: 0.45, breath: 0 };
-	const v = {
-		root: [ gg.sway, HIP - gg.crouch, ROBOT_Z, gg.lean * 0.5, gg.roll || 0 ],
-		spine: [ 4 + gg.lean * 0.4 + gg.breath, gg.twist, 0 ],
-		chest: [ gg.lean * 0.3 - gg.breath, gg.twist * 0.6, 0 ],
-		neck: [ - gg.lean * 0.4, gg.headYaw * 0.4, 0, 0.1 ],
-		head: [ 4 + gg.headPitch, gg.headYaw * 0.6, 0 ]
-	};
-	for ( const [ S ] of [ [ 'R', 1 ], [ 'L', - 1 ] ] ) {
-
-		v[ 'clav' + S ] = [ 0, 0, 0 ];
-		v[ 'upper' + S ] = [ 4 + gg.arms[ S ], 0, 9 ];
-		v[ 'fore' + S ] = [ - 22 + gg.elbow[ S ] ];
-		v[ 'hand' + S ] = [ - 4, 0, 0, 0 ];
-		v[ 'curl' + S ] = [ gg.curl ];
-		v[ 'toe' + S ] = [ 12 + ( gg.legs[ S ].toe || 0 ), 0 ];
-		const L = gg.legs[ S ];
-		v[ 'ankle' + S ] = [ 0.72, LEG.ankle + L.up, ROBOT_Z + L.step, 1 ];
-		v[ 'footPitch' + S ] = L.pitch;
-
-	}
-
-	return v;
-
-}
+const ONE = new Vector3(1, 1, 1)
+const _IDENTITY_Q = new Quaternion()
+const _t = new Vector3()
+const _t1 = new Vector3()
+const _s = new Vector3()
+const _v = new Vector3()
+const _q = new Quaternion()
+const _q1 = new Quaternion()
+const _m = new Matrix4()
+const _m1 = new Matrix4()
+const _m2 = new Matrix4()
+const _m3 = new Matrix4()
+const _m4 = new Matrix4()
+const _s1 = new Matrix4()

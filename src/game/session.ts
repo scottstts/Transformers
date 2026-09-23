@@ -1,10 +1,6 @@
-import {
-  ACESFilmicToneMapping, PCFShadowMap, Euler, Matrix4, PerspectiveCamera, PMREMGenerator,
-  RenderPipeline, Scene, Timer, Vector3, WebGPURenderer,
-} from 'three/webgpu'
-import { pass, uv, float, smoothstep } from 'three/tsl'
-import { bloom } from 'three/addons/tsl/display/BloomNode.js'
-import { createCybertruck } from '../content/cybertruck'
+import { Euler, Matrix4, PerspectiveCamera, RenderPipeline, Scene, Timer, Vector3, WebGPURenderer } from 'three/webgpu'
+import { bakeEnvironment, configureRenderer, createPostPipeline } from '../rendering/look'
+import { createCybertruck, type CybertruckAsset } from '../content/cybertruck'
 import { createDesertWorld } from '../worlds/desert'
 import { FollowCamera } from './follow-camera'
 import { GameInput } from './input'
@@ -15,12 +11,12 @@ export class GameSession {
   readonly scene = new Scene()
   readonly camera: PerspectiveCamera
   readonly environment = createDesertWorld(this.scene)
-  readonly player = createCybertruck(this.environment.contactEffects)
-  readonly bot = this.player.model
+  readonly player: ReturnType<typeof createCybertruck>
+  readonly bot: ReturnType<typeof createCybertruck>['model']
   readonly world = this.environment.world
-  readonly gait = this.player.gait
+  readonly gait: ReturnType<typeof createCybertruck>['gait']
   readonly state = createMotionState()
-  readonly effects = this.player.effects
+  readonly effects: ReturnType<typeof createCybertruck>['effects']
   readonly cameraRig: FollowCamera
   readonly input: GameInput
   readonly pipeline: RenderPipeline
@@ -31,27 +27,22 @@ export class GameSession {
   private readonly suspensionEuler = new Euler()
   private readonly onFrameError: (error: Error) => void
 
-  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, onFrameError: (error: Error) => void) {
+  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, asset: CybertruckAsset, onFrameError: (error: Error) => void) {
+    this.player = createCybertruck(asset, this.environment.contactEffects)
+    this.bot = this.player.model
+    this.gait = this.player.gait
+    this.effects = this.player.effects
     this.camera = camera
     this.onFrameError = onFrameError
-    renderer.toneMapping = ACESFilmicToneMapping
-    renderer.toneMappingExposure = 0.92
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = PCFShadowMap
-    this.scene.add(this.bot.root)
+    configureRenderer(renderer)
+    this.scene.add(this.bot.root, this.effects.thrusters.object)
     this.bot.pose(0, null)
 
-    const pmrem = new PMREMGenerator(renderer)
-    this.scene.environment = pmrem.fromScene(this.environment.environmentScene(), 0, 0.1, 200).texture
-    this.scene.environmentIntensity = 0.95
-    pmrem.dispose()
+    bakeEnvironment(renderer, this.scene, this.environment.environmentScene())
 
     this.cameraRig = new FollowCamera(this.camera, renderer.domElement, this.state.yaw, this.player.robotOffset)
     this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.effects.audio.resume())
-    const color = pass(this.scene, this.camera).getTextureNode('output')
-    const vignette = float(1).sub(smoothstep(0.45, 0.95, uv().sub(0.5).length()).mul(0.35))
-    this.pipeline = new RenderPipeline(renderer)
-    this.pipeline.outputNode = color.add(bloom(color, 0.32, 0.45, 0.92)).mul(vignette)
+    this.pipeline = createPostPipeline(renderer, this.scene, this.camera)
     this.cameraRig.update(1 / 60, this.state, this.bot.root)
     this.world.update(this.camera, this.cameraRig.focusPoint(this.state, this.bot.root))
   }
