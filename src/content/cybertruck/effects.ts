@@ -71,6 +71,22 @@ export class CybertruckEffects {
     this.pendingSteps.push([side, strength])
   }
 
+  /** Robot jump leaves the ground: both legs drive off. */
+  takeoff(): void {
+    this.audio.footstep(1.1)
+    this.shake = Math.max(this.shake, 0.12)
+    this.dustBurst('feet', 0.9, 16)
+  }
+
+  /** Robot jump lands: both feet strike together, hard. */
+  land(): void {
+    this.addFootstep('L', 1)
+    this.addFootstep('R', 1)
+    this.audio.footstep(1.6)
+    this.shake = 0.45
+    this.dustBurst('feet', 1.4, 24)
+  }
+
   timeline(previous: number, current: number): void {
     if (previous === current) return
     const forward = current > previous

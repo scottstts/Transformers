@@ -29,7 +29,7 @@ Crackle is what makes it a rocket rather than wind: steep positive shocks with a
 
 ## Driving and walking
 
-Driving plays only a plain electric drive motor: a soft hum following road speed with a faint, heavily lowpassed whine, silent at rest. Tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill). Footfalls keep the ground thump, gravel crunch and damper exhale.
+Driving plays only a plain electric drive motor: a soft hum following road speed with a faint, heavily lowpassed whine, silent at rest. Tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill). Footfalls keep the ground thump, gravel crunch and damper exhale, with a dedicated voice gain of 0.4 before both the dry mix and reverb send. This keeps walking and running subdued while preserving their relative impact strength; jump contacts use the same footfall voice.
 
 ## Mix and textures
 

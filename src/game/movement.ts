@@ -1,5 +1,5 @@
 import type { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import type { CircleCollider, MotionState } from './types'
+import type { CircleCollider, Form, MotionState } from './types'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
 import { GameInput } from './input'
 
@@ -48,19 +48,28 @@ export function updateCar(state: MotionState, input: CarControls, dt: number, lo
   state.roll += state.rollV * dt
 }
 
-export function updateRobot(state: MotionState, input: GameInput, camera: PerspectiveCamera, dt: number, locked: boolean, robotOffset: number): void {
-  const dir = locked ? null : input.movementDirection(camera)
+/** Robot ground speeds (m/s): walking, and running with Shift held. */
+const WALK_SPEED = 3.4
+const RUN_SPEED = 7.5
+
+export function updateRobot(state: MotionState, input: GameInput, camera: PerspectiveCamera, dt: number, locked: boolean, robotOffset: number, airborne = false): void {
+  const dir = locked || airborne ? null : input.movementDirection(camera)
   const run = input.running
-  let targetSpeed = 0
-  let targetTurn = 0
-  if (dir) {
-    const diff = wrap(Math.atan2(dir.x, dir.z) - state.yaw)
-    targetTurn = clamp(diff * 3.5, -(run ? 1.6 : 2), run ? 1.6 : 2)
-    targetSpeed = (run ? 7.5 : 3.4) * clamp((Math.cos(diff) + 0.2) / 1.2, 0, 1)
+  if (airborne) {
+    // ballistic: the take-off momentum carries, no steering in the air
+    state.yawRate = damp(state.yawRate, 0, 6, dt)
+  } else {
+    let targetSpeed = 0
+    let targetTurn = 0
+    if (dir) {
+      const diff = wrap(Math.atan2(dir.x, dir.z) - state.yaw)
+      targetTurn = clamp(diff * 3.5, -(run ? 1.6 : 2), run ? 1.6 : 2)
+      targetSpeed = (run ? RUN_SPEED : WALK_SPEED) * clamp((Math.cos(diff) + 0.2) / 1.2, 0, 1)
+    }
+    state.speed = damp(state.speed, targetSpeed, targetSpeed > state.speed ? 1.8 : 4, dt)
+    if (Math.abs(state.speed) < 0.02 && !dir) state.speed = 0
+    state.yawRate = damp(state.yawRate, targetTurn, 6, dt)
   }
-  state.speed = damp(state.speed, targetSpeed, targetSpeed > state.speed ? 1.8 : 4, dt)
-  if (Math.abs(state.speed) < 0.02 && !dir) state.speed = 0
-  state.yawRate = damp(state.yawRate, targetTurn, 6, dt)
   const centerX = state.pos.x + Math.sin(state.yaw) * robotOffset
   const centerZ = state.pos.z + Math.cos(state.yaw) * robotOffset
   state.yaw += state.yawRate * dt
@@ -91,6 +100,13 @@ export function resolveCircleCollisions(state: MotionState, colliders: CircleCol
       state.speed *= 0.5
     }
   }
+}
+
+/** Requests during braking or playback are discarded, never queued. */
+export function requestTransformation(state: MotionState, form: Form): void {
+  if (form === state.mode || isTransforming(state)) return
+  state.mode = form
+  state.target = form === 'robot' ? 1 : 0
 }
 
 export function advanceTransformation(state: MotionState, dt: number, duration: number): number {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMotionState } from '../src/game/types'
-import { advanceTransformation, isTransforming, resolveCircleCollisions, updateCar } from '../src/game/movement'
+import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions, updateCar } from '../src/game/movement'
+import { RobotJump } from '../src/game/jump'
 
 describe('transformation motion', () => {
   it('waits for the vehicle to stop before unfolding', () => {
@@ -15,15 +16,31 @@ describe('transformation motion', () => {
     expect(state.progress).toBeGreaterThan(0)
   })
 
-  it('can reverse midway and ends exactly at either form', () => {
+  it('ignores repeated requests during braking and playback in both directions, without queuing them', () => {
     const state = createMotionState()
-    state.target = 1
-    for (let i = 0; i < 240; i++) advanceTransformation(state, 1 / 60, 8)
-    expect(state.progress).toBeCloseTo(0.5)
-    state.target = 0
-    for (let i = 0; i < 500; i++) advanceTransformation(state, 1 / 60, 8)
-    expect(state.progress).toBe(0)
-    expect(isTransforming(state)).toBe(false)
+    for (const form of ['robot', 'car'] as const) {
+      const target = form === 'robot' ? 1 : 0
+      const reverse = form === 'robot' ? 'car' : 'robot'
+      state.speed = 8
+      requestTransformation(state, form)
+      requestTransformation(state, reverse)
+      advanceTransformation(state, 1 / 60, 8)
+      expect(state.mode).toBe(form)
+      expect(state.target).toBe(target)
+      expect(state.progress).toBe(1 - target)
+
+      state.speed = 0
+      for (let frame = 0; frame < 481; frame++) {
+        if (isTransforming(state)) requestTransformation(state, reverse)
+        advanceTransformation(state, 1 / 60, 8)
+        expect(state.mode).toBe(form)
+        expect(state.target).toBe(target)
+      }
+      expect(state.progress).toBe(target)
+      expect(isTransforming(state)).toBe(false)
+      for (let frame = 0; frame < 60; frame++) advanceTransformation(state, 1 / 60, 8)
+      expect(state.progress).toBe(target)
+    }
   })
 })
 
@@ -77,5 +94,40 @@ describe('car controls', () => {
     expect(state.speed).toBeGreaterThan(0)
     for (let i = 0; i < 120; i++) updateCar(state, controls, 1 / 60, false)
     expect(state.speed).toBeLessThan(0)
+  })
+})
+
+describe('robot jump', () => {
+  it('crouches, flies a ballistic arc of about a metre and lands once', () => {
+    const jump = new RobotJump()
+    jump.start()
+    let apex = 0
+    let tookOff = 0
+    let landed = 0
+    let airTime = 0
+    for (let i = 0; i < 120; i++) {
+      const p = jump.update(1 / 60)
+      apex = Math.max(apex, p.air)
+      if (p.tookOff) tookOff++
+      if (p.landed) landed++
+      if (p.airborne) airTime += 1 / 60
+      expect(p.air).toBeGreaterThanOrEqual(0)
+    }
+    expect(tookOff).toBe(1)
+    expect(landed).toBe(1)
+    expect(apex).toBeGreaterThan(0.9)
+    expect(apex).toBeLessThan(1.4)
+    expect(airTime).toBeGreaterThan(0.7)
+    expect(jump.active).toBe(false)
+  })
+
+  it('ignores a new jump until the last one has settled', () => {
+    const jump = new RobotJump()
+    jump.start()
+    jump.update(0.3)
+    jump.start()
+    expect(jump.active).toBe(true)
+    for (let i = 0; i < 120; i++) jump.update(1 / 60)
+    expect(jump.active).toBe(false)
   })
 })
