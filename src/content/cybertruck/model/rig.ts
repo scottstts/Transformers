@@ -1,0 +1,179 @@
+import { Euler, MathUtils, Matrix4, Quaternion, Vector3 } from 'three/webgpu'
+import type { RigBone, RigDims } from '../asset/format'
+
+/**
+ * The robot's skeleton in the authoring frame (x = robot left, -y = forward,
+ * z = up), mirroring the Blender rig (ctb/rig.py, ctb/motion.py): joint frames
+ * are composed parent -> child as T(offset + slide) * R. The live pose at T = 1
+ * starts from the exported stand pose, adds the gait's channels and solves
+ * the legs with the same two-bone IK the transformation was audited with.
+ */
+
+export interface GaitLeg { step: number; up: number; pitch: number; toe?: number }
+
+export interface GaitPose {
+  legs: Record<'R' | 'L', GaitLeg>
+  crouch: number
+  sway: number
+  arms: Record<'R' | 'L', number>
+  elbow: Record<'R' | 'L', number>
+  lean: number
+  roll: number
+  twist: number
+  breath: number
+  headYaw: number
+  headPitch: number
+  curl: number
+}
+
+export interface LocalPose { t: Vector3; q: Quaternion }
+
+const deg = MathUtils.degToRad
+const GAIT_REST_CROUCH = 0.1
+const GAIT_REST_CURL = 0.45
+const FINGERS = ['index', 'middle', 'ring', 'pinky'] as const
+
+/** Blender Euler 'XYZ' (degrees) as a quaternion. */
+export function eulerXYZ(x: number, y: number, z: number, out = new Quaternion()): Quaternion {
+  return out.setFromEuler(_euler.set(deg(x), deg(y), deg(z), 'ZYX'))
+}
+const _euler = new Euler()
+
+export class RobotRig {
+  readonly names: string[]
+  readonly parent: Array<number>
+  readonly offset: Vector3[]
+  readonly index: Record<string, number> = {}
+  private readonly stand: LocalPose[]
+  private readonly dims: RigDims
+  /** local pose per bone, written by the pose functions */
+  readonly local: LocalPose[]
+  /** joint-frame world matrices (authoring frame, before the ground lift) */
+  readonly world: Matrix4[]
+
+  constructor(bones: RigBone[], stand: Record<string, number[]>, dims: RigDims) {
+    this.dims = dims
+    this.names = bones.map((b) => b.name)
+    bones.forEach((b, i) => { this.index[b.name] = i })
+    this.parent = bones.map((b) => (b.parent ? this.index[b.parent] : -1))
+    this.offset = bones.map((b) => new Vector3(...b.offset))
+    this.stand = bones.map((b) => {
+      const s = stand[b.name]
+      return s ? { t: new Vector3(s[4], s[5], s[6]), q: new Quaternion(s[0], s[1], s[2], s[3]) } : { t: new Vector3(), q: new Quaternion() }
+    })
+    this.local = bones.map(() => ({ t: new Vector3(), q: new Quaternion() }))
+    this.world = bones.map(() => new Matrix4())
+  }
+
+  /** pelvis joint frame of the last live pose */
+  readonly root = new Matrix4()
+
+  /** Stand pose + gait channels; legs solved to the gait's foot targets. */
+  poseLive(g: GaitPose): void {
+    const d = this.dims
+    const S = this.stand
+    for (let i = 0; i < this.names.length; i++) {
+      this.local[i].t.copy(S[i].t)
+      this.local[i].q.copy(S[i].q)
+    }
+    const set = (name: string, q: Quaternion): void => { this.local[this.index[name]].q.copy(q) }
+    const tmp = _q0
+
+    // pelvis: the stance crouch plus the gait's bob, sway, lean and roll
+    const crouch = d.crouch + (g.crouch - GAIT_REST_CROUCH)
+    const root = this.root.makeTranslation(g.sway, -d.robotF, d.hipZ - crouch)
+      .multiply(_m0.makeRotationX(deg(g.lean * 0.5)))
+      .multiply(_m0.makeRotationY(deg(g.roll)))
+
+    set('spine', eulerXYZ(g.lean * 0.4 + g.breath, 0, g.twist, tmp))
+    set('chest', eulerXYZ(g.lean * 0.3 - g.breath, 0, g.twist * 0.6, tmp))
+    set('neck', eulerXYZ(-g.lean * 0.4, 0, g.headYaw * 0.4, tmp))
+    set('head', eulerXYZ(g.headPitch, 0, g.headYaw * 0.6, tmp))
+    const curl = g.curl / GAIT_REST_CURL
+    for (const [side, s] of [['L', 1], ['R', -1]] as const) {
+      set(`upperarm.${side}`, eulerXYZ(g.arms[side], -s * d.armAbduct, 0, tmp))
+      set(`forearm.${side}`, eulerXYZ(-d.elbowBend + g.elbow[side], 0, 0, tmp))
+      for (const f of FINGERS) {
+        for (let k = 0; k < 3; k++) set(`${f}${k + 1}.${side}`, eulerXYZ(0, s * d.fingerCurl[k] * curl, 0, tmp))
+      }
+    }
+    this.solve(root, g)
+  }
+
+  /** FK from the local poses; the pelvis joint frame is `root`. */
+  forward(root: Matrix4): void {
+    const m = _m1
+    for (let i = 0; i < this.names.length; i++) {
+      const L = this.local[i]
+      const p = this.parent[i]
+      if (p < 0) {
+        this.world[i].copy(root).multiply(m.makeRotationFromQuaternion(L.q))
+      } else {
+        m.compose(_v0.copy(L.t).add(this.offset[i]), L.q, ONE)
+        this.world[i].multiplyMatrices(this.world[p], m)
+      }
+    }
+  }
+
+  private solve(root: Matrix4, g: GaitPose): void {
+    const d = this.dims
+    this.forward(root)
+    const pole = _v1.set(0, -1, 0).applyMatrix4(_m0.extractRotation(this.world[this.index.pelvis]))
+    for (const [side, s] of SIDES) {
+      const leg = g.legs[side]
+      _v2.set(s * d.hipX, -(d.robotF + leg.step), d.ankleZ + leg.up)
+      const knee = solveLeg(this.world[this.index[`hip.${side}`]], _v2, d.thigh, d.shin, pole, this.local[this.index[`thigh.${side}`]].q)
+      this.local[this.index[`shin.${side}`]].q.setFromAxisAngle(X_AXIS, knee)
+    }
+    this.forward(root)
+    for (const [side] of SIDES) {
+      // foot held level to the ground, pitched by the gait
+      const shin = _q1.setFromRotationMatrix(this.world[this.index[`shin.${side}`]]).invert()
+      this.local[this.index[`foot.${side}`]].q.copy(shin.multiply(_q2.setFromAxisAngle(X_AXIS, g.legs[side].pitch)))
+    }
+    this.forward(root)
+  }
+}
+
+const ONE = new Vector3(1, 1, 1)
+const X_AXIS = new Vector3(1, 0, 0)
+const SIDES = [['L', 1], ['R', -1]] as const
+const _m0 = new Matrix4()
+const _m1 = new Matrix4()
+const _m2 = new Matrix4()
+const _q0 = new Quaternion()
+const _q1 = new Quaternion()
+const _q2 = new Quaternion()
+const _v0 = new Vector3()
+const _v1 = new Vector3()
+const _v2 = new Vector3()
+const _a = new Vector3()
+const _b = new Vector3()
+const _c = new Vector3()
+const _d = new Vector3()
+const _e = new Vector3()
+
+/**
+ * Two-bone leg IK (port of ctb/motion.solve_leg): the thigh frame's -Z runs
+ * along the bone and -Y faces the pole. Returns the thigh's local rotation in
+ * the hip frame and the knee flexion (radians).
+ */
+export function solveLeg(hip: Matrix4, target: Vector3, L1: number, L2: number, pole: Vector3, out: Quaternion): number {
+  const hi = _m2.copy(hip).invert()
+  const t = _a.copy(target).applyMatrix4(hi)
+  const p = _b.copy(pole).applyMatrix4(_m0.extractRotation(hi)).normalize()
+  let D = Math.min(t.length(), L1 + L2 - 1e-5)
+  D = Math.max(D, Math.abs(L1 - L2) + 1e-4)
+  const dir = t.normalize()
+  const a = Math.acos(MathUtils.clamp((L1 * L1 + D * D - L2 * L2) / (2 * L1 * D), -1, 1))
+  const knee = Math.PI - Math.acos(MathUtils.clamp((L1 * L1 + L2 * L2 - D * D) / (2 * L1 * L2), -1, 1))
+  const side = _c.copy(dir).cross(p)
+  if (side.lengthSq() < 1e-12) side.set(1, 0, 0)
+  side.normalize()
+  const thighDir = dir.applyQuaternion(_q0.setFromAxisAngle(side, a)).normalize()
+  const z = _d.copy(thighDir).negate()
+  const y = p.sub(_e.copy(thighDir).multiplyScalar(p.dot(thighDir))).normalize().negate()
+  const x = _c.copy(y).cross(z)
+  out.setFromRotationMatrix(_m0.makeBasis(x, y, z))
+  return knee
+}

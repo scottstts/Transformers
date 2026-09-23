@@ -1,5 +1,28 @@
 # Development checks
 
-Run `npm run typecheck`, `npm run lint`, `npm test`, `npm run check:model`, and `npm run build` after code changes. `check:model` runs the headless checks transplanted from the prototype: folded robot containment, suspension and wheel contact, 201 forward and reverse transform poses, and 360 locomotion frames. The pose and gait checks intentionally produce no screenshots.
+Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after code changes. `tests/cybertruck.test.ts` loads the exported asset and checks its integrity. It also checks:
 
-The browser view is intentionally left for manual visual review. After changing procedural panels, joints, materials, or terrain, inspect the car, intermediate transform, robot, walking, and driving states in the browser. Headless numerical checks catch invalid or drifting transforms but cannot judge silhouette, shading, or panel intersections.
+- 101 forward and 100 reverse transform poses returning to the fold;
+- orientation in game space;
+- wheel ground contact on the suspension;
+- that the TypeScript rig reproduces the baked T = 1 pose (a seamless handover to the gait);
+- 360 walking and running frames with grounded feet;
+- the lift-thruster throttle window, and that no geometry enters the exhaust during the burn.
+
+`tests/desert-world.test.ts` checks tyre-track ribbon continuity and restarts.
+
+The Blender build carries the geometry and mechanism audits. Run them after changing panels, the robot or the choreography, then re-export:
+
+```bash
+/Applications/Blender.app/Contents/MacOS/Blender -b blender/cybertruck-transformer.blend --python blender/cybertruck_build/audit_game.py
+```
+
+It reports islands, clashes and coplanar faces at T = 0 and T = 1, the lowest parts in robot mode, the clash sweep over the transformation, and the support gate (see transformation-mechanics.md).
+
+For a look at effects without a browser, `tools/preview.mjs` renders fixed shots headlessly with the game's renderer and post pipeline (Dawn WebGPU in Node). Shots are the transformation frames (`rise-*`, `plume-detail`) and tyre tracks after a drive (`tracks*`):
+
+```bash
+node tools/preview.mjs preview-out rise-close tracks-low
+```
+
+The browser view is left for manual visual review. Headless checks catch invalid or drifting transforms and solid clashes. They cannot judge silhouette, shading or the feel of motion and sound.

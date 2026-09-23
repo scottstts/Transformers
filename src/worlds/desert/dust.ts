@@ -130,6 +130,27 @@ export class Dust {
 
 	}
 
+	/** jet blast: sand driven radially out along the ground from `p` (continuous, scaled by strength 0..1) */
+	blast( p, strength, dt ) {
+
+		let n = strength * 150 * dt;
+		while ( n > 0 ) {
+
+			if ( n < 1 && Math.random() > n ) break;
+			n -= 1;
+			const a = Math.random() * Math.PI * 2;
+			const r = 0.3 + Math.random() * 0.6;
+			const sp = ( 6 + Math.random() * 9 ) * ( 0.4 + 0.6 * strength );
+			this.emit(
+				p.x + Math.cos( a ) * r, 0.08 + Math.random() * 0.2, p.z + Math.sin( a ) * r,
+				Math.cos( a ) * sp, 0.3 + Math.random() * 1.6 * strength, Math.sin( a ) * sp,
+				{ size: 0.35, grow: 2.6 + strength * 2.2, life: 1.6 + strength * 1.4, alpha: 0.12 + 0.16 * strength }
+			);
+
+		}
+
+	}
+
 	update( dt ) {
 
 		const P = this.pos, V = this.vel, D = this.aData.array, O = this.aPos.array;

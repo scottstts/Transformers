@@ -57,6 +57,19 @@ function emissive( hex, intensity, u ) {
 
 }
 
+/** Machined, dark-anodised structural alloy: fine turning marks, satin sheen. */
+function machined() {
+
+	const p = positionLocal;
+	const turning = N( vec2( p.x.add( p.z ).mul( 9.0 ), p.y.mul( 0.7 ) ) ).g;
+	const m = new THREE.MeshStandardNodeMaterial();
+	m.colorNode = mix( color( 0x3a3e44 ), color( 0x4a4f56 ), turning );
+	m.metalnessNode = float( 0.9 );
+	m.roughnessNode = float( 0.28 ).add( turning.mul( 0.08 ) );
+	return tag( m, 0x44484e );
+
+}
+
 const std = ( p, hex? ) => tag( new THREE.MeshStandardNodeMaterial( p ), hex ?? p.color );
 
 export function createMaterials() {
@@ -73,6 +86,7 @@ export function createMaterials() {
 	M.aero = std( { color: 0x222426, metalness: 0.4, roughness: 0.48 } );
 	M.aeroDark = std( { color: 0x0e0f10, metalness: 0.2, roughness: 0.6 } );
 	M.darkSteel = std( { color: 0x575b60, metalness: 1.0, roughness: 0.3 }, 0x6a6e73 );
+	M.mech = machined();
 	M.chrome = std( { color: 0xe4e6e8, metalness: 1.0, roughness: 0.1 } );
 	M.interior = std( { color: 0x0b0b0c, metalness: 0.0, roughness: 0.9 } );
 	M.lightWhite = emissive( 0xf4f7ff, 14.0, U.frontLight );

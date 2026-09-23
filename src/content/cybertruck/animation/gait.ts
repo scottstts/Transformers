@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { GaitPose } from '../model/rig.ts';
 
 const TAU = Math.PI * 2;
 const clamp = THREE.MathUtils.clamp;
@@ -34,7 +35,7 @@ export class CybertruckGait {
 
 	}
 
-	update( dt, speed, turnRate, running, active ) {
+	update( dt: number, speed: number, turnRate: number, running: boolean, active: boolean ): GaitPose {
 
 		this.time += dt;
 		const mv = active ? Math.abs( speed ) : 0;

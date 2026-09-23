@@ -26,28 +26,43 @@ export function skyMaterial() {
 
 }
 
+/** Hardpan albedo at a world xz position (shared by the ground and surface decals). */
+export function groundAlbedo( xz ) {
+
+	const large = N( xz.mul( 0.0021 ) ).r;
+	const mid = N( xz.mul( 0.027 ) ).a;
+	const fine = N( xz.mul( 0.19 ) ).g;
+	const grit = N( xz.mul( 1.7 ) ).b;
+	let c = mix( color( 0xa98c6e ), color( 0xc4ab8c ), large );
+	c = mix( c, color( 0x8a7058 ), smoothstep( 0.55, 0.85, mid ).mul( 0.4 ) );
+	return { color: c.mul( fine.mul( 0.12 ).add( 0.94 ) ).mul( grit.mul( 0.16 ).add( 0.9 ) ), grit };
+
+}
+
+/** Micro relief of the hardpan (m). */
+export const groundHeight = ( xz ) => N( xz.mul( 0.23 ) ).g.mul( 0.06 ).add( N( xz.mul( 1.3 ) ).b.mul( 0.012 ) );
+
+/** World-space slope of the relief: (-dh/dx, -dh/dz) by forward differences. */
+export function groundSlope( xz ) {
+
+	const e = 0.04;
+	const h0 = groundHeight( xz );
+	return vec2( h0.sub( groundHeight( xz.add( vec2( e, 0 ) ) ) ).div( e ), h0.sub( groundHeight( xz.add( vec2( 0, e ) ) ) ).div( e ) );
+
+}
+
 /** Desert hardpan: four texture fetches for colour, three for the bump. */
 export function groundMaterial() {
 
 	const m = new THREE.MeshStandardNodeMaterial();
 	const xz = positionWorld.xz;
-	const large = N( xz.mul( 0.0021 ) ).r;
-	const mid = N( xz.mul( 0.027 ) ).a;
-	const fine = N( xz.mul( 0.19 ) ).g;
-	const grit = N( xz.mul( 1.7 ) ).b;
-
-	let c = mix( color( 0xa98c6e ), color( 0xc4ab8c ), large );
-	c = mix( c, color( 0x8a7058 ), smoothstep( 0.55, 0.85, mid ).mul( 0.4 ) );
-	c = c.mul( fine.mul( 0.12 ).add( 0.94 ) ).mul( grit.mul( 0.16 ).add( 0.9 ) );
-	m.colorNode = c;
-	m.roughnessNode = float( 0.93 ).sub( grit.mul( 0.08 ) );
+	const albedo = groundAlbedo( xz );
+	m.colorNode = albedo.color;
+	m.roughnessNode = float( 0.93 ).sub( albedo.grit.mul( 0.08 ) );
 	m.metalnessNode = float( 0.0 );
 
-	const H = ( p ) => N( p.mul( 0.23 ) ).g.mul( 0.06 ).add( N( p.mul( 1.3 ) ).b.mul( 0.012 ) );
-	const e = 0.04;
-	const h0 = H( xz ), hx = H( xz.add( vec2( e, 0 ) ) ), hz = H( xz.add( vec2( 0, e ) ) );
-	const nW = vec3( h0.sub( hx ).div( e ), 1.0, h0.sub( hz ).div( e ) ).normalize();
-	m.normalNode = nW.transformDirection( cameraViewMatrix );
+	const slope = groundSlope( xz );
+	m.normalNode = vec3( slope.x, 1.0, slope.y ).normalize().transformDirection( cameraViewMatrix );
 	return m;
 
 }
