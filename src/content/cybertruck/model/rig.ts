@@ -24,6 +24,8 @@ export interface GaitPose {
   headYaw: number
   headPitch: number
   curl: number
+  /** height of the lowest foot above the ground (m): run flight and jumps */
+  air?: number
 }
 
 export interface LocalPose { t: Vector3; q: Quaternion }

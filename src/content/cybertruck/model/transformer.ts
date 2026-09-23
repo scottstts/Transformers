@@ -176,7 +176,7 @@ export class CybertruckModel {
 
     // ground: baked contact through the transformation, live foot contact at the stand
     const baked = this.liftTrack[f0] + (this.liftTrack[f0 + 1] - this.liftTrack[f0]) * a
-    this.lift = gw > 0 ? baked + (this.liveLift() - baked) * gw : baked
+    this.lift = gw > 0 && gait ? baked + (this.liveLift() + (gait.air ?? 0) - baked) * gw : baked
 
     // body on the suspension in car mode; wheels unsprung
     _s1.copy(FROM_THREE).multiply(this.suspension).multiply(TO_THREE)

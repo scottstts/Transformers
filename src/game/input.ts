@@ -4,17 +4,19 @@ export class GameInput {
   private readonly onTransform: () => void
   private readonly onInteraction: () => void
   private readonly keys = new Set<string>()
+  private jumpPressed = false
   private readonly forward = new Vector3()
   private readonly right = new Vector3()
   private readonly direction = new Vector3()
   private readonly canvas: HTMLCanvasElement
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code === 'KeyR') event.preventDefault()
+    if (event.code === 'KeyR' || event.code === 'Space') event.preventDefault()
     if (document.pointerLockElement !== this.canvas) return
     this.onInteraction()
     if (event.repeat) return
     this.keys.add(event.code)
     if (event.code === 'KeyR') this.onTransform()
+    if (event.code === 'Space') this.jumpPressed = true
   }
   private readonly onKeyUp = (event: KeyboardEvent): void => { this.keys.delete(event.code) }
   private readonly onBlur = (): void => { this.keys.clear() }
@@ -32,6 +34,13 @@ export class GameInput {
     window.addEventListener('blur', this.onBlur)
     window.addEventListener('pointerdown', this.onPointerDown)
     document.addEventListener('pointerlockchange', this.onPointerLockChange)
+  }
+
+  /** Space was pressed since the last call. */
+  consumeJump(): boolean {
+    const pressed = this.jumpPressed
+    this.jumpPressed = false
+    return pressed
   }
 
   pressed(...codes: string[]): boolean { return codes.some((code) => this.keys.has(code)) }

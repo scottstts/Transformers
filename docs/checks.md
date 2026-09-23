@@ -11,6 +11,8 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 
 `tests/desert-world.test.ts` checks tyre-track ribbon continuity and restarts.
 
+`tests/movement.test.ts` checks that transform requests cannot reverse or queue during braking or playback in either direction. `tests/jump.test.ts` checks frame-rate-independent jump timing, one-shot take-off/landing events, replay, arm and foot-target continuity from idle/walk/run, and a two-foot landing without stray stride footfalls.
+
 The Blender build carries the geometry and mechanism audits. Run them after changing panels, the robot or the choreography, then re-export:
 
 ```bash

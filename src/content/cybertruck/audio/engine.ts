@@ -161,7 +161,7 @@ export class CybertruckAudio {
     const t = this.now()
     const g = 0.5 * strength
     const bus = ctx.createGain()
-    bus.gain.value = 1
+    bus.gain.value = 0.4
     bus.connect(this.bus)
     const send = ctx.createGain()
     send.gain.value = 0.35

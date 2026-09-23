@@ -9,6 +9,7 @@ import { CybertruckGait } from '../src/content/cybertruck/animation/gait.ts'
 import { createMaterials } from '../src/content/cybertruck/materials.ts'
 import { buildCues } from '../src/content/cybertruck/effects.ts'
 import { Thrusters } from '../src/content/cybertruck/fx/thrusters.ts'
+import { RobotJump } from '../src/game/jump.ts'
 
 const manifest = JSON.parse(readFileSync('public/models/cybertruck.json', 'utf8')) as CybertruckManifest
 const binary = readFileSync('public/models/cybertruck.bin')
@@ -140,6 +141,45 @@ describe('cybertruck locomotion', () => {
     }
     expect(footfalls).toBeGreaterThanOrEqual(2)
     expect(Math.abs(lowest)).toBeLessThan(0.05)
+  })
+
+  it('runs with a flight phase: both feet leave the ground between steps', () => {
+    const gait = new CybertruckGait()
+    let flights = 0
+    for (let frame = 0; frame < 300; frame++) {
+      const pose = gait.update(1 / 60, 7.5, 0, true, true)
+      if (frame < 120) continue
+      model.pose(1, pose)
+      const feet = model.contacts().feet
+      if (Math.min(feet.L.y, feet.R.y) > 0.02) flights++
+    }
+    expect(flights).toBeGreaterThan(10)
+  })
+
+  it('jumps: the whole robot leaves the ground and lands back on its feet', () => {
+    const gait = new CybertruckGait()
+    const jump = new RobotJump()
+    jump.start()
+    let highest = 0
+    const armNodes = ['bone:upperarm.R', 'bone:upperarm.L', 'bone:forearm.R', 'bone:forearm.L'].map((name) => model.node(name))
+    model.pose(1, gait.update(0, 0, 0, false, true))
+    const previous = armNodes.map((node) => new Quaternion().setFromRotationMatrix(node.matrixWorld))
+    for (let frame = 0; frame < 150; frame++) {
+      const pose = gait.update(1 / 60, 0, 0, false, true, jump.update(1 / 60))
+      model.pose(1, pose)
+      expect(Number.isFinite(model.lift)).toBe(true)
+      armNodes.forEach((node, i) => {
+        const rotation = new Quaternion().setFromRotationMatrix(node.matrixWorld)
+        expect(previous[i].angleTo(rotation)).toBeLessThan(0.2)
+        previous[i].copy(rotation)
+      })
+      const feet = model.contacts().feet
+      highest = Math.max(highest, Math.min(feet.L.y, feet.R.y))
+    }
+    expect(highest).toBeGreaterThan(0.9)
+    const feet = model.contacts().feet
+    expect(Math.abs(Math.min(feet.L.y, feet.R.y))).toBeLessThan(0.05)
+    model.pose(0, null)
   })
 
   it('measures a planted sole for footprints: foot-sized, under the foot, heading forward', () => {

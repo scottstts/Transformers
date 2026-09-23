@@ -4,8 +4,9 @@ import { createCybertruck, type CybertruckAsset } from '../content/cybertruck'
 import { createDesertWorld } from '../worlds/desert'
 import { FollowCamera } from './follow-camera'
 import { GameInput } from './input'
-import { advanceTransformation, isTransforming, resolveCircleCollisions, updateCar, updateRobot } from './movement'
+import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions, updateCar, updateRobot } from './movement'
 import { createMotionState, type Form } from './types'
+import { RobotJump } from './jump'
 
 export class GameSession {
   readonly scene = new Scene()
@@ -21,6 +22,7 @@ export class GameSession {
   readonly input: GameInput
   readonly pipeline: RenderPipeline
   private readonly timer = new Timer()
+  private readonly jump = new RobotJump()
   private readonly up = new Vector3(0, 1, 0)
   private readonly suspensionRotation = new Matrix4()
   private readonly suspensionInverse = new Matrix4().makeTranslation(0, -0.7, 0)
@@ -48,12 +50,13 @@ export class GameSession {
   }
 
   selectForm(form: Form): void {
-    if (form === this.state.mode) return
-    this.state.mode = form
-    this.state.target = form === 'robot' ? 1 : 0
+    if (this.jump.active) return
+    requestTransformation(this.state, form)
   }
 
-  toggleForm(): void { this.selectForm(this.state.mode === 'car' ? 'robot' : 'car') }
+  toggleForm(): void {
+    this.selectForm(this.state.mode === 'car' ? 'robot' : 'car')
+  }
 
   frame(): void {
     try {
@@ -69,11 +72,15 @@ export class GameSession {
     const state = this.state
     const previous = advanceTransformation(state, dt, this.player.transformationDuration)
     const busy = isTransforming(state)
+    if (this.input.consumeJump() && !busy && state.mode === 'robot' && state.progress >= 1) this.jump.start()
+    const jump = this.jump.update(dt)
     if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot')
-    else updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.player.robotOffset)
+    else updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.player.robotOffset, jump.airborne)
     resolveCircleCollisions(state, this.world.colliders, this.player.robotOffset)
 
-    const pose = this.gait.update(dt, state.speed, state.yawRate, this.input.running, state.progress >= 1)
+    const pose = this.gait.update(dt, state.speed, state.yawRate, this.input.running, state.progress >= 1, jump)
+    if (jump.tookOff) this.effects.takeoff()
+    if (jump.landed) this.effects.land()
     while (this.gait.events.length) this.effects.addFootstep(this.gait.events.pop() as 'R' | 'L', this.gait.run)
 
     this.bot.steer = state.steer
