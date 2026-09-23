@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import {
-	instancedDynamicBufferAttribute, uv, vec3, float, color, mix, smoothstep, mx_fractal_noise_float, clamp
+	instancedDynamicBufferAttribute, uv, vec2, float, color, mix, smoothstep, clamp
 } from 'three/tsl';
+import { N } from '../../rendering/noise.ts';
 
 /**
  * Kicked-up desert dirt: soft, noisy, slowly expanding billboards.
@@ -49,10 +50,12 @@ export class Dust {
 		m.scaleNode = d.x;
 		m.rotationNode = d.w;
 
-		// soft billow: radial falloff broken up by 3D noise (seeded per particle)
+		// Reuse the desert's mipmapped noise texture instead of evaluating four
+		// octaves of 3D noise for every transparent dust fragment.
 		const q = uv().sub( 0.5 ).mul( 2.0 );
 		const r = q.length();
-		const n = mx_fractal_noise_float( vec3( q.mul( 1.6 ), d.z.mul( 17.0 ) ), 4, 2.0, 0.55 ).mul( 0.5 ).add( 0.5 );
+		const noise = N( uv().mul( 0.55 ).add( vec2( d.z.mul( 13.7 ), d.z.mul( 29.3 ) ) ) ).toVar();
+		const n = noise.r.mul( 0.75 ).add( noise.a.mul( 0.25 ) );
 		const shape = float( 1.0 ).sub( smoothstep( 0.15, 1.0, r.add( n.sub( 0.5 ).mul( 0.55 ) ) ) );
 		const dens = clamp( shape.mul( n.mul( 1.1 ).add( 0.25 ) ), 0.0, 1.0 );
 
