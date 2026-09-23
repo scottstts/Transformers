@@ -1,0 +1,14 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; }
+* { box-sizing: border-box; }
+html, body, #app { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+body { background: #cbbfae; }
+#app canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+#app canvas:active { cursor: grabbing; }
+.veil { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: #d7ccbd; color: #494541; transition: opacity 0.6s ease, visibility 0s 0.6s; }
+#boot-status { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; }
+body.ready .veil { opacity: 0; visibility: hidden; }
+body.failed .veil { background: #171b1e; color: #f3eee7; }
+body.failed #boot-status { display: grid; gap: 16px; width: min(100%, 620px); padding: 30px; text-transform: none; letter-spacing: 0; line-height: 1.5; }
+body.failed #boot-status strong { font-size: 20px; font-weight: 600; }
+body.failed #boot-status span { overflow-wrap: anywhere; color: #d9c9b8; }
+body.failed #boot-status small { color: #9caaa8; font: 12px/1.5 ui-monospace, monospace; }

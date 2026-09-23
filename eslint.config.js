@@ -3,10 +3,14 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', 'refs/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ['tools/**/*.mjs'],
+    languageOptions: { globals: { console: 'readonly', process: 'readonly' } },
+  },
   {
     files: ['**/*.ts'],
     rules: {

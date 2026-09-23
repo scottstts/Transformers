@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:model": "node tools/check-containment.mjs && node tools/check-suspension.mjs && node tools/check-poses.mjs && node tools/check-locomotion.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
