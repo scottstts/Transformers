@@ -169,12 +169,16 @@ def bake(sc, step=1, warp=True):
     return len(frames)
 
 
-def density_warp(sc, samples=161, mix=0.7):
-    """Frame -> T table that evens out the motion density: the mechanism time T is
-    re-paced so every frame carries a similar amount of movement (mean travel of every
-    object's support points), blended with the plain linear pacing by `mix`."""
+def density_warp(sc, samples=321, mix=0.88):
+    """Invert a smoothed, regularized travel density without changing event order.
+
+    Weight by visible part size, so tiny linkage pieces do not dictate pacing.
+    Blend density BEFORE inversion; blending inverse time with linear time
+    reintroduces the original bursts. Short endpoint ramps soften start/landing.
+    """
     Ts = [i / (samples - 1) for i in range(samples)]
-    prev, cum = None, [0.0]
+    prev, travel = None, []
+    weights = {}
     for T in Ts:
         objs, W, N, lift = object_worlds(sc, T)
         cur = {}
@@ -184,17 +188,25 @@ def density_warp(sc, samples=161, mix=0.7):
                 continue
             R = np.array(M.to_3x3())
             cur[o] = pts @ R.T + np.array(M.translation)
+            if o not in weights:
+                weights[o] = max(0.025, min(1.5, float(np.linalg.norm(np.ptp(pts, axis=0)))))
         if prev is not None:
-            e = sum(float(np.linalg.norm(cur[o] - prev[o], axis=1).mean()) for o in cur if o in prev)
-            cum.append(cum[-1] + e)
+            e = sum(weights[o] * float(np.linalg.norm(cur[o] - prev[o], axis=1).mean()) for o in cur if o in prev)
+            travel.append(e)
         prev = cur
-    total = cum[-1] or 1.0
-    C = [c / total for c in cum]
-    out = []
-    for f in range(FRAMES + 1):
-        c = f / FRAMES
-        j = next((k for k in range(1, samples) if C[k] >= c), samples - 1)
-        a, b = C[j - 1], C[j]
-        t = Ts[j - 1] + (Ts[j] - Ts[j - 1]) * ((c - a) / (b - a) if b > a else 0.0)
-        out.append(mix * t + (1.0 - mix) * c)
-    return out
+    kernel = np.array([1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1], dtype=float)
+    kernel /= kernel.sum()
+    density = np.convolve(np.pad(travel, (5, 5), mode='edge'), kernel, mode='valid')
+    density = mix * density + (1 - mix) * max(float(density.mean()), 1e-9)
+    cumulative = np.concatenate(([0.0], np.cumsum(density)))
+    cumulative /= cumulative[-1]
+
+    def eased_distance(x, ramp=0.045):
+        if x < ramp:
+            u = x / ramp
+            return ramp * (u**3 - 0.5*u**4) / (1 - ramp)
+        if x > 1 - ramp:
+            return 1 - eased_distance(1 - x, ramp)
+        return (x - ramp / 2) / (1 - ramp)
+
+    return np.interp([eased_distance(f / FRAMES) for f in range(FRAMES + 1)], cumulative, Ts).tolist()

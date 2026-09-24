@@ -43,7 +43,7 @@ FLOOR_TOP = 0.090                    # floor upper surface at the reference plan
 FLOOR_HW = 0.820                     # floor half width (edge wings)
 POD_HW = 0.760                       # sidepod max half width
 FW_SPAN = 0.965                      # front wing half span (endplate outer face)
-RW_SPAN = 0.500                      # rear wing half span
+RW_SPAN = 0.550                      # rear wing half span; clears inner tyre walls
 
 G = 0.0025                           # half reveal: panel gap 5 mm
 SKIN = 0.014                         # composite body skin

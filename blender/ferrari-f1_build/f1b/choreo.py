@@ -125,7 +125,7 @@ def sided():
     # corners fold forward on their wishbones so the wheels ride high behind the shoulders.
     A['hood'] = dict(host='@tail', parts=['hood'], steps=[move((0.0, -0.52, 0.0), (0.03, 0.14))])
     # the rear wing folds forward on its swan-neck roots so it lies up the back of the pack
-    A['rwing'] = dict(host='@tail', parts=['rwing'], steps=[rot('x', RWING_FOLD, (0.0, -2.05, 0.60), (0.40, 0.56))])
+    A['rwing'] = dict(host='@tail', parts=['rwing'], steps=[rot('x', RWING_FOLD, (0.0, -2.12, 0.558), (0.40, 0.56))])
     RF = corner_fold(None, False, REAR_FOLD, (0.84, 0.96))
     A['rsuspU'] = dict(host='@tail', parts=['suspRUp'], steps=RF['up'])
     A['rsuspL'] = dict(host='@tail', parts=['suspRLo', 'suspRRod'], steps=RF['lo'])
@@ -158,8 +158,9 @@ def singles():
         # the halo slides back on the cockpit rim until its pillar meets the airbox, then rides it
         'halo': dict(host='@chest', parts=['halo'], steps=[move((0.0, -1.00, 0.0), (0.05, 0.16))]),
         'liner': dict(host='pelvis', parts=['liner'], steps=[fit({'xc': 0.0, 'fc': -0.02, 'zc': 0.02}, (0.26, 0.42))]),
+        'cockpitControls': dict(host='@liner', parts=['cockpitControls'], steps=[move((0,.18,-.07),(.02,.12))]),
         'nape': dict(host='@tail', parts=['nape', 'floorNape'], steps=[move((0.0, -0.62, 0.0), (0.03, 0.14))]),
-        'tail': dict(host='chest', parts=['tail', 'floorTail'], steps=[
+        'tail': dict(host='chest', parts=['tail', 'floorTail', 'rearStructure'], steps=[
             rot('x', -180.0, PACK_HINGE, (0.30, 0.50)), move((0.0, 0.0, -PACK_LOWER), (0.56, 0.70)), move((0.0, -PACK_BACK, 0.0), (0.62, 0.76))]),
     }
 
@@ -175,4 +176,4 @@ def carriers():
             (Strut('airArm.L', 'chest', (0.27, af, az), 'chest', (0.27, -0.62, 0.54), r=0.022), True),
             # feet: arms reach out of the foot, carry a wing half to its place, and retract
             (Strut('heelArm.L', 'foot.L', (0.0, -0.10, -0.12), 'heelfin.L', (0.25, 2.45, 0.15), r=0.016, window=(0.56, 0.74), engage=0.06), True),
-            (Strut('wingArm.L', 'foot.L', (0.09, 0.08, -0.14), 'foot.L', (0.55, 2.50, 0.10), r=0.016, window=(0.60, 0.76), engage=0.06), True)]
+            (Strut('wingArm.L', 'foot.L', (0.065, 0.08, -0.125), 'foot.L', (0.55, 2.50, 0.10), r=0.016, window=(0.60, 0.76), engage=0.06), True)]

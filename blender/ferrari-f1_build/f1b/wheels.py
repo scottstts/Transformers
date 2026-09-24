@@ -26,11 +26,20 @@ def tyre(R, hw, rim, segs=80):
     """(verts, faces, face slots): one closed carcass revolve (closed at the bead
     seat); faces whose profile span lies in the sidewall band get 'tyreMark'."""
     half = tyre_profile(R, hw, rim)
+    # Add the exact marking boundaries so a narrow stripe never disappears
+    # between profile samples.
+    dense = []
+    for a,b in zip(half,half[1:]):
+        dense.append(a)
+        for r in (R*.815,R*.829):
+            if a[0]<r<b[0]:
+                dense.append((r,lerp(a[1],b[1],(r-a[0])/(b[0]-a[0]))))
+    half = dense+[half[-1]]
     # insert exact band radii on the sidewall so the band edges are clean rings
     full = [(r, x) for r, x in half] + [(r, -x) for r, x in reversed(half[:-1])]
     m = len(full)
     v, f = lathe(full, segs, 'x', closed=True)
-    band = [R * 0.80 <= 0.5 * (full[j][0] + full[(j + 1) % m][0]) <= R * 0.87 for j in range(m)]
+    band = [R * 0.815 <= 0.5 * (full[j][0] + full[(j + 1) % m][0]) <= R * 0.829 for j in range(m)]
     slots = ['tyreMark' if band[k % m] else 'rubber' for k in range(len(f))]
     return v, f, slots
 
@@ -52,6 +61,23 @@ def rim(rim_r, hw):
     out.append((lathe(boss, 36, 'x'), 'carbon'))
     nut = [(0.0, hw * 0.95), (0.026, hw * 0.95), (0.031, hw * 0.94), (0.031, hw * 0.90), (0.0, hw * 0.90)]
     out.append((lathe(nut, 6, 'x', phase=math.pi / 6), 'yellow'))
+    # SF-25 cover: machined bead lip, concentric lock socket and the small
+    # recessed cooling ports around the red aero disc. All ride the wheel.
+    for r, width, x, slot in ((rim_r - 0.010, 0.004, hw * 0.848, 'rim'),
+                               (0.065, 0.004, hw * 0.872, 'rim'),
+                               (0.048, 0.003, hw * 0.903, 'darkSteel')):
+        profile = [(r-width, x-0.002), (r+width, x-0.002),
+                   (r+width, x+0.002), (r-width, x+0.002)]
+        out.append((lathe(profile, 80, 'x', closed=True), slot))
+    for k in range(12):
+        a = 2 * math.pi * k / 12
+        c = (hw * 0.860, (rim_r - 0.042) * math.sin(a), (rim_r - 0.042) * math.cos(a))
+        # A dark inset well with a bevelled metal rim; shallow enough to stay
+        # inside the sidewall envelope, with its base seated in the cover.
+        prof = [(0, -0.003), (0.008, -0.003), (0.010, 0), (0.008, 0.002), (0, 0.002)]
+        out.append((lathe(prof, 16, 'x', center=c), 'graphite'))
+        fast = (hw * 0.868, 0.082 * math.sin(a), 0.082 * math.cos(a))
+        out.append((lathe([(0,-0.002),(0.0025,-0.002),(0.0025,0.001),(0,0.001)], 6, 'x', center=fast), 'rim'))
     return out
 
 
@@ -97,7 +123,49 @@ def wheel_builder(front):
     b.add_slotted(*tyre(R, hw, D.RIM_R))
     for m, s in rim(D.RIM_R, hw):
         b.add_mesh(m, s)
+    for m,s in sidewall_lettering(R,hw,D.RIM_R):
+        b.add_mesh(m,s)
     return b
+
+
+def sidewall_lettering(R, hw, rim):
+    """Tiny molded sidewall lettering following the actual tire profile.
+
+    Converted to mesh in the builder, then curved onto both sidewalls. No
+    floating text objects or flat decals cutting through the tire bulge.
+    """
+    import bpy
+    profile = sorted(tyre_profile(R,hw,rim))
+    def surface(r):
+        for (r0,x0),(r1,x1) in zip(profile,profile[1:]):
+            if r0<=r<=r1:
+                return lerp(x0,x1,(r-r0)/max(1e-8,r1-r0))
+        return profile[-1][1]
+    font_type = next(i.identifier for i in bpy.data.curves.bl_rna.functions['new'].parameters['type'].enum_items if i.identifier=='FONT')
+    out=[]
+    for text,angle in (('PIRELLI',math.pi/2),('P ZERO',-math.pi/2)):
+        curve=bpy.data.curves.new('sidewall.type',font_type)
+        curve.body=text;curve.size=1;curve.extrude=.003;curve.resolution_u=3
+        obj=bpy.data.objects.new('sidewall.type',curve)
+        bpy.context.scene.collection.objects.link(obj)
+        dg=bpy.context.evaluated_depsgraph_get();dg.update()
+        mesh=bpy.data.meshes.new_from_object(obj.evaluated_get(dg))
+        mid=(min(v.co.x for v in mesh.vertices)+max(v.co.x for v in mesh.vertices))/2
+        upright=1 if angle>0 else -1
+        scale=.030;radius=R*(.877 if upright>0 else .944)
+        for side in (1,-1):
+            verts=[]
+            for v in mesh.vertices:
+                r=radius+upright*v.co.y*scale
+                a=angle+side*upright*(v.co.x-mid)*scale/radius
+                verts.append(kit.V(side*(surface(r)+.0006+v.co.z*scale),r*math.cos(a),r*math.sin(a)))
+            faces=[list(p.vertices) for p in mesh.polygons]
+            if side<0:faces=[list(reversed(f)) for f in faces]
+            out.append(((verts,faces),'tyreMark'))
+        bpy.data.meshes.remove(mesh)
+        bpy.data.objects.remove(obj,do_unlink=True)
+        bpy.data.curves.remove(curve)
+    return out
 
 
 def corner_builder(front):

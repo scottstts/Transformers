@@ -112,7 +112,11 @@ class Strut:
         R = Matrix((x, y, z)).transposed().to_4x4()
         out = {self.objs[0]: Matrix.Translation(A) @ R}
         for k in range(self.n):
-            s = (e - self.L) * k / (self.n - 1) if self.n > 1 else 0.0
+            # Below one stage length the entire stack nests behind the base,
+            # rather than spreading in opposite directions around the socket.
+            delta = e-self.L
+            nested = 0.5*(delta-math.sqrt(delta*delta+0.0001))
+            s = nested + (delta-nested)*k/(self.n-1) if self.n>1 else min(0.0,delta)
             out[self.objs[1 + k]] = Matrix.Translation(A + z * s) @ R
         flip = Matrix.Rotation(math.pi, 4, 'X')
         out[self.objs[-1]] = Matrix.Translation(B) @ R @ flip
@@ -177,6 +181,13 @@ def snap_all(sc, struts):
         hit = trees[s.target].find_nearest(s.attach)
         if hit[0] is not None:
             s.attach = hit[0].copy()
+            if s.name.startswith('airArm.'):
+                # Seat the end socket under the airbox skin, not on top of it.
+                center = sum((Vector(v) for v in vs),Vector())/len(vs)
+                inward = hit[1].copy()
+                if inward.dot(center-s.attach)<0:
+                    inward.negate()
+                s.attach += inward*0.034
     by = {s.name: s for s in struts}
     for s in struts:
         if s.name.endswith('.R') and s.name[:-2] + '.L' in by:

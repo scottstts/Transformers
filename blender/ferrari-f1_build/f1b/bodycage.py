@@ -116,13 +116,12 @@ STATIONS = [
                      ((0.262, 0.142), 0.140))),
     # ------------------------------------------------------------ gearbox cover (the shins lie in it)
     (-1.600, section((0.588, 0.115, 0.576, 0.226, 0.530), (0.318, 0.330), None, ((0.248, 0.172), 0.170))),
-    (-1.850, section((0.578, 0.120, 0.568, 0.226, 0.526), (0.304, 0.330), None, ((0.240, 0.200), 0.198))),
-    (-2.050, section((0.576, 0.116, 0.566, 0.222, 0.522), (0.294, 0.335), None, ((0.242, 0.220), 0.218))),
-    (-2.205, section((0.572, 0.110, 0.560, 0.214, 0.515), (0.282, 0.338), None, ((0.240, 0.236), 0.234))),
+    (-1.780, section((0.578, 0.112, 0.566, 0.205, 0.522), (0.248, 0.350), None, ((0.202, 0.232), 0.230))),
+    (-1.900, section((0.572, 0.105, 0.560, 0.190, 0.515), (0.217, 0.368), None, ((0.178, 0.264), 0.262))),
 ]
 
 NOSE_POLE = (0.0, 3.070, 0.248)
-TAIL_POLE = (0.0, -2.236, 0.392)
+TAIL_POLE = (0.0, -1.925, 0.410)
 
 # The cage is closed: openings (cockpit, inlets, airbox intake) are cut crisply into
 # the finished surface (body.py), where the solidified skin gives their lips thickness.
@@ -157,14 +156,19 @@ def build_cage(extra=1):
     for f, pts, _ in st:
         grid.append([bm.verts.new(V(x, f, z)) for x, z in pts])
     nose = bm.verts.new(V(*NOSE_POLE))
-    tail = bm.verts.new(V(*TAIL_POLE))
+    # A quad-strip end cap avoids the high-valence triangle fan that pinched
+    # the glossy rear face into radial ridges after subdivision.
+    cap = [bm.verts.new(V(x*.96, TAIL_POLE[1], .410+(z-.410)*.96))
+           for x,z in st[-1][1]]
     faces = {}
     for i in range(len(grid) - 1):
         for k in range(N - 1):
             faces[(i, k)] = bm.faces.new((grid[i][k], grid[i][k + 1], grid[i + 1][k + 1], grid[i + 1][k]))
     for k in range(N - 1):
         bm.faces.new((nose, grid[0][k + 1], grid[0][k]))
-        bm.faces.new((tail, grid[-1][k], grid[-1][k + 1]))
+        bm.faces.new((grid[-1][k], cap[k], cap[k+1], grid[-1][k+1]))
+    for k in range(N//2-1):
+        bm.faces.new((cap[k],cap[N-1-k],cap[N-2-k],cap[k+1]))
     bm.verts.ensure_lookup_table()
 
     def span(v0, v1):
@@ -177,7 +181,8 @@ def build_cage(extra=1):
         for i in range(len(grid) - 1):
             e = bm.edges.get((grid[i][k], grid[i + 1][k]))
             if e is not None:
-                e[cl] = val
+                aft_fade = max(0.0,min(1.0,(st[i+1][0]+2.05)/.30))
+                e[cl] = val * aft_fade
     # lip rings: the pod front's outer edge (the inlet's overhanging lip) and the airbox's mouth rim
     for f, ur, val in LIP_RINGS:
         i = key_index[round(f, 4)]

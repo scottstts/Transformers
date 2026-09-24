@@ -19,25 +19,29 @@ from .mech import move, rot, fit
 SPECS = {
     # pauldron: rolls back 90 deg about the shoulder axis (its depth lies along the car), then
     # slides in and down the arm into the widest part of the sidepod
-    'A.pauldron': [rot('x', 90.0, (0.50, 0.0, 0.0), (0.20, 0.32)), move((-0.24, -0.08, -0.24), (0.14, 0.24))],
+    'A.pauldron': [rot('x', 90.0, (0.50, 0.0, 0.0), (0.20, 0.32)), move((-0.285, -0.08, -0.24), (0.14, 0.24))],
+    'R.clav.slide': [move((-0.018, 0.0, 0.0), (0.12, 0.28))],
     # the helmet sinks onto the neck (telescoping collar) so the horns stay inside the cover
     'R.head.helmet': [move((0.0, -0.030, -0.070), (0.86, 0.97))],
     # pecs and the yoke plate slide back over the chest core
     'A.pec': [move((-0.03, -0.15, 0.0), (0.30, 0.42))],
+    'A.quad': [move((-0.030,-0.115,0.0),(0.10,0.26))],
+    'A.codpiece': [move((0.0,-0.075,0.0),(0.12,0.28))],
     'A.yoke': [move((0.0, -0.10, -0.04), (0.32, 0.44))],
     # gauntlet turns its fin up over the forearm
     'A.gauntlet': [rot('z', 180.0, (0.0, 0.0, 0.0), (0.40, 0.54)), move((-0.05, 0.03, 0.0), (0.34, 0.42))],
     # calf shell rides up the shin into the survival cell
     'A.calf': [move((-0.04, -0.07, 0.40), (0.24, 0.38))],
+    'A.calfSpindle': [move((-0.080,0,0),(0.40,0.52)), move((-0.04,-0.07,0.40),(0.24,0.38))],
     'A.kneecap': [move((0.0, -0.11, 0.0), (0.30, 0.40))],
     # the sole platform: side flaps fold over onto it like a book (stacked), then it rises and slides
     # back into the nose
-    'A.sole': [move((0.0, -0.44, 0.10), (0.64, 0.74))],
-    'A.flapOut': [rot('f', 180.0, (0.085, 0.30, -0.215), (0.74, 0.84)), move((0.0, -0.44, 0.10), (0.64, 0.74))],
-    'A.flapIn': [rot('f', -180.0, (-0.085, 0.30, -0.170), (0.74, 0.84)), move((0.0, -0.44, 0.10), (0.64, 0.74))],
+    'A.sole': [move((-0.006, -0.44, 0.103), (0.64, 0.74))],
+    'A.flapOut': [rot('f', 180.0, (0.085, 0.30, -0.215), (0.74, 0.84)), move((-0.006, -0.44, 0.103), (0.64, 0.74))],
+    'A.flapIn': [rot('f', -180.0, (-0.085, 0.30, -0.170), (0.74, 0.84)), move((-0.006, -0.44, 0.103), (0.64, 0.74))],
     # the robot's feet fold flat into the nose: the sole plate rises round the ankle
-    'R.foot.body': [move((0.0, 0.0, 0.075), (0.62, 0.72))],
-    'R.toe.cap': [move((0.0, -0.04, 0.10), (0.62, 0.72))],
+    'R.foot.body': [move((-0.029, 0.001, 0.101), (0.62, 0.72))],
+    'R.toe.cap': [move((-0.012, -0.04, 0.118), (0.62, 0.72))],
 }
 
 

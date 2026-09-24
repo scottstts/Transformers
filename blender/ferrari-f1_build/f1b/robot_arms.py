@@ -32,7 +32,7 @@ def upperarm():
     p.many(axle_caps(-rig.UPPER, ELBOW_CHEEK_IN + 0.030, 0.040), 'darkSteel')
     # biceps plate (front) and a painted deltoid cap on the outer face
     p.add(rkit.plate_f([(-0.070, -0.20), (0.070, -0.20), (0.062, -0.50), (0.0, -0.54), (-0.062, -0.50)], 0.100, 0.118, 0.005), 'mech')
-    p.add(rkit.plate_x([(-0.080, -0.100), (0.080, -0.100), (0.070, -0.300), (-0.070, -0.300)], 0.095, 0.112, 0.005), 'paint')
+    p.add(rkit.plate_x([(-0.074, -0.108), (0.074, -0.108), (0.067, -0.300), (-0.067, -0.300)], 0.088, 0.101, 0.004), 'paint')
     # elbow ram down the back of the arm
     for m, s in actuator((0.0, -0.118, -0.150), (0.0, -0.096, -0.610), 0.022, 0.010, 0.55):
         p.add(m, s)

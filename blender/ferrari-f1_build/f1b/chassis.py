@@ -111,9 +111,10 @@ def halo():
         z0 = deck_z(HALO_REAR[0], HALO_REAR[1]) + 0.002
         blk = [(-0.046, z0), (0.046, z0), (0.040, HALO_REAR[2] + 0.010), (-0.034, HALO_REAR[2] + 0.018)]
         out.append((plate(blk, 0.034, warp=lambda u, v, w, s=s: (s * HALO_REAR[0] + w, HALO_REAR[1] + u, v)), 'titanium'))
-    vane = spline2([(1.040, 0.912), (0.900, 0.936), (0.760, 0.944), (0.640, 0.938), (0.600, 0.925), (0.720, 0.915),
-                    (0.870, 0.907), (1.020, 0.898)], 60, closed=True)
-    out.append((plate(vane, 0.028, warp=lambda u, v, w: (w * 1.5, u, v)), 'carbon'))
+    # The aero trim follows the hoop itself; no unsupported central tongue.
+    for s in (-1,1):
+        trim=[(s*x,f,z+.026) for x,f,z in path[3:-2]]
+        out.append((sweep(trim,lambda t:squircle(.013,.004,2.5,10),up=(0,0,1)),'carbon'))
     return out
 
 
@@ -203,19 +204,56 @@ def inlet_duct(s=1):
 
 # ------------------------------------------------------------------ cockpit liner
 def cockpit_liner():
-    """Empty seat shell filling the cockpit opening just below the rim: the car
-    shows no driver; the robot's head lies face down beneath it."""
+    """Open carbon seat tub with a recessed floor and continuous rim return."""
     from .body import COCKPIT
     from .kit import offset_poly, ccw
     half = COCKPIT
     poly = half + [(-x, f) for x, f in reversed(half[1:-1])]
     inner = offset_poly(ccw(poly), -0.012)
-    # dished seat: lowest at mid-cockpit, rising to the headrest and toward the front bulkhead
-    def warp(u, v, w):
-        t = clamp01((v - 0.10) / 0.98)
-        z = 0.582 - 0.012 * math.sin(math.pi * t) + 0.010 * (u / 0.27) ** 2     # above the prone chest and head
-        return (u, v, z + w)
-    return plate(inner, 0.012, warp=warp)
+    bottom=[(x*.62,.47+(f-.59)*.42,.478) for x,f in inner]
+    outer=[(x,f,.598) for x,f in inner]
+    lip=[(x*.970,.59+(f-.59)*.978,.598) for x,f in inner]
+    floor=[(x*.60,.47+(f-.59)*.41,.490) for x,f in inner]
+    return loft_rings([bottom,outer,lip,floor],True,True)
+
+
+def cockpit_details():
+    from . import rkit
+    out=[(cockpit_liner(),'interior')]
+    # Thin seat cushion and bolsters sit on the tub, with a sloping backrest.
+    out.append((rkit.plate_z([(-.12,.34),(.12,.34),(.13,.57),(-.13,.57)],.489,.502,.005),'carbonMatte'))
+    back=[(-.13,.505),(.13,.505),(.15,.578),(-.15,.578)]
+    out.append((plate(back,.012,warp=lambda x,z,w:(x,.255+(z-.50)*-.9+w,z)),'carbonMatte'))
+    for s in (-1,1):
+        # Harness belts are inset onto the cushion/back, not suspended strips.
+        out.append((rkit.plate_z([(s*.043,.34),(s*.067,.34),(s*.067,.54),(s*.043,.54)],.501,.504,.0005),'paint'))
+        out.append((plate([(.510,.045),(.565,.050),(.565,.074),(.510,.069)],.003,
+                          warp=lambda z,x,w,s=s:(s*x,.255+(z-.50)*-.9+.009+w,z)),'paint'))
+    out.append((rkit.plate_z([(-.024,.42),(.024,.42),(.024,.465),(-.024,.465)],.503,.510,.003),'titanium'))
+    return out
+
+
+def cockpit_controls():
+    """Modern F1 steering wheel, display, thumb controls and retracting column."""
+    from . import rkit
+    from .shape import strut
+    out=[]
+    f,z=.875,.595
+    # Wheel faces the driver (rearward). The column terminates in the dash.
+    out.append((strut((0,1.075,.505),(0,f+.016,z),chord=.026,ratio=.8,steps=8,stream=(1,0,0)),'darkSteel'))
+    outline=[(-.13,-.045),(-.075,-.060),(.075,-.060),(.13,-.045),(.14,.025),(.09,.060),(-.09,.060),(-.14,.025)]
+    out.append((plate(outline,.018,warp=lambda x,zz,w:(x,f+w,z+zz)),'carbon'))
+    for s in (-1,1):
+        grip=[(-.035,-.049),(.023,-.050),(.032,.035),(.0,.053),(-.035,.030)]
+        out.append((plate(grip,.026,warp=lambda x,zz,w,s=s:(s*(.113+x),f-.005+w,z+zz)),'rubber'))
+        for k in range(3):
+            out.append((rkit.cylinder((s*(.073+.018*(k%2)),f-.018,z+.025-.026*k),.007,.007,'f',12,.001),('paint','yellow','titanium')[k]))
+    screen=[(-.047,-.017),(.047,-.017),(.047,.030),(-.047,.030)]
+    out.append((plate(screen,.004,warp=lambda x,zz,w:(x,f-.012+w,z+zz)),'glass'))
+    # Small neutral LCD bars and a row of status LEDs, seated on the display.
+    for k in range(4):
+        out.append((rkit.plate_f([(-.036+k*.020,z-.009),(-.023+k*.020,z-.009),(-.023+k*.020,z+.004),(-.036+k*.020,z+.004)],f-.017,f-.014,.0005),'paintWhite'))
+    return out
 
 
 def intake_duct():
