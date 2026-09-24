@@ -79,6 +79,8 @@ export interface TransformerManifest {
   frames: number
   nodes: NodeRecord[]
   tracks: number
+  /** Optional frames x nodes x (sx, sy, sz) for telescoping mechanisms. */
+  scales?: number
   lift: number
   rig: { bones: RigBone[]; stand: Record<string, [number, number, number, number, number, number, number]>; dims: RigDims }
   events: MechanismEvent[]

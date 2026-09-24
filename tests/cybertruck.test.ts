@@ -44,6 +44,23 @@ describe('cybertruck asset', () => {
 })
 
 describe('cybertruck transformation playback', () => {
+  it('replays telescoping support lengths at fractional animation frames', () => {
+    expect(asset.scales).toBeDefined()
+    const i = manifest.nodes.findIndex((node) => node.name === 'part:RD.pectoral.L.rod1')
+    expect(i).toBeGreaterThanOrEqual(0)
+    for (const f of [0, 95.5, 175.5, 240]) {
+      model.pose(f / 240, null)
+      const f0 = Math.min(Math.floor(f), 239)
+      const a = f - f0
+      const offset = (f0 * manifest.nodes.length + i) * 3 + 2
+      const z0 = asset.scales![offset]
+      const z1 = asset.scales![offset + manifest.nodes.length * 3]
+      const actual = new Vector3().setFromMatrixColumn(model.node(manifest.nodes[i].name).matrixWorld, 2).length()
+      expect(actual).toBeCloseTo(z0 + (z1 - z0) * a, 5)
+    }
+    model.pose(0, null)
+  })
+
   it('runs forward and back through finite poses and returns to the fold', () => {
     model.pose(0, null)
     const folded = worldMatrices()

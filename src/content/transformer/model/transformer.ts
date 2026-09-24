@@ -79,6 +79,7 @@ export class TransformerModel {
   private readonly footSupport: Array<{ node: number; side: Side; points: Vector3[] }> = []
   private readonly footNode: Record<Side, number>
   private readonly tracks: Float32Array
+  private readonly scaleTracks?: Float32Array
   private readonly liftTrack: Float32Array
   private readonly frames: number
   private readonly gaitBlendFrom: number
@@ -90,6 +91,7 @@ export class TransformerModel {
     this.dims = manifest.rig.dims
     this.duration = manifest.rig.dims.duration
     this.tracks = asset.tracks
+    this.scaleTracks = asset.scales
     this.liftTrack = asset.lift
     this.frames = manifest.frames
     this.frame.matrixAutoUpdate = false
@@ -181,7 +183,18 @@ export class TransformerModel {
         _t.lerp(_t1, gw)
         _q.slerp(_q1, gw)
       }
-      const local = _m.compose(_t, _q, ONE)
+      _s.copy(ONE)
+      if (this.scaleTracks) {
+        const scales = this.scaleTracks
+        const s0 = (f0 * count + i) * 3
+        const s1 = s0 + count * 3
+        _s.set(
+          scales[s0] + (scales[s1] - scales[s0]) * a,
+          scales[s0 + 1] + (scales[s1 + 1] - scales[s0 + 1]) * a,
+          scales[s0 + 2] + (scales[s1 + 2] - scales[s0 + 2]) * a,
+        )
+      }
+      const local = _m.compose(_t, _q, _s)
       if (this.kind[i] === 'wheel') {
         if (this.frontWheel[i] && carW > 0) local.multiply(_m1.makeRotationZ(this.steer * carW))
         local.multiply(_m1.makeRotationX(this.spin))

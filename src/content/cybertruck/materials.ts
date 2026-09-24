@@ -93,6 +93,7 @@ export function createMaterials() {
 	M.lightRed = emissive( 0xff1a12, 10.0, U.rearLight );
 	M.lightAmber = emissive( 0xffa028, 6.0, U.frontLight );
 	M.visor = emissive( 0xe8f4ff, 18.0, U.visor );
+	M.ionBlue = emissive( 0x2caaFF, 7.0, U.visor );
 	M.core = emissive( 0xdff0ff, 7.0, U.core );
 	M.reflector = std( { color: 0x5a0805, metalness: 0.2, roughness: 0.3, emissive: 0x200000 }, 0x8a1010 );
 	return M;
