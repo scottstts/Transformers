@@ -37,18 +37,17 @@ export class FollowCamera {
   private readonly onPointerDown = (): void => { this.activate() }
   private lockedAt = -Infinity
   private freshLock = false
-  /** input suspended by the game until the pointer locks again */
-  private suspended = false
+  /** mouse look held by an overlay (the vehicle menu) while the pointer stays locked */
+  private held = false
   private readonly onPointerLockChange = (): void => {
     if (document.pointerLockElement !== this.canvas) return
     // the orbit is kept exactly as it was: re-locking must never move the camera
     this.lockedAt = performance.now()
     this.freshLock = true
-    this.suspended = false
     this.lastLook = this.lockedAt / 1000
   }
   private readonly onMouseMove = (event: MouseEvent): void => {
-    if (document.pointerLockElement !== this.canvas || this.suspended) return
+    if (document.pointerLockElement !== this.canvas || this.held) return
     if (event.movementX === 0 && event.movementY === 0) return
     const now = performance.now()
     if (this.freshLock) {
@@ -87,13 +86,9 @@ export class FollowCamera {
     this.framingGlide = 0
   }
 
-  /**
-   * Stop taking mouse input until the pointer locks again: call before the game
-   * releases the pointer itself (the release can deliver a cursor-restore
-   * movement while the lock still reads as held).
-   */
-  suspendInput(): void {
-    this.suspended = true
+  /** Ignore mouse look while an overlay is open over the locked pointer. */
+  holdLook(held: boolean): void {
+    this.held = held
   }
 
   get locked(): boolean { return document.pointerLockElement === this.canvas }

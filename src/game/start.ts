@@ -48,6 +48,6 @@ export function attachVehicleMenu(session: GameSession): VehicleMenu {
       return switched
     },
     resume: () => session.cameraRig.activate(),
-    suspend: () => session.cameraRig.suspendInput(),
+    holdLook: (held) => session.cameraRig.holdLook(held),
   })
 }

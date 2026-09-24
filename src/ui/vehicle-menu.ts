@@ -8,8 +8,8 @@ export interface VehicleHost {
   switchTo(entry: RosterEntry): Promise<boolean>
   /** return to play (pointer lock), from a user gesture */
   resume(): void
-  /** the menu is about to release the pointer: stop mouse look */
-  suspend(): void
+  /** pause / restore mouse look while the menu sits over the locked pointer */
+  holdLook(held: boolean): void
   readonly playing: boolean
 }
 
@@ -17,8 +17,9 @@ export interface VehicleHost {
 const SWIPE_PX = 40
 
 /**
- * The vehicle menu: a carousel of car names. Tab opens it (releasing the
- * pointer); the arrow keys, the arrow buttons, a horizontal swipe or a click
+ * The vehicle menu: a carousel of car names. Tab opens it over the locked
+ * pointer (mouse look and game keys pause; Escape still releases the pointer,
+ * as browsers require, leaving the menu open for the mouse); the arrow keys, the arrow buttons, a horizontal swipe or a click
  * on a neighbouring name swipe to the next car, which is swapped in live
  * behind the panel. Tab, Escape, Enter or the backdrop closes it and returns
  * to play. While the game is paused (pointer released) a small chip says how
@@ -49,6 +50,8 @@ export class VehicleMenu {
       return
     }
     if (!this.open) return
+    // the menu owns the keyboard: nothing reaches the game's (bubble-phase) listeners
+    event.stopPropagation()
     if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
       event.preventDefault()
       if (!event.repeat) this.swipe(event.code === 'ArrowLeft' ? -1 : 1)
@@ -124,8 +127,7 @@ export class VehicleMenu {
   show(): void {
     if (this.open) return
     this.open = true
-    this.host.suspend()
-    if (document.pointerLockElement) document.exitPointerLock()
+    this.host.holdLook(true)
     this.index = this.currentIndex()
     this.status.textContent = ''
     this.render(false)
@@ -138,6 +140,7 @@ export class VehicleMenu {
     this.open = false
     this.root.hidden = true
     this.refreshChip()
+    this.host.holdLook(false)
     if (resume) this.host.resume()
   }
 
