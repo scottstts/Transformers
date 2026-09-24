@@ -36,6 +36,8 @@ export class Thrusters {
   readonly impact = new Vector3()
 
   private readonly chest: Object3D
+  private readonly coolingPacks: Object3D[]
+  private readonly deployedPort = new Vector3()
   private readonly jets = [new PlasmaJet(0.0), new PlasmaJet(0.53)]
   private readonly sheet = new ImpingementSheet()
   private readonly light = new PointLight(0xa8c4ff, 0, 16, 2)
@@ -49,6 +51,7 @@ export class Thrusters {
 
   constructor(model: TransformerModel) {
     this.chest = model.node('bone:chest')
+    this.coolingPacks = ['L', 'R'].map((side) => model.node(`part:RD.back.coolingPack.${side}`))
     for (const jet of this.jets) this.object.add(jet.mesh)
     this.object.add(this.sheet.mesh, this.light)
   }
@@ -84,6 +87,10 @@ export class Thrusters {
     let strike = 0
     for (let k = 0; k < 2; k++) {
       const port = this.ports[k].copy(PORTS[k]).applyMatrix4(W)
+      // The redesigned cooling packs deploy over the old back-plate ports.
+      // Carry each exhaust outlet with its pack's lower outer edge.
+      this.deployedPort.set(0, 0.21, -0.46).applyMatrix4(this.coolingPacks[k].matrixWorld)
+      port.lerp(this.deployedPort, smooth(0.30, 0.57, T))
       this.jets[k].set(port, this.axis, this.side, power, t)
       const reach = port.y / Math.max(-this.axis.y, 1e-3)
       this.strikes[k].copy(port).addScaledVector(this.axis, reach)

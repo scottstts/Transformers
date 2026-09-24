@@ -48,7 +48,8 @@ def _mesh_arrays(o, M):
     tl = tl.reshape(-1, 3)
     tm = np.empty(nt, np.int32)
     me.loop_triangles.foreach_get('material_index', tm)
-    slots = [s.material.name[3:] if s.material and s.material.name.startswith('ct.') else 'plastic' for s in o.material_slots] or ['plastic']
+    slots = [('ionBlue' if s.material.name == 'RD.ionBlue' else s.material.name[3:] if s.material.name.startswith('ct.') else 'plastic')
+             if s.material else 'plastic' for s in o.material_slots] or ['plastic']
     ev.to_mesh_clear()
 
     R = np.array(M.to_3x3())

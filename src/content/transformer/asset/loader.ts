@@ -12,6 +12,7 @@ export interface TransformerAsset {
   meshes: DecodedMesh[][]
   /** frames x nodes x (tx, ty, tz, qx, qy, qz, qw), local to the parent node */
   tracks: Float32Array
+  scales?: Float32Array
   /** ground lift per frame */
   lift: Float32Array
 }
@@ -39,7 +40,9 @@ export function decodeTransformerAsset(manifest: TransformerManifest, buffer: Ar
   const nodeCount = manifest.nodes.length
   const tracks = new Float32Array(buffer, manifest.tracks, manifest.frames * nodeCount * 7)
   const lift = new Float32Array(buffer, manifest.lift, manifest.frames)
-  return { manifest, meshes, tracks, lift }
+  const scales = manifest.scales === undefined ? undefined
+    : new Float32Array(buffer, manifest.scales, manifest.frames * nodeCount * 3)
+  return { manifest, meshes, tracks, scales, lift }
 }
 
 function decodeGeometry(buffer: ArrayBuffer, record: MeshRecord): BufferGeometry {
