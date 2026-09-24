@@ -29,8 +29,11 @@ PIVOT_Z0 = PIVOT_ZC - PIVOT_H / 2 - 0.014   # drum bottom incl. hub
 BOOM_SECT = ((0.25, 0.21), (0.198, 0.163), (0.19, 0.155), (0.152, 0.122), (0.14, 0.11))
 # tailgate swing arm (chest frame, fold pose): hinge axle on a bracket above the collar's front edge,
 # turntable hub under the lid's inner face. A rigid arm: spin 180 deg on the hub, swing 90 deg over the edge.
-TG_HINGE = (0.30, 1.29)
-TG_HUB = (0.445, 1.462)
+TG_HUB = (0.353, 1.4485)          # behind the light band, its disc 2 mm off the raked lid at its lowest point
+TG_HUB_SWUNG = (0.436, 1.145)     # hub centre once swung: lays the lid on the folded tonneau
+# hinge placed so the +90 deg swing takes the hub (disc face 36 mm above its centre) to TG_HUB_SWUNG
+TG_HINGE = ((TG_HUB_SWUNG[0] + TG_HUB_SWUNG[1] + TG_HUB[0] - TG_HUB[1] + 0.036) / 2,
+            (TG_HUB_SWUNG[1] - TG_HUB_SWUNG[0] + TG_HUB[0] + TG_HUB[1] - 0.036) / 2)
 TG_ARM_W = 0.05
 TG_YOKE_X = 0.35              # yoke arms outboard of the head well (0.30) and the head's ears
 

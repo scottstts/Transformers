@@ -1,7 +1,6 @@
 """Headless audit: static poses and the transition sweep + support gate.
 
-    /Applications/Blender.app/Contents/MacOS/Blender -b blender/cybertruck-transformer.blend \\
-        --python blender/cybertruck_build/audit_game.py
+    /Applications/Blender.app/Contents/MacOS/Blender -b --python blender/cybertruck_build/audit_game.py
 """
 import sys
 sys.path.insert(0, "/Users/scott/Documents/Projects/Node/Transformers/blender/cybertruck_build")

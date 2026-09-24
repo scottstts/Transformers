@@ -20,13 +20,15 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 
 `tests/movement.test.ts` checks that transform requests cannot reverse or queue during braking or playback in either direction. `tests/jump.test.ts` checks frame-rate-independent jump timing, one-shot take-off/landing events, replay, arm and foot-target continuity from idle/walk/run, and a two-foot landing without stray stride footfalls.
 
-The Blender build carries the geometry and mechanism audits. Run them after changing panels, the robot or the choreography, then re-export (`ferrari-f1.md` has the F1 export command):
+The Blender build carries the geometry and mechanism audits (`ferrari-f1.md` has the F1 export command):
 
 ```bash
-/Applications/Blender.app/Contents/MacOS/Blender -b blender/cybertruck-transformer.blend --python blender/cybertruck_build/audit_game.py
+/Applications/Blender.app/Contents/MacOS/Blender -b --python blender/cybertruck_build/audit_game.py
 ```
 
 It reports islands, clashes and coplanar faces at T = 0 and T = 1, the lowest parts in robot mode, the clash sweep over the transformation, and the support gate (see transformation-mechanics.md).
+
+The audits point to problems; they are not a gate. The Cybertruck's current transformation was reviewed visually and accepted, including the small, hidden contacts the audits still list. Judge by visibility and scale: fix large visible pass-throughs, floating parts and anything poking through a car panel, and leave small hidden overlaps. After a design change, bake and review the timeline visually first. Run the audits only when a visible problem needs locating, or before reworking the choreography.
 
 For a look at effects without a browser, `tools/preview.mjs` renders fixed shots headlessly with the game's renderer and post pipeline (Dawn WebGPU in Node). Shots are the transformation frames (`rise-*`, `plume-detail`) and tyre tracks after a drive (`tracks*`):
 

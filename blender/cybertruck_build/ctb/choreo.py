@@ -9,7 +9,6 @@ Side-specific entries are authored for L (+x) and mirrored for R.
 T: 0 = truck, 1 = robot. Reverse transformation runs the same path backward.
 """
 import math
-from mathutils import Vector
 from .mech import move, pop, rot, fit, seat
 from . import car_body as B
 from .robot_torso import TG_HINGE, TG_HUB
@@ -92,8 +91,8 @@ def sided():
     A['mirror'] = dict(host='@door', parts=['mirror'], steps=[
         rot('f', -117, (B.XS - 0.012, 1.01, B.belt(1.01) - 0.02), (0.01, 0.03)),
     ])
-    # the black cowl strip stays with the windshield: it becomes the thigh plate's lower trim
-    A['windshield'] = dict(host='thigh', parts=['windshield', 'creaseF', 'cowl'], steps=[
+    # upper windshield (apex to the glass split) is the thigh plate
+    A['windshield'] = dict(host='thigh', parts=['windshield', 'creaseF'], steps=[
         # squares up to the thigh and settles onto its lifters, then slides up the thigh
         fit({'z+': -0.01}, (0.58, 0.64)),
         # (after the door has drawn in: the A-pillar trim leg settles outboard of it)
@@ -102,9 +101,10 @@ def sided():
         seat((0, -1, 0), 0.0008, None, (0.69, 0.75)),
     ])
     # ---------------------------------------------------------------- lower leg: the front corner
-    A['hood'] = dict(host='shin', parts=['hood'], steps=[
+    # the short hood carries the cowl, the lower windshield and its wiper: one deck plate for the shin
+    A['hood'] = dict(host='shin', parts=['hood', 'cowl', 'windshieldLo', 'creaseFLo', 'wiper'], steps=[
         # squares up to the shin onto its lifters, slides up clear of the foot's swing ...
-        # (lifts clear of the cowl and the nose strip first: both are skins on the same deck)
+        # (lifts clear of the upper windshield and the nose strip first: skins on the same deck)
         move((0.0, 0.03, 0.0), (0.10, 0.12)),
         rot('x', -DECK_F_SQUARE, 'c', (0.12, 0.17)),
         fit({'z+': -0.02}, (0.17, 0.23)),
@@ -136,7 +136,7 @@ def sided():
         seat((-1, 0, 0), 0.0008, None, (0.50, 0.54)),
     ])
     A['winR'] = dict(host='@rdoor', parts=['winR', 'pillar'], steps=roll_down(-0.45, (0.04, 0.07), (0.02, 0.04), (0.09, 0.10)))
-    A['roof'] = dict(host='forearm', parts=['roofglass', 'creaseR'], steps=[
+    A['roof'] = dict(host='forearm', parts=['roofglass', 'creaseR', 'roofglassF', 'creaseRF'], steps=[
         # the roof falls DECK_SLOPE toward the tail: square it to the forearm as it settles
         rot('x', DECK_SLOPE, 'c', (0.10, 0.18)),
         seat((0, -1, 0), 0.0008, None, (0.10, 0.18)),
@@ -177,9 +177,5 @@ def singles():
             # round the back module's top edge while the post still bears, then down the back
             move((0.0, -0.03, -0.10), (0.51, 0.54)),
             fit({'z+': RB_TOP}, (0.54, 0.60)),
-        ]),
-        'wiper': dict(host='@windshield.R', parts=['wiper'], steps=[
-            # park along the right windshield half's outer edge
-            rot(Vector((0, -0.27, 1)).normalized(), 76.7, (-0.62, B.A_BASE + B.COWL / 2, B.ztop(B.A_BASE + B.COWL / 2)), (0.01, 0.03)),
         ]),
     }
