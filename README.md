@@ -31,3 +31,11 @@ The world goes on forever, with ridges on the horizon, rock outcrops, and a low 
 All of this runs in a web page. It's rendered with WebGPU and three.js, and it's tuned so that it looks as close to real as we can manage while running smoothly the whole time. The screen stays clean too. The HUD is small, and the machines are what you're here to look at.
 
 Drive, stop, transform, walk, jump, and look back at the tracks you've left.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0-only).
+
+You may use, modify, and redistribute this software under the terms of the GPLv3. If you distribute a modified or derivative version of this project, you must also make the corresponding source code available under the GPLv3.
+
+See the [LICENSE](./LICENSE) file for the full license terms.
