@@ -22,7 +22,7 @@ Built cars stay cached (GPU resources warm) for switching back. On the swap:
 - a standing robot keeps its standing point (the car origin shifts by the difference in robot stations);
 - one contact-free surface update ends the old tyre ribbons.
 
-The vehicle menu (`src/ui/vehicle-menu.ts`) is the only UI besides the boot veil. Tab opens it and releases the pointer. Pick a car with 1–9 or a click; Tab, Escape or the backdrop closes it and resumes play. While the game is paused (pointer released) a small chip shows how to resume and open the menu. Normal play has no HUD.
+The vehicle menu (`src/ui/vehicle-menu.ts`) is the only UI besides the boot veil: a carousel of car names on a glass bar, with no descriptions or number badges. Tab opens it and releases the pointer. The arrow keys, the arrow buttons, a horizontal swipe or trackpad scroll, or a click on a faded neighbour swipe to the next car. That car is swapped in live behind the panel; the latest swipe wins while one loads, and an accent rule under the centred name shimmers while it loads. Tab, Escape, Enter or the backdrop closes the menu and resumes play. While the game is paused (pointer released) a small chip shows how to resume and open the menu. Normal play has no HUD.
 
 ## Audio
 

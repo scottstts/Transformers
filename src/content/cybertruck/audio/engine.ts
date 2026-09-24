@@ -1,6 +1,6 @@
 import type { AudioMix } from '../../../audio/mix'
 import type { MechanismEvent } from '../../transformer/asset/format'
-import { HEAVY_MACHINE } from '../../transformer/audio/mechanism'
+import { HEAVY_MACHINE } from '../../transformer/audio/machine'
 import { TransformationSound } from '../../transformer/audio/transformation'
 import { HEAVY_FOOT, footfall } from '../../transformer/audio/footfall'
 import type { CharacterAudio } from '../../transformer/character'
@@ -10,9 +10,10 @@ import { RocketVoice } from './rocket'
  * Procedural audio for the Cybertruck, all synthesized with Web Audio on the
  * game's shared mix (src/audio/mix.ts).
  *
- *   transformation  one electro-hydraulic machine (transformer/audio): a bed
- *                   hum while it runs and an actuator voice per stroke from
- *                   the exported mechanism events; no impacts
+ *   transformation  the shared machine (transformer/audio/machine.ts) as big
+ *                   electro-hydraulics in a stainless body: a hydraulic power
+ *                   unit while it runs and an actuator per exported stroke;
+ *                   no impacts
  *   thrusters       the rocket burn of the lift jets (see rocket.ts)
  *   footfall        a multi-tonne foot: ground thump, sub pressure, gravel
  *                   crunch and damper exhale

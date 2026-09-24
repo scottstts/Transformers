@@ -1,30 +1,30 @@
 import type { AudioMix } from '../../../audio/mix'
 import type { MechanismEvent } from '../asset/format'
-import { MechanismVoices, type MechanismTuning } from './mechanism'
+import { MachineVoices, type MachineTuning } from './machine'
 
 /** Concurrent stroke voices kept; the smallest strokes yield first. */
-const VOICE_BUDGET = 10
+const VOICE_BUDGET = 12
 
 /**
- * The transformation as one machine: a bed hum while it runs and an actuator
- * voice per stroke from the exported mechanism events (see mechanism.ts). The
- * graph is built on first use, once the shared audio context exists.
+ * The transformation as one machine (see machine.ts): the hydraulic power unit
+ * runs while it transforms and every exported mechanism event drives the
+ * actuator it describes. The graph is built on first use, once the shared
+ * audio context exists.
  */
 export class TransformationSound {
   private readonly mix: AudioMix
-  private readonly tuning: MechanismTuning
-  private voices: MechanismVoices | null = null
+  private readonly tuning: MachineTuning
+  private voices: MachineVoices | null = null
   private active: Array<{ end: number; size: number }> = []
 
-  constructor(mix: AudioMix, tuning: MechanismTuning) {
+  constructor(mix: AudioMix, tuning: MachineTuning) {
     this.mix = mix
     this.tuning = tuning
   }
 
-  private get machine(): MechanismVoices | null {
-    const ctx = this.mix.ctx
-    if (!ctx) return null
-    if (!this.voices) this.voices = new MechanismVoices(ctx, this.mix.tex, this.mix.output, this.tuning)
+  private get machine(): MachineVoices | null {
+    if (!this.mix.ctx) return null
+    if (!this.voices) this.voices = new MachineVoices(this.mix, this.tuning)
     return this.voices
   }
 
@@ -33,9 +33,9 @@ export class TransformationSound {
     if (this.mix.enabled) this.machine?.spool()
   }
 
-  /** Per frame: the machine bed runs while the transformation is in progress. */
+  /** Per frame: the power unit runs while the transformation is in progress. */
   running(on: boolean): void {
-    this.machine?.bedLevel(on && this.mix.enabled)
+    this.machine?.update(on && this.mix.enabled)
   }
 
   /** A mechanism begins its stroke; `seconds` is its duration at play speed. */
@@ -44,28 +44,28 @@ export class TransformationSound {
     if (!voices || !this.mix.enabled || !this.admit(seconds, event.size)) return
     const t = (this.mix.ctx as AudioContext).currentTime + 0.01
     const pan = event.side * 0.35
-    const dur = Math.max(0.12, seconds)
+    const dur = Math.max(0.15, seconds)
+    const seed = event.name
     switch (event.kind) {
       case 'slide':
-        voices.motor(t, dur, event.size, pan, 0.9, 1.08)
+        voices.drive(t, dur, event.size, pan, seed, { trim: 1.05, rail: true })
         break
       case 'hinge':
-        voices.motor(t, dur, event.size, pan, 1, 1)
+        voices.drive(t, dur, event.size, pan, seed, { trim: 0.85, rotary: true })
         break
       case 'joint':
-        voices.motor(t, dur, event.size, pan, 0.9, 0.9)
-        break
-      case 'telescope':
-        voices.motor(t, dur, event.size, pan, 0.9, 1.15)
+        // the robot's own joints are smooth harmonic drives over long moves: no ratchet on those
+        voices.drive(t, dur, Math.max(event.size, 2.1), pan, seed, { trim: 0.7, rotary: dur < 1.5, level: 0.9 })
         break
       case 'servo':
-        voices.motor(t, dur, 0.1, pan, 0.5, 1)
+        voices.drive(t, dur, 0.1, pan, seed, { trim: 1.2, rotary: true, level: 0.45 })
         break
+      case 'telescope':
       case 'hydraulic':
-        voices.hydraulic(t, dur, pan)
+        voices.ram(t, dur, event.size, pan, seed)
         break
       case 'lift':
-        voices.heavyLift(t, dur)
+        voices.heavyLift(t, dur, seed)
         break
     }
   }
