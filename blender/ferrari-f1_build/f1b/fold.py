@@ -24,7 +24,7 @@ HIP_TUCK = 0.165                # hip carriages slide in along the hip beam: leg
 ANKLE = (0.078, 2.255, 0.350)   # ankle target (vehicle frame, L): the shins climb the nose
 SHOULDER_TUCK = 0.22            # shoulder sockets slide in: arms inside the sidepods
 WRIST = (0.405, 0.560, 0.330)   # wrist target (vehicle frame, L): fists behind the inlet ducts
-HAND_TUCK = 0.10                # hands retract into the forearm sleeves
+HAND_TUCK = 0.155               # hands retract fully behind the sidepod inlet lip
 NECK_TUCK = 0.04
 FOOT_TUCK = 0.20                # feet telescope up into the shins: the nose tip is too shallow for them
 

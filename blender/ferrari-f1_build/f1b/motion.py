@@ -112,22 +112,52 @@ def _cr(p0, p1, p2, p3, u):
     return 0.5 * ((2 * p1) + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 + (-p0 + 3 * p1 - 3 * p2 + p3) * u3)
 
 
+def _track(times, values, i, u):
+    """Time-aware monotone Hermite: shared velocities, no recoil out of holds."""
+    h = [b - a for a, b in zip(times, times[1:])]
+    d = [(b - a) / dt for a, b, dt in zip(values, values[1:], h)]
+
+    def slope(k):
+        if k == 0 or k == len(values) - 1:
+            return 0.0
+        if d[k - 1] * d[k] <= 0:
+            return 0.0
+        w1, w2 = 2 * h[k] + h[k - 1], h[k] + 2 * h[k - 1]
+        return (w1 + w2) / (w1 / d[k - 1] + w2 / d[k])
+
+    a, b = values[i:i + 2]
+    return ((2*u**3 - 3*u*u + 1)*a + (u**3 - 2*u*u + u)*h[i]*slope(i)
+            + (-2*u**3 + 3*u*u)*b + (u**3 - u*u)*h[i]*slope(i + 1))
+
+
+def _pose_track(K, times, i, u, names):
+    out = {}
+    for name in names:
+        keys = [k[3].get(name, (Quaternion(), Vector())) for k in K]
+        rotations = [q.copy() for q, _ in keys]
+        for j in range(1, len(rotations)):
+            if rotations[j - 1].dot(rotations[j]) < 0:
+                rotations[j].negate()
+        rotation = Quaternion([_track(times, [q[c] for q in rotations], i, u) for c in range(4)])
+        rotation.normalize()
+        shift = Vector([_track(times, [s[c] for _, s in keys], i, u) for c in range(3)])
+        out[name] = (rotation, shift)
+    return out
+
+
 def world(T, skel):
-    """Bone world matrices and the local pose at T. Root, pitch, feet and hip slide follow a
-    Catmull-Rom curve through the keys (no stop at a key); joint poses blend with a C1 ramp
-    per segment that keeps half speed at the keys."""
+    """Bone worlds with continuous, time-aware tracks and exact authored holds."""
     K = _keys()
     T = max(0.0, min(1.0, T))
     i = max(k for k in range(len(K) - 1) if K[k][0] <= T) if T < 1.0 else len(K) - 2
     k0, k1 = K[i], K[i + 1]
-    km, k2 = K[max(0, i - 1)], K[min(len(K) - 1, i + 2)]
     u = (T - k0[0]) / (k1[0] - k0[0])
-    pos = _cr(V(*km[1]), V(*k0[1]), V(*k1[1]), V(*k2[1]), u)
-    pitch = _cr(km[2], k0[2], k1[2], k2[2], u)
-    slide = _cr(km[5], k0[5], k1[5], k2[5], u)
-    ft = _cr(V(*km[4]), V(*k0[4]), V(*k1[4]), V(*k2[4]), u)
-    ub = 0.5 * u + 0.5 * _ease(u)
-    P = _blend(k0[3], k1[3], ub, skel.names)
+    times = [k[0] for k in K]
+    pos = V(*[_track(times, [k[1][c] for k in K], i, u) for c in range(3)])
+    pitch = _track(times, [k[2] for k in K], i, u)
+    slide = _track(times, [k[5] for k in K], i, u)
+    ft = V(*[_track(times, [k[4][c] for k in K], i, u) for c in range(3)])
+    P = _pose_track(K, times, i, u, skel.names)
     root = Matrix.Translation(pos) @ Matrix.Rotation(math.radians(pitch), 4, 'X')
     # feet lift clear of the ground while they travel in
     lift = 0.30 * math.sin(math.pi * u) ** 2 if (k0[4] != k1[4]) else 0.0     # soft lift-off and touch-down

@@ -203,14 +203,13 @@ def paint_split(o, planes, slot='paintWhite'):
 
 
 def livery(parts):
-    """SF-25 (HP) scheme: white engine cover from the roll hoop back over the legs,
-    the edge falling toward the tail; red below and on the survival cell."""
+    """SF-25 white engine-cover band, with a red aft spine and survival cell."""
     # white above a plane rising toward the roll hoop (normal: up, tilted rearward)
     plane = ((0.0, -0.30, 0.655), (0.0, -0.13, 1.0))     # design normal: boundary falls 0.13 m per metre aft
     for name, o in parts.items():
         base = name.split('.')[0]
         if base in ('chest', 'hood', 'tail', 'podR'):
-            planes = [plane]
+            planes = [plane, ((0.0, -1.13, 0.0), (0.0, 1.0, 0.0))]
             if base == 'chest':
                 planes.append(((0.0, -0.10, 0.0), (0.0, -1.0, 0.0)))     # white starts behind the roll hoop
             paint_split(o, planes)
@@ -245,6 +244,77 @@ def notch(parts):
 
 # ------------------------------------------------------------------ build
 
+def rear_hardware(coll):
+    """Attached crash spine, exhaust and rain light behind the short rear cover."""
+    from . import rkit, aero
+    from .shape import loft_rings
+    b=kit.Builder()
+    # Narrow structural spine intersects the cover and supports both wing pylons.
+    rows=[]
+    for f,w,lo,hi in [(-1.82,.135,.30,.410),(-1.95,.130,.30,.410),(-2.16,.125,.31,.410),(-2.27,.064,.32,.40)]:
+        rows.append([(-w,f,lo),(w,f,lo),(w,f,hi),(-w,f,hi)])
+    b.add_mesh(loft_rings(rows,True,True),'carbonMatte')
+    for side in (-1,1):
+        b.add_mesh(rkit.plate_x([(-2.17,.397),(-2.04,.397),(-2.085,.555),(-2.155,.555)],
+                                side*.112-.014,side*.112+.014,.004,3),'carbon')
+    # Hollow exhaust: the annular lip and inner wall have real thickness.
+    rings=[]
+    for f,r in [(-1.87,.048),(-2.18,.048),(-2.18,.041),(-1.87,.041)]:
+        rings.append([(r*math.cos(k*math.tau/48),f,.483+r*math.sin(k*math.tau/48)) for k in range(48)])
+    rings.append(rings[0])
+    b.add_mesh(loft_rings(rings,False,False),'titanium')
+    b.add_mesh(rkit.cylinder((0,-1.871,.483),.040,.003,axis='f',seg=48,chamfer=.0005),'interior')
+    # Two broad beam-wing elements, rooted in the central crash structure.
+    for height,fore,chord in [(.408,-2.03,.17),(.335,-2.08,.14)]:
+        wing=aero._el(.055,.552,22,lambda t:fore+.035*t*t,
+                     lambda t:height+.030*t*t,lambda t:chord-.025*t,
+                     lambda t:-.18,lambda t:.095,lambda t:-.03)
+        b.add_mesh(wing,'carbon');b.add_mesh(kit.mirror_x(wing),'carbon')
+    # Separate open diffuser exits: roof and deep side fences, not a solid
+    # painted body extension. Forward ends overlap the existing underfloor.
+    for side in (-1,1):
+        roof=[]
+        for f,z in [(-2.12,.183),(-2.22,.215),(-2.35,.244)]:
+            roof.append([(.08,f,z),(.55,f,z),(.55,f,z+.010),(.08,f,z+.010)])
+        m=loft_rings(roof,True,True)
+        b.add_mesh(kit.mirror_x(m) if side<0 else m,'carbonMatte')
+        for x in (.14,.34,.55):
+            b.add_mesh(rkit.plate_x([(-2.12,.085),(-2.35,.060),(-2.35,.25),(-2.12,.194)],
+                                    side*x-.0035,side*x+.0035,.002,2),'carbonMatte')
+    b.add_mesh(rkit.plate_f([(-.049,.308),(.049,.308),(.049,.414),(-.049,.414)],-2.289,-2.260,.008,3),'carbon')
+    for x in range(4):
+        for z in range(6):
+            b.add_mesh(rkit.plate_f([(x*.020-.035,z*.014+.318),(x*.020-.025,z*.014+.318),
+                                    (x*.020-.025,z*.014+.327),(x*.020-.035,z*.014+.327)],
+                                   -2.292,-2.289,.0015,2),'lightRed')
+    return b.build('rearStructure',coll)
+
+def close_medial_panel(o):
+    """Union a fitted inner cheek into the split nose shell's medial rim.
+
+    The thin bulkhead stays within the original car envelope. It closes the
+    exposed boot/shin cavity without changing the outer skin or mechanism.
+    Operates on an unfinished mesh in vehicle coordinates.
+    """
+    from mathutils.geometry import convex_hull_2d
+    from . import rkit
+    side = -1 if o.name.endswith('.R') else 1
+    xmin = min(side * v.co.x for v in o.data.vertices)
+    pts = [Vector((-v.co.y, v.co.z)) for v in o.data.vertices if abs(side*v.co.x-xmin) < 0.0001]
+    outline = [tuple(pts[i]) for i in convex_hull_2d(pts)]
+    outline = kit.offset_poly(kit.ccw(outline), -0.004)
+    simple = []
+    for p in outline:
+        if not simple or (Vector(p)-Vector(simple[-1])).length > 0.004:
+            simple.append(p)
+    mesh = rkit.plate_x(simple, xmin+0.0005, xmin+0.012, 0.001, 1)
+    if side < 0:
+        mesh = kit.mirror_x(mesh)
+    insert = kit.obj_from_pydata('nose.inner.cheek', *mesh, ['paint'], smooth=False)
+    kit.fix_normals(insert)
+    kit.boolean(o, insert, 'UNION')
+
+
 def build(coll):
     outer = outer_body(coll)
     sk = skin(outer, 'skin.body', D.SKIN, coll)
@@ -264,6 +334,11 @@ def build(coll):
         parts[name] = o
     notch(parts)
     livery(parts)
+    from . import rkit
+    kit.cut(parts['tail'],rkit.cylinder((0,-1.925,.483),.041,.13,axis='f',seg=48,chamfer=.001))
+    parts['rearStructure']=rear_hardware(coll)
+    for name in ('toe.L', 'toe.R', 'shin.L', 'shin.R'):
+        close_medial_panel(parts[name])
     for o in parts.values():
         kit.finish(o, 0.003, 2, 30)
     for ob in (outer, sk):

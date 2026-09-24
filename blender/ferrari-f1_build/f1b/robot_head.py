@@ -260,6 +260,11 @@ def crest(p):
     # Black-bordered forehead shield and a tiny modeled heraldic horse relief.
     def badge_point(x,z,lift=0):
         return (x,.188-(z-.306)*.98+lift,z)
+    ferrari_badge(p, badge_point)
+
+
+def ferrari_badge(p, badge_point):
+    """Shared shield and modeled horse, with a caller-supplied host surface."""
     outline = [(-.015,.335),(.015,.335),(.014,.310),(0,.295),(-.014,.310)]
     plate(p,[badge_point(x,z,.004) for x,z in outline],'blackChrome',thick=.004)
     plate(p,[badge_point(x*.83,.315+(z-.315)*.84,.006) for x,z in outline],'yellow',thick=.003)

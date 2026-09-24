@@ -32,7 +32,9 @@ def _obj(name, items, coll, mirror=False, finish=(0.002, 2, 30)):
 
 
 def floor_pieces(coll):
-    fl = _obj('floor.solid', [(aero.floor_surface(), 'carbonMatte')], coll, finish=None)
+    details = aero.floor_details()
+    fl = _obj('floor.solid', [(aero.floor_surface(), 'carbonMatte')] + details +
+              [(kit.mirror_x(m),s) for m,s in details], coll, finish=None)
     parts = {}
 
     def keep(o):
@@ -65,7 +67,8 @@ def build(coll):
     parts['intake'] = _obj('intake', chassis.intake_duct(), coll)
     parts['tcam'] = _obj('tcam', chassis.tcam(), coll)
     parts['halo'] = _obj('halo', chassis.halo(), coll)
-    parts['liner'] = _obj('liner', [(chassis.cockpit_liner(), 'interior')], coll)
+    parts['liner'] = _obj('liner', chassis.cockpit_details(), coll)
+    parts['cockpitControls'] = _obj('cockpitControls', chassis.cockpit_controls(), coll)
     for S, s in SIDES:
         mir = s < 0
         parts['rimF.' + S] = _obj('rimF.' + S, [(chassis.rim_pad(1, 'front'), 'interior')], coll, mir)
@@ -75,7 +78,7 @@ def build(coll):
         ep, fp = aero.front_endplate()
         # the wing half splits at mid-span: the foot is the outer piece (endplate upright), the inner
         # piece folds under it as the sole; the nose pylon stays with the nose (shin)
-        whole = _obj('fwing.' + S, aero.front_wing_elements() + [(ep, 'carbon'), (fp, 'carbon')], coll, mir, None)
+        whole = _obj('fwing.' + S, aero.front_wing_elements() + aero.front_flap_hardware() + [(ep, 'carbon'), (fp, 'carbon')], coll, mir, None)
         for name, (x0, x1) in (('fwingIn', (0.0, FW_SPLIT)), ('fwingOut', (FW_SPLIT, 2.0))):
             poly = [(x0, 2.0), (x1, 2.0), (x1, 3.4), (x0, 3.4)]
             o = cut_region(whole, '%s.%s' % (name, S), [top_prism(poly if s > 0 else mirror_xf(poly), -1.0, 2.0)], coll)
@@ -83,7 +86,12 @@ def build(coll):
             parts[o.name] = o
         kit.bpy.data.objects.remove(whole, do_unlink=True)
         parts['pylon.' + S] = _obj('pylon.' + S, [(aero.nose_pylon(), 'carbon')], coll, mir, WING)
-        parts['rwing.' + S] = _obj('rwing.' + S, aero.rear_wing_elements() + [(aero.rear_endplate(), 'carbon'), (aero.swan_neck(), 'carbon')], coll, mir, WING)
+        rear = aero.rear_wing_elements() + [(aero.rear_endplate(), 'carbon'), (aero.swan_neck(), 'carbon')]
+        # Both rear halves share the same hinge. The centre actuator is built
+        # once, carried by the left half, and stays attached in both modes.
+        if not mir:
+            rear += aero.rear_actuator()
+        parts['rwing.' + S] = _obj('rwing.' + S, rear, coll, mir, WING)
         for axle, front in (('F', True), ('R', False)):
             for g, items in wheels.suspension(front).items():
                 name = 'susp%s%s.%s' % (axle, g.capitalize(), S)

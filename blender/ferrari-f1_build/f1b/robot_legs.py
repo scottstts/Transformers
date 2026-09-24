@@ -90,17 +90,17 @@ def thigh():
     p = Part('R.thigh.frame')
     p.add(rkit.frame([
         (-0.095, 0.150, 0.180, 0.040, 0.0),
-        (-0.200, 0.235, 0.290, 0.065, 0.0),
-        (-0.520, 0.250, 0.305, 0.070, 0.0),
-        (-0.690, 0.215, 0.260, 0.060, -0.010),
+        (-0.200, 0.200, 0.240, 0.055, 0.0),
+        (-0.520, 0.210, 0.235, 0.055, 0.0),
+        (-0.690, 0.180, 0.220, 0.050, -0.010),
         (-0.745, 0.150, 0.210, 0.045, -0.012),
     ], cap=0.018), 'carbon')
     # knee clevis (the drum sits between the cheeks)
     p.many(cheeks(-rig.THIGH, -0.700, 0.100, 0.100, CHEEK_IN, 0.036, -0.010), 'carbon')
     p.many(axle_caps(-rig.THIGH, CHEEK_IN + 0.036, 0.052, -0.010), 'darkSteel')
     # front plate (quadriceps) and rear plate (hamstring) standing on the frame
-    p.add(rkit.plate_f([(-0.095, -0.24), (0.095, -0.24), (0.085, -0.62), (0.0, -0.67), (-0.085, -0.62)], 0.145, 0.168, 0.006), 'mech')
-    p.add(rkit.plate_f([(-0.080, -0.26), (0.080, -0.26), (0.070, -0.60), (-0.070, -0.60)], -0.170, -0.148, 0.006), 'mech')
+    p.add(rkit.plate_f([(-0.070, -0.24), (0.070, -0.24), (0.065, -0.62), (0.0, -0.67), (-0.065, -0.62)], 0.110, 0.130, 0.004), 'mech')
+    p.add(rkit.plate_f([(-0.070, -0.26), (0.070, -0.26), (0.060, -0.60), (-0.060, -0.60)], -0.130, -0.110, 0.004), 'mech')
     # knee ram down the back of the thigh, over the hamstring plate (the legs lie together in the car)
     for m, s in actuator((0.0, -0.196, -0.215), (0.0, -0.160, -0.705), 0.026, 0.012, 0.58):
         p.add(m, s)
@@ -120,7 +120,7 @@ def shin():
         (-0.660, 0.165, 0.200, 0.048, 0.000),
         (-0.705, 0.120, 0.170, 0.036, 0.000),     # ends 12 mm above the ankle drum
     ], cap=0.016), 'carbon')
-    p.many(cheeks(-rig.SHIN, -0.700, 0.085, 0.088, ANKLE_CHEEK_IN, 0.032), 'carbon')
+    p.many(cheeks(-rig.SHIN, -0.700, 0.080, 0.082, ANKLE_CHEEK_IN, 0.032), 'carbon')
     p.many(axle_caps(-rig.SHIN, ANKLE_CHEEK_IN + 0.032, 0.044), 'darkSteel')
     # tibial plate: faceted, painted (a livery accent visible between the sleeve halves)
     p.add(rkit.plate_f([(-0.085, -0.22), (0.085, -0.22), (0.075, -0.60), (0.0, -0.645), (-0.075, -0.60)], 0.110, 0.130, 0.006), 'paint')

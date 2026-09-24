@@ -94,6 +94,36 @@ def front_endplate():
     return ep, fp
 
 
+def front_flap_hardware():
+    """Slender slot-gap brackets on each side of the wing fold line."""
+    out = []
+    from mathutils.bvhtree import BVHTree
+    surfaces = [BVHTree.FromPolygons(*mesh) for mesh,_ in front_wing_elements()]
+    for x in (0.34, 0.73):
+        t = x / FW_TIP
+        rise = _rise(t, 0.040)
+        # Each web bridges adjacent elements; none crosses the foot's fold.
+        for j,(f0,z0,f1,z1) in enumerate(((2.79,0.077,2.78,0.130),
+                              (2.64,0.160,2.62,0.202),
+                              (2.52,0.241,2.50,0.272))):
+            a = surfaces[j].find_nearest(kit.V(x,f0,z0+rise))[0]
+            b = surfaces[j+1].find_nearest(kit.V(x,f1,z1+rise))[0]
+            f0,z0,f1,z1 = -a.y,a.z-.004,-b.y,b.z+.004
+            outline = [(f0+0.018,z0),(f0-0.018,z0),
+                       (f1-0.016,z1),(f1+0.016,z1)]
+            out.append((plate(outline,0.008,warp=lambda f,z,w,x=x:(x+w,f,z)), 'carbon'))
+    return out
+
+
+def rear_actuator():
+    """Central DRS fairing and its short link, seated between the two planes."""
+    return [(drs_pod(), 'carbon'),
+            (strut((0,-2.11,0.720),(0,-2.11,0.807),chord=0.035,ratio=0.40,
+                   steps=6,stream=(0,1,0)), 'carbon'),
+            (strut((0,-2.19,0.815),(0,-2.29,0.867),chord=0.009,ratio=0.7,
+                   steps=6,stream=(0,0,1)), 'mech')]
+
+
 def nose_pylon():
     """Faired pylon joining the left half of the wing to the nose underside."""
     st = []
@@ -144,17 +174,23 @@ def swan_neck():
     """Left swan-neck pylon: rises from the heel mount (the rear structure) and
     hooks over onto the upper surface of the main plane."""
     # base on the heel block of the foot (the tail), 1 cm into it; top hooked onto the main plane
-    return strut((0.112, -2.300, 0.550), (0.116, -2.012, 0.786), chord=0.10, ratio=0.26, taper=0.72, steps=12, bow=0.03, stream=(0, 1, 0))
+    from . import rkit
+    # The old diagonal started aft of the body and pierced the mainplane.
+    # This closed side profile seats on the deck, clears the leading edge,
+    # hooks over it, and lands on the upper face at f=-2.06, z=0.717.
+    outline = [(-2.155,.548),(-2.085,.548),(-1.939,.697),
+               (-1.918,.731),(-1.925,.760),(-1.956,.779),
+               (-2.034,.770),(-2.069,.743),(-2.071,.714),
+               (-2.035,.714),(-2.034,.737),(-1.969,.745),
+               (-1.958,.732),(-1.970,.710),(-2.136,.587)]
+    return rkit.plate_x(kit.fillet_poly(outline,.009,4),.104,.120,.0015,2)
 
 
 def drs_pod():
-    rows = []
-    for i in range(13):
-        t = i / 12
-        f = lerp(-2.040, -2.230, t)
-        w = math.sin(math.pi * (0.12 + t * 0.76)) * 0.040
-        rows.append([(math.sin(a) * w, f, 0.842 + math.cos(a) * w * 0.8) for a in (2 * math.pi * k / 20 for k in range(20))])
-    return loft_rings(rows, True, True, cap_segs=3)
+    rows=[]
+    for f,w,h in ((-2.06,.008,.007),(-2.075,.014,.011),(-2.18,.014,.011),(-2.205,.009,.008)):
+        rows.append([(x,f,.815+z) for x,z in squircle(w,h,3.0,16)])
+    return loft_rings(rows,True,True)
 
 
 def beam_wing():
@@ -219,3 +255,24 @@ def floor_surface():
     alloc = [6, 4, 2, 2, 2, 2, 3, 3, 3, 1, 1, 1, 3]
     rings = [ring_half(floor_half_section(f), f, 0, alloc=alloc) for f in fs]
     return loft_rings(rings, True, True)          # flat end faces (bevelled at finish)
+
+
+def floor_details():
+    """SF-25-style floor-edge wing and three small tunnel inlet fences.
+
+    Joined to the floor before band cutting, so every detail follows the
+    existing car panel that carries it. Nothing bridges a transformation seam.
+    """
+    out = []
+    rings = []
+    for k in range(33):
+        f = lerp(.78,-1.02,k/32)
+        p = FLOOR(f); e,z = p['halfW'],p['topZ']
+        rings.append([(e-.044,f,z+.007),(e+.002,f,z+.020),
+                      (e+.003,f,z+.028),(e-.046,f,z+.013)])
+    out.append((loft_rings(rings,True,True),'carbon'))
+    for x,f0,f1 in ((.43,1.15,.81),(.53,1.08,.74),(.63,.96,.65)):
+        # Lower edges penetrate the floor slightly; the top curls down aft.
+        prof=[(f0,.089),(f1,.084),(f1,.113),(f0-.04,.166),(f0,.152)]
+        out.append((plate(prof,.007,warp=lambda f,z,w,x=x:(x+w,f,z)),'carbonMatte'))
+    return out

@@ -36,7 +36,7 @@ def _part(name, items, bevel=0.004):
 def chest_front(x, z):
     """Chest front: faceted pec -- a vertical crease at x 0.20 and a horizontal
     crease at z 0.47 catch hard highlights; the flank wraps back."""
-    tent = max(0.0, 1.0 - abs(x - 0.20) / 0.30)
+    tent = math.sin(math.pi * clamp01(x / 0.56))
     ridge = 0.050 - 0.28 * abs(z - 0.47)
     wrapback = 1.1 * max(0.0, x - 0.34) ** 2
     return 0.232 + 0.070 * tent + ridge - wrapback
@@ -47,27 +47,27 @@ def pec():
     zmap = lambda z: (z - 0.150) / (0.740 - 0.150)
     right = pwl([(zmap(0.150), 0.060), (zmap(0.400), 0.470), (zmap(0.620), 0.490), (zmap(0.740), 0.250)])
     # two plates split on the horizontal crease (a seam across the pec)
-    lower = outline_rows(0.150, 0.456, pwl([(0, 0.040), (1, 0.046)]), lambda t: right(t * (0.456 - 0.150) / 0.590), n=12)
-    upper = outline_rows(0.474, 0.740, pwl([(0, 0.046), (1, 0.052)]), lambda t: right((0.474 - 0.150 + t * (0.740 - 0.474)) / 0.590), n=12)
+    lower = [(0.155,0.048,0.072),(0.230,0.046,0.190),(0.310,0.046,0.285),
+             (0.370,0.046,0.450),(0.425,0.046,0.465),(0.456,0.046,0.455)]
+    upper = [(0.474,0.052,0.454),(0.540,0.052,0.485),(0.625,0.052,0.488),
+             (0.690,0.055,0.380),(0.740,0.060,0.250)]
     base = panel(P, lower, 0.036, hint, nu=16)
     base_u = panel(P, upper, 0.036, hint, nu=16)
     core = panel(P, outline_rows(0.300, 0.620, pwl([(0, 0.060)]), pwl([(0, 0.440)]), n=6), 0.030, hint, nu=10, lift=-0.022)
-    # layered upper plate: a raised slab across the top of the pec
-    rows2 = outline_rows(0.520, 0.700, pwl([(0, 0.090), (1, 0.080)]), pwl([(0, 0.440), (0.7, 0.430), (1, 0.290)]), n=8)
-    top = panel(P, rows2, 0.020, hint, nu=12, lift=0.018)
     # sidepod intake low on the pec: dark throat with vanes
-    rows3 = outline_rows(0.300, 0.420, pwl([(0, 0.230), (1, 0.270)]), pwl([(0, 0.400), (1, 0.440)]), n=4)
+    rows3 = [(0.338,0.246,0.323),(0.362,0.258,0.415),(0.415,0.279,0.439)]
     vent = panel(P, rows3, 0.010, hint, nu=8, lift=0.004)
     vanes = []
     for k in range(4):
         x0 = 0.250 + k * 0.042
-        rows4 = outline_rows(0.302, 0.418, pwl([(0, x0)]), pwl([(0, x0 + 0.011)]), n=3)
+        rows4 = outline_rows(0.365, 0.410, pwl([(0, x0 + 0.028)]), pwl([(0, x0 + 0.037)]), n=3)
         vanes.append(panel(P, rows4, 0.014, hint, nu=2, lift=0.010))
     bolts = []
     for x, z in ((0.080, 0.690), (0.400, 0.600), (0.090, 0.200), (0.420, 0.420)):
         f = chest_front(x, z)
-        bolts += [(m, 'gold') for m in rkit.bolt_ring((x, f + 0.030, z), (0, -1, 0), 0.0001, 1, 0.008, 0.006)]
-    return [(base, 'paint'), (base_u, 'paint'), (core, 'graphite'), (top, 'paint'), (vent, 'graphite')] + [(m, 'carbon') for m in vanes] + bolts
+        bolts += [(m, 'gold') for m in rkit.bolt_ring((x, f + 0.001, z), (0, -1, 0), 0.0001, 1, 0.008, 0.006)]
+    return [(base, 'paint'), (base_u, 'paint'), (core, 'graphite'),
+            (vent, 'graphite')] + [(m, 'darkSteel') for m in vanes] + bolts
 
 
 def yoke_plate():
@@ -93,23 +93,77 @@ def keel():
         rings.append([(0.0, f0 + h, z), (w * 0.62, f0 + h * 0.82, z), (w, f0 + h * 0.30, z), (w * 0.80, f0 - 0.02, z),
                       (-w * 0.80, f0 - 0.02, z), (-w, f0 + h * 0.30, z), (-w * 0.62, f0 + h * 0.82, z)])
     body = loft_rings(rings, True, True)
-    f_at = lambda v: chest_front(0.0, v) - 0.020 + lerp(0.030, 0.095, clamp01((v - 0.13) / 0.63)) + 0.002
+    def front_f(x, z):
+        # Interpolate the actual loft stations, rather than a second, slightly
+        # different approximation that can cut through the keel's face.
+        for a,b in zip(rings,rings[1:]):
+            if b[0][2] <= z <= a[0][2]:
+                t = (a[0][2]-z)/(a[0][2]-b[0][2])
+                row = [tuple(lerp(aa[c],bb[c],t) for c in range(3)) for aa,bb in zip(a,b)]
+                return lerp(row[0][1],row[1][1],clamp01(abs(x)/row[1][0]))
+        return rings[0][0][1]
     stripe = [(-0.014, 0.200), (0.014, 0.200), (0.028, 0.620), (-0.028, 0.620)]
-    white = plate(stripe, 0.006, warp=lambda u, v, w: (u, f_at(v) + w - 3.0 * u * u, v))
-    shield = [(-0.036, 0.636), (0.036, 0.636), (0.036, 0.690), (0.0, 0.716), (-0.036, 0.690)]
-    yel = plate(shield, 0.008, warp=lambda u, v, w: (u, f_at(v) + 0.004 + w - 2.0 * u * u, v))
-    horse = [(-0.012, 0.646), (0.012, 0.646), (0.014, 0.676), (0.003, 0.694), (-0.014, 0.672)]
-    blk = plate(horse, 0.004, warp=lambda u, v, w: (u, f_at(v) + 0.009 + w - 2.0 * u * u, v))
-    return [(body, 'paint'), (white, 'paintWhite'), (yel, 'yellow'), (blk, 'graphite')]
+    # Use a station-matched narrow stripe, so it follows the keel with no
+    # long polygon chord cutting across the underlying curved profile.
+    stripe_rings = []
+    for z in (0.200,0.260,0.360,0.470,0.580,0.620):
+        w = lerp(.012,.024,(z-.2)/.42)
+        stripe_rings.append([(x,front_f(x,z)+df,z) for x,df in
+                             ((-w,.001),(0,.001),(w,.001),(w,.004),(0,.004),(-w,.004))])
+    white = loft_rings(stripe_rings,True,True)
+    from .robot_head import ferrari_badge
+    badge = Part('chest.badge')
+    low, high = .627, .723
+    slope = (front_f(0,high)-front_f(0,low))/(high-low)
+    intercept = max(front_f(0,z)-slope*(z-.675) for z in (low,.64,.66,.68,.70,high))+.001
+    def badge_point(x,z,lift=0):
+        xx,zz = 2.4*x, .675 + 2.4*(z-.315)
+        return (xx,intercept+slope*(zz-.675)+lift,zz)
+    # A wedge-backed flat mounting face bridges the keel ridge. The back
+    # follows the host, while the heraldic horse remains completely planar.
+    outline = [(-.015,.335),(.015,.335),(.014,.310),(0,.295),(-.014,.310)]
+    back = [(2.4*x,front_f(2.4*x,.675+2.4*(z-.315))-.001,.675+2.4*(z-.315)) for x,z in outline]
+    front = [badge_point(x,z,.001) for x,z in outline]
+    backing = loft_rings([back,front],True,True)
+    ferrari_badge(badge,badge_point)
+    # The badge builder has per-face materials; split by slot without changing
+    # its authored geometry so the normal armor builder can consume it.
+    items = []
+    for idx,slot in enumerate(badge.b.slots):
+        faces = [f for f,s in zip(badge.b.faces,badge.b.fslot) if s==idx]
+        ids = sorted({i for f in faces for i in f})
+        remap = {old:new for new,old in enumerate(ids)}
+        items.append((([badge.b.verts[i] for i in ids],[[remap[i] for i in f] for f in faces]),slot))
+    return [(body, 'paint'), (white, 'paintWhite'), (backing, 'blackChrome')] + items
 
 
 def collar():
     """Raised collar fin beside the neck, flaring up and out."""
     out = [(0.120, 0.700), (0.260, 0.720), (0.330, 0.800), (0.240, 0.960), (0.160, 0.880)]
     body = plate(out, 0.030, warp=lambda u, v, w: (u, 0.020 + w + 0.30 * (v - 0.70) - 0.4 * (u - 0.2) ** 2, v))
-    tip = [(0.240, 0.880), (0.300, 0.820), (0.330, 0.800), (0.240, 0.960)]
-    white = plate(tip, 0.034, warp=lambda u, v, w: (u, 0.022 + w + 0.30 * (v - 0.70) - 0.4 * (u - 0.2) ** 2, v))
-    return [(body, 'paint'), (white, 'paintWhite')]
+    return [(body, 'paint')]
+
+
+def collar_livery(o):
+    """Split faces for the white edge: one watertight shell, no overlay faces."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    side = -1 if o.name.endswith('.R') else 1
+    bmesh.ops.bisect_plane(bm, geom=list(bm.verts)+list(bm.edges)+list(bm.faces),
+                          dist=1e-7, plane_co=(side*0.758,0,0),
+                          plane_no=(side,0,0.5625), clear_inner=False, clear_outer=False)
+    white = kit.mats.get('paintWhite')
+    o.data.materials.append(white)
+    idx = len(o.data.materials)-1
+    for f in bm.faces:
+        p = f.calc_center_median()
+        if side*p.x + 0.5625*p.z > 0.758:
+            f.material_index = idx
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    bm.to_mesh(o.data)
+    bm.free()
+    o.data.update()
 
 
 def ribs():
@@ -134,14 +188,14 @@ def abs_plate():
 
 
 def hip_skirt():
-    """Pelvis: side skirt over the hip joint, swept back."""
-    P, hint = wrap(lambda u, v: 0.205 + 0.03 * (v + 0.10), xc=rig.HIP_X - 0.02, fc=0.0)
-    rows = outline_rows(-0.200, 0.140, pwl([(0, 0.05), (1, -0.35)]), pwl([(0, 1.35), (0.6, 1.60), (1, 1.40)]), n=8)
-    trim = outline_rows(-0.200, -0.160, pwl([(0, 0.05)]), pwl([(0, 1.35)]), n=2)
+    """Short outboard hip fender; front and lower edge clear the thigh swing."""
+    P, hint = wrap(lambda u, v: 0.222 + 0.06 * (0.12-v), xc=rig.HIP_X - 0.02, fc=-0.012)
+    rows = outline_rows(-0.060, 0.130, pwl([(0, 0.85), (1, 0.48)]), pwl([(0, 1.65), (0.6, 1.72), (1, 1.50)]), n=8)
+    trim = outline_rows(-0.060, -0.039, pwl([(0, 0.85), (1,0.81)]), pwl([(0, 1.65)]), n=2)
     out = [(panel(P, rows, 0.028, hint, nu=10), 'paint'), (panel(P, trim, 0.012, hint, nu=10, lift=0.012), 'paintWhite')]
-    for u, v in ((0.3, 0.08), (1.1, 0.08), (0.3, -0.10), (1.1, -0.10)):
+    for u, v in ((0.72, 0.085), (1.35, 0.085), (1.0, -0.014), (1.5, -0.014)):
         x, f, z = P(u, v)
-        out += [(m, 'gold') for m in rkit.bolt_ring((x + 0.03 * math.sin(u), f + 0.03 * math.cos(u), z), (math.sin(u), -math.cos(u), 0), 0.0001, 1, 0.008, 0.006)]
+        out += [(m, 'gold') for m in rkit.bolt_ring((x + 0.001 * math.sin(u), f + 0.001 * math.cos(u), z), (math.sin(u), -math.cos(u), 0), 0.0001, 1, 0.008, 0.006)]
     return out
 
 
@@ -154,6 +208,33 @@ def codpiece():
 
 
 # ------------------------------------------------------------------ arms
+def blade_shell(secfn, top, bottom, width, channel=True):
+    """Two tapered armor blades over a carbon channel, conforming to the limb.
+
+    Surface depth follows the existing section, keeping the stow envelope
+    within 9 mm of the original shell. The blades are part of the same mesh.
+    """
+    def front(x, z):
+        sec = secfn(z)
+        # Front centre to the two shoulder facets of the ten-point section.
+        points = sorted((sec[8], sec[9], sec[0], sec[1], sec[2]))
+        for a, b in zip(points, points[1:]):
+            if x <= b[0]:
+                return lerp(a[1], b[1], clamp01((x-a[0]) / max(1e-6,b[0]-a[0])))
+        return points[-1][1]
+    P, hint = sheet(front)
+    span = top-bottom
+    channel_rows = [(bottom+0.02,-0.018,0.018),(top-0.04,-0.030,0.030),(top,-0.014,0.014)]
+    out = [(panel(P,channel_rows,0.008,hint,nu=4,lift=0.004),'carbon')] if channel else []
+    for sign in (-1,1):
+        rows = [(bottom,0.018,0.025),(bottom+span*0.28,0.024,width*0.82),
+                (top-span*0.22,0.035,width),(top,0.017,width*0.64)]
+        if sign < 0:
+            rows = [(z,-b,-a) for z,a,b in rows]
+        out.append((panel(P,rows,0.015,hint,nu=5,lift=0.009),'paint'))
+    return out
+
+
 def pauldron():
     """Clav bone: a sculpted shoulder shell -- an arch section with thickness lofted
     out over the ball, a ridge stripe, louvres in the outboard face."""
@@ -193,7 +274,8 @@ def upper_shell():
     def secfn(z):
         t = clamp01((-z - 0.10) / 0.48)
         return hs.sec(lerp(0.200, 0.214, t), lerp(0.214, 0.222, t), 0.40, 0.30, keel=0.012, bulge_x=0.010)
-    out = hs.banded([(-0.110, -0.330), (-0.330, -0.560)], secfn)
+    out = hs.banded([(-0.110, -0.330), (-0.330, -0.560)], secfn, slot='graphite')
+    out += blade_shell(secfn, -0.130, -0.540, 0.072)
     o = (0.0, 0.118, -0.240)
     out += hs.plate_on(o, (1, 0, 0), (0, 1, 0), [(-0.070, -0.090), (0.070, -0.090), (0.060, 0.080), (-0.060, 0.080)], 0.018, 'paint')
     out += hs.bolts_on((0.0, 0.140, -0.240), (1, 0, 0), (0, 1, 0), [(-0.052, -0.074), (0.052, -0.074), (-0.046, 0.066), (0.046, 0.066)])
@@ -210,6 +292,7 @@ def gauntlet():
         t = clamp01((-z - 0.06) / 0.56) ** 0.8
         return hs.sec(lerp(0.222, 0.296, t), lerp(0.238, 0.300, t), 0.46, 0.26, keel=0.020, bulge_x=0.020 * t)
     out = hs.banded([(-0.060, -0.210), (-0.210, -0.470), (-0.470, -0.620)], secfn)
+    out += blade_shell(secfn, -0.080, -0.530, 0.084)
     out += hs.ring_band(-0.560, secfn, 0.030, 0.008, 'paintWhite')
     # outer raised plate and the fin standing off it
     z0 = -0.340
@@ -234,6 +317,7 @@ def quad():
         d = lerp(0.320, 0.270, t) + 0.030 * math.sin(math.pi * clamp01(t * 1.2))
         return hs.sec(w, d, 0.50, 0.30, keel=0.040, bulge_x=0.015)
     out = hs.banded([(-0.080, -0.360), (-0.360, -0.640), (-0.640, -0.760)], secfn)
+    out += blade_shell(secfn, -0.100, -0.660, 0.092, channel=False)
     z0 = -0.360
     w0 = secfn(z0)
     hw = max(x for x, f in w0) + 0.010
@@ -282,8 +366,13 @@ def calf():
     hx = calf_hub_x()
     c = (hx + 0.012, CALF_HUB[1], CALF_HUB[2])
     out += mechkit.gear_disc(c, 'x', 0.090, 0.024, teeth=0, bolts=6)
-    out.append((lathe([(0.0, 0.0), (0.034, 0.0), (0.034, 0.110), (0.026, 0.118), (0.0, 0.118)], 20, 'x', center=(hx + 0.020, c[1], c[2])), 'darkSteel'))
     return out
+
+
+def calf_spindle():
+    """Centre-lock spindle telescopes into its fixed calf housing in car mode."""
+    c = (calf_hub_x()+0.020,CALF_HUB[1],CALF_HUB[2])
+    return [(lathe([(0,0),(.034,0),(.034,.110),(.026,.118),(0,.118)],32,'x',center=c),'darkSteel')]
 
 
 # ------------------------------------------------------------------ feet
@@ -325,7 +414,7 @@ SIDED = {
     'upperarm': [('bicep', upper_shell)],
     'forearm': [('gauntlet', gauntlet)],
     'thigh': [('quad', quad)],
-    'shin': [('kneecap', kneecap), ('calf', calf)],
+    'shin': [('kneecap', kneecap), ('calf', calf), ('calfSpindle', calf_spindle)],
     'foot': [('sole', sole), ('flapOut', flap_out), ('flapIn', flap_in)],
 }
 CENTRE = {
@@ -347,7 +436,10 @@ def build(coll):
         p = Part(name)
         for m, s in items:
             p.add(mirror(m) if mir else m, s)
-        return p.build(coll, 0.0035, 2, 30)
+        o = p.build(coll, 0.0035, 2, 30)
+        if name.startswith('A.collar.'):
+            collar_livery(o)
+        return o
 
     for bone, lst in CENTRE.items():
         for name, fn in lst:
