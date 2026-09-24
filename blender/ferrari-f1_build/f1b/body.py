@@ -281,6 +281,11 @@ def rear_hardware(coll):
         for x in (.14,.34,.55):
             b.add_mesh(rkit.plate_x([(-2.12,.085),(-2.35,.060),(-2.35,.25),(-2.12,.194)],
                                     side*x-.0035,side*x+.0035,.002,2),'carbonMatte')
+        # The diffuser roof sits below floorTail at its forward edge.  Tie the
+        # inner fence into the underfloor with a short web that overlaps both
+        # meshes, so rearStructure is physically attached instead of floating.
+        b.add_mesh(rkit.plate_x([(-2.08,.188),(-2.18,.208),(-2.18,.330),(-2.08,.286)],
+                                side*.14-.005,side*.14+.005,.002,2),'carbonMatte')
     b.add_mesh(rkit.plate_f([(-.049,.308),(.049,.308),(.049,.414),(-.049,.414)],-2.289,-2.260,.008,3),'carbon')
     for x in range(4):
         for z in range(6):
