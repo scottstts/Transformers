@@ -2,8 +2,7 @@ import type { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import type { CircleCollider, Form, MotionState } from './types'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
 import { GameInput } from './input'
-
-const WHEELBASE = 3.81
+import type { CharacterProfile, DriveProfile, RobotProfile } from '../content/transformer/character'
 
 export interface CarControls {
   readonly driveThrottle: number
@@ -11,28 +10,30 @@ export interface CarControls {
   readonly running: boolean
 }
 
-export function updateCar(state: MotionState, input: CarControls, dt: number, locked: boolean): void {
+/** The car's bicycle model; limits and response come from the character's drive profile. */
+export function updateCar(state: MotionState, input: CarControls, dt: number, locked: boolean, car: DriveProfile): void {
   const boost = input.running
   const v = state.speed
   const throttle = locked ? 0 : input.driveThrottle
   const steerIn = locked ? 0 : input.driveSteering
 
-  const maxSpeed = boost ? 52 : 36
+  const maxSpeed = boost ? car.boostSpeed : car.maxSpeed
   let acceleration: number
-  if (throttle > 0) acceleration = v < -0.3 ? 18 : (boost ? 12 : 8.5) * (1 - Math.pow(clamp(v / maxSpeed, 0, 1), 2))
-  else if (throttle < 0) acceleration = v > 0.3 ? -18 : -6 * (1 - clamp(-v / 10, 0, 1))
-  else acceleration = -Math.sign(v) * Math.min(Math.abs(v) / dt, 1.4 + Math.abs(v) * 0.03)
+  if (throttle > 0) acceleration = v < -0.3 ? car.brake : (boost ? car.boostAccel : car.accel) * (1 - Math.pow(clamp(v / maxSpeed, 0, 1), 2))
+  else if (throttle < 0) acceleration = v > 0.3 ? -car.brake : -car.reverse * (1 - clamp(-v / car.reverseSpeed, 0, 1))
+  else acceleration = -Math.sign(v) * Math.min(Math.abs(v) / dt, car.coast + Math.abs(v) * car.coastDrag)
   if (locked) acceleration = -Math.sign(v) * Math.min(Math.abs(v) / dt, 16)
 
   state.speed = v + acceleration * dt
   if (!throttle && Math.abs(state.speed) < 0.05) state.speed = 0
   state.throttle = throttle
+  state.boost = boost && !locked && throttle > 0
   state.accel = damp(state.accel, acceleration, 6, dt)
-  const maxSteer = 0.58 / (1 + Math.abs(state.speed) * 0.045)
+  const maxSteer = car.steerLock / (1 + Math.abs(state.speed) * car.steerFade)
   state.steer = damp(state.steer, -steerIn * maxSteer, 7, dt)
-  state.yawRate = state.speed * Math.tan(state.steer) / WHEELBASE
+  state.yawRate = state.speed * Math.tan(state.steer) / car.wheelbase
   state.yaw += state.yawRate * dt
-  state.spin += state.speed / 0.445 * dt
+  state.spin += state.speed / car.wheelRadius * dt
   state.pos.x += Math.sin(state.yaw) * state.speed * dt
   state.pos.z += Math.cos(state.yaw) * state.speed * dt
 
@@ -40,19 +41,16 @@ export function updateCar(state: MotionState, input: CarControls, dt: number, lo
   state.slip = damp(state.slip, clamp(
     (Math.abs(acceleration) > 10 ? 0.4 : 0) + (acceleration > 7 && v < 12 ? 0.5 : 0) + Math.max(0, lateralAcceleration - 5) * 0.08,
     0, 1), 5, dt)
-  const targetPitch = clamp(-state.accel * 0.0045, -0.05, 0.05)
-  const targetRoll = clamp(lateralAcceleration * Math.sign(state.speed * state.yawRate) * 0.006, -0.06, 0.06)
+  const targetPitch = clamp(-state.accel * car.pitchGain, -car.pitchLimit, car.pitchLimit)
+  const targetRoll = clamp(lateralAcceleration * Math.sign(state.speed * state.yawRate) * car.rollGain, -car.rollLimit, car.rollLimit)
   state.pitchV += ((targetPitch - state.pitch) * 60 - state.pitchV * 9) * dt
   state.rollV += ((targetRoll - state.roll) * 60 - state.rollV * 9) * dt
   state.pitch += state.pitchV * dt
   state.roll += state.rollV * dt
 }
 
-/** Robot ground speeds (m/s): walking, and running with Shift held. */
-const WALK_SPEED = 3.4
-const RUN_SPEED = 7.5
-
-export function updateRobot(state: MotionState, input: GameInput, camera: PerspectiveCamera, dt: number, locked: boolean, robotOffset: number, airborne = false): void {
+/** Camera-relative robot movement; walking and running (Shift) speeds come from the robot profile. */
+export function updateRobot(state: MotionState, input: GameInput, camera: PerspectiveCamera, dt: number, locked: boolean, robotOffset: number, robot: RobotProfile, airborne = false): void {
   const dir = locked || airborne ? null : input.movementDirection(camera)
   const run = input.running
   if (airborne) {
@@ -64,7 +62,7 @@ export function updateRobot(state: MotionState, input: GameInput, camera: Perspe
     if (dir) {
       const diff = wrap(Math.atan2(dir.x, dir.z) - state.yaw)
       targetTurn = clamp(diff * 3.5, -(run ? 1.6 : 2), run ? 1.6 : 2)
-      targetSpeed = (run ? RUN_SPEED : WALK_SPEED) * clamp((Math.cos(diff) + 0.2) / 1.2, 0, 1)
+      targetSpeed = (run ? robot.runSpeed : robot.walkSpeed) * clamp((Math.cos(diff) + 0.2) / 1.2, 0, 1)
     }
     state.speed = damp(state.speed, targetSpeed, targetSpeed > state.speed ? 1.8 : 4, dt)
     if (Math.abs(state.speed) < 0.02 && !dir) state.speed = 0
@@ -83,10 +81,10 @@ export function updateRobot(state: MotionState, input: GameInput, camera: Perspe
   state.slip = 0
 }
 
-export function resolveCircleCollisions(state: MotionState, colliders: CircleCollider[], robotOffset: number): void {
+export function resolveCircleCollisions(state: MotionState, colliders: CircleCollider[], robotOffset: number, profile: Pick<CharacterProfile, 'carRadius' | 'robotRadius'>): void {
   const transition = easedRange(state.progress, 0.3, 0.7)
   const offset = robotOffset * transition
-  const radius = lerp(2.4, 1.5, transition)
+  const radius = lerp(profile.carRadius, profile.robotRadius, transition)
   const forwardX = Math.sin(state.yaw)
   const forwardZ = Math.cos(state.yaw)
   for (const collider of colliders) {

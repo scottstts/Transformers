@@ -1,5 +1,5 @@
-import type { Textures } from './textures'
-import type { VoiceOutput } from './mechanism'
+import type { Textures } from '../../../audio/textures'
+import type { VoiceOutput } from '../../../audio/mix'
 
 /**
  * Rocket burn of the lift thrusters, driven every frame by throttle and by how
@@ -29,6 +29,8 @@ export class RocketVoice {
   private readonly crackle: GainNode
   private readonly rumble: GainNode
   private readonly wash: GainNode
+  private readonly master: GainNode
+  private readonly loops: AudioBufferSourceNode[] = []
   private lit = false
 
   constructor(ctx: AudioContext, textures: Textures, out: VoiceOutput) {
@@ -38,6 +40,7 @@ export class RocketVoice {
     const master = ctx.createGain()
     master.gain.value = 1
     master.connect(out.dry)
+    this.master = master
     const send = ctx.createGain()
     send.gain.value = 0.45
     master.connect(send).connect(out.send)
@@ -106,6 +109,12 @@ export class RocketVoice {
     this.wash.gain.setTargetAtTime(WASH * ground, t, RESPONSE * 2)
   }
 
+  /** Stops the looping textures and leaves the mix. */
+  dispose(): void {
+    for (const src of this.loops) src.stop()
+    this.master.disconnect()
+  }
+
   private ignite(t: number): void {
     const ctx = this.ctx
     const src = ctx.createBufferSource()
@@ -129,6 +138,7 @@ export class RocketVoice {
     src.loop = true
     src.playbackRate.value = rate
     src.start(0, offset % buffer.duration)
+    this.loops.push(src)
     return src
   }
 }

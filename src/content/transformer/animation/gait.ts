@@ -21,13 +21,40 @@ const smooth = ( t ) => t * t * ( 3 - 2 * t );
  * in the air.
  */
 
-/** Run: peak flight height (m) and mid-stance compression (m) at full run. */
-const RUN_FLIGHT = 0.07;
-const RUN_COMPRESSION = 0.07;
-/** Jump: crouch depth (m) at full load, leg tuck (m) at the apex. */
-const JUMP_CROUCH = 0.38;
-const JUMP_TUCK = 0.42;
-export class CybertruckGait {
+/** A robot's build as seen in its gait: lengths in metres, swings in degrees. */
+export interface GaitStyle {
+	/** stride length, walking and running */
+	stride: [ number, number ];
+	/** foot lift at mid-swing, walking and running */
+	lift: [ number, number ];
+	/** run: peak flight height and mid-stance compression */
+	runFlight: number;
+	runCompression: number;
+	/** extra stance crouch at full run */
+	runCrouch: number;
+	/** pelvis sway at full stride */
+	sway: number;
+	/** arm swing, walking and running */
+	armSwing: [ number, number ];
+	/** jump: crouch depth at full load, leg tuck at the apex */
+	jumpCrouch: number;
+	jumpTuck: number;
+}
+
+/** A heavy machine: long stance, weight shift over the planted leg. */
+export const HEAVY_GAIT: GaitStyle = {
+	stride: [ 1.35, 2.3 ],
+	lift: [ 0.32, 0.7 ],
+	runFlight: 0.07,
+	runCompression: 0.07,
+	runCrouch: 0.12,
+	sway: 0.06,
+	armSwing: [ 16, 38 ],
+	jumpCrouch: 0.38,
+	jumpTuck: 0.42
+};
+
+export class RobotGait {
 	phase = 0;
 	amp = 0;
 	run = 0;
@@ -37,8 +64,11 @@ export class CybertruckGait {
 	look = 0;
 	lean = 0;
 
-	constructor() {
+	private readonly style: GaitStyle;
 
+	constructor( style: GaitStyle = HEAVY_GAIT ) {
+
+		this.style = style;
 		this.phase = 0;
 		this.amp = 0;
 		this.run = 0;
@@ -58,14 +88,15 @@ export class CybertruckGait {
 		this.amp = lerp( this.amp, clamp( eff / 2.6, 0, 1 ), 1 - Math.exp( - dt * 5 ) );
 		this.run = lerp( this.run, running && mv > 4 ? 1 : 0, 1 - Math.exp( - dt * 3 ) );
 
-		const stride = lerp( 1.35, 2.3, this.run ) * this.amp;
+		const st = this.style;
+		const stride = lerp( st.stride[ 0 ], st.stride[ 1 ], this.run ) * this.amp;
 		const dir = speed < - 0.05 ? - 1 : 1;
 		const airborne = !! jump?.airborne;
 		const jumpWeight = jump?.weight ?? 0;
 		const locomotion = 1 - jumpWeight;
 		if ( stride > 0.02 && ! airborne ) this.phase += dir * ( eff / ( 2 * Math.max( stride, 0.55 ) ) ) * TAU * dt * locomotion;
 
-		const lift = lerp( 0.32, 0.7, this.run ) * this.amp;
+		const lift = lerp( st.lift[ 0 ], st.lift[ 1 ], this.run ) * this.amp;
 		const stanceFrac = lerp( 0.6, 0.36, this.run );
 		const legs: Record<'R' | 'L', { step: number; up: number; pitch: number; toe: number }> = {} as Record<'R' | 'L', { step: number; up: number; pitch: number; toe: number }>;
 		for ( const [ S, off ] of [ [ 'R', 0 ], [ 'L', Math.PI ] ] as const ) {
@@ -103,17 +134,17 @@ export class CybertruckGait {
 		let w = ( ( this.phase / TAU ) % 0.5 + 0.5 ) % 0.5;
 		if ( ! Number.isFinite( w ) ) w = 0;
 		const flight = w >= stanceFrac ? ( w - stanceFrac ) / ( 0.5 - stanceFrac ) : - 1;
-		let air = flight >= 0 ? 4 * RUN_FLIGHT * run * flight * ( 1 - flight ) : 0;
-		let crouch = 0.1 + 0.12 * run
+		let air = flight >= 0 ? 4 * st.runFlight * run * flight * ( 1 - flight ) : 0;
+		let crouch = 0.1 + st.runCrouch * run
 			+ 0.03 * ( 1 - this.run ) * this.amp * ( 0.5 + 0.5 * Math.cos( 2 * this.phase ) )
-			+ ( flight < 0 ? RUN_COMPRESSION * run * Math.sin( Math.PI * w / stanceFrac ) : 0 );
-		const sway = Math.sin( this.phase ) * 0.06 * this.amp * locomotion;
+			+ ( flight < 0 ? st.runCompression * run * Math.sin( Math.PI * w / stanceFrac ) : 0 );
+		const sway = Math.sin( this.phase ) * st.sway * this.amp * locomotion;
 		this.lean = lerp( this.lean, clamp( speed * lerp( 1.3, 1.9, this.run ), - 4, 15 ), 1 - Math.exp( - dt * 3 ) );
 
 		const arms: Record<'R' | 'L', number> = {} as Record<'R' | 'L', number>, elbow: Record<'R' | 'L', number> = {} as Record<'R' | 'L', number>;
 		for ( const [ S, off ] of [ [ 'R', Math.PI ], [ 'L', 0 ] ] as const ) {
 
-			const sw = - Math.cos( this.phase + off ) * lerp( 16, 38, this.run ) * this.amp;
+			const sw = - Math.cos( this.phase + off ) * lerp( st.armSwing[ 0 ], st.armSwing[ 1 ], this.run ) * this.amp;
 			arms[ S ] = sw + 1.5 * Math.sin( this.time * 0.9 + off );
 			elbow[ S ] = - Math.max( 0, - sw ) * 0.7 - this.run * 55 * this.amp;
 
@@ -127,14 +158,14 @@ export class CybertruckGait {
 
 			// The jump owns the whole pose through touchdown; tuck is not a blend
 			// weight, otherwise the frozen stride reappears as the feet extend.
-			crouch = lerp( crouch, 0.1 + jump.crouch * JUMP_CROUCH, jumpWeight );
+			crouch = lerp( crouch, 0.1 + jump.crouch * st.jumpCrouch, jumpWeight );
 			lean = lerp( lean, this.lean * 0.35 + jump.crouch * 8 - jump.tuck * 3, jumpWeight );
 			const t = jump.tuck;
 			for ( const [ S, lead ] of [ [ 'R', 0.28 ], [ 'L', - 0.12 ] ] as const ) {
 
 				const leg = legs[ S ];
 				leg.step = lerp( leg.step, lead * t, jumpWeight );
-				leg.up = lerp( leg.up, JUMP_TUCK * t, jumpWeight );
+				leg.up = lerp( leg.up, st.jumpTuck * t, jumpWeight );
 				leg.pitch = lerp( leg.pitch, 0.15 * t, jumpWeight );
 				leg.toe = lerp( leg.toe, 0, jumpWeight );
 				// In the authoring frame negative shoulder pitch swings forward.

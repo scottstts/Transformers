@@ -13,6 +13,8 @@ export interface MotionState {
   steer: number
   spin: number
   throttle: number
+  /** boost held (Shift) in car form */
+  boost: boolean
   slip: number
   pitch: number
   roll: number
@@ -25,7 +27,7 @@ export function createMotionState(): MotionState {
   return {
     mode: 'car', target: 0, progress: 0,
     pos: new Vector3(), yaw: 0.6, speed: 0, yawRate: 0,
-    steer: 0, spin: 0, throttle: 0, slip: 0,
+    steer: 0, spin: 0, throttle: 0, boost: false, slip: 0,
     pitch: 0, roll: 0, pitchV: 0, rollV: 0, accel: 0,
   }
 }

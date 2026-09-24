@@ -1,26 +1,17 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { Box3, Euler, Matrix4, Quaternion, Vector3, type Mesh } from 'three/webgpu'
-import { decodeCybertruckAsset } from '../src/content/cybertruck/asset/loader.ts'
-import type { CybertruckManifest } from '../src/content/cybertruck/asset/format.ts'
-import { CybertruckModel } from '../src/content/cybertruck/model/transformer.ts'
-import { RobotRig, type GaitPose } from '../src/content/cybertruck/model/rig.ts'
-import { CybertruckGait } from '../src/content/cybertruck/animation/gait.ts'
-import { createMaterials } from '../src/content/cybertruck/materials.ts'
-import { buildCues } from '../src/content/cybertruck/effects.ts'
+import { RobotRig } from '../src/content/transformer/model/rig.ts'
+import { RobotGait } from '../src/content/transformer/animation/gait.ts'
+import { buildCues } from '../src/content/transformer/cues.ts'
+import { createCybertruck } from '../src/content/cybertruck/index.ts'
+import { AudioMix } from '../src/audio/mix.ts'
+import { NO_CONTACT, REST_GAIT, readAsset } from './support/assets.ts'
 import { Thrusters } from '../src/content/cybertruck/fx/thrusters.ts'
 import { RobotJump } from '../src/game/jump.ts'
 
-const manifest = JSON.parse(readFileSync('public/models/cybertruck.json', 'utf8')) as CybertruckManifest
-const binary = readFileSync('public/models/cybertruck.bin')
-const asset = decodeCybertruckAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength))
-const model = new CybertruckModel(asset, createMaterials())
-
-const REST_GAIT: GaitPose = {
-  legs: { R: { step: 0, up: 0, pitch: 0 }, L: { step: 0, up: 0, pitch: 0 } },
-  crouch: 0.1, sway: 0, arms: { R: 0, L: 0 }, elbow: { R: 0, L: 0 },
-  lean: 0, roll: 0, twist: 0, breath: 0, headYaw: 0, headPitch: 0, curl: 0.45,
-}
+const asset = readAsset('cybertruck')
+const manifest = asset.manifest
+const model = createCybertruck(asset, NO_CONTACT, new AudioMix()).model
 
 const worldMatrices = (): number[][] => model.root.children[0].children.map((node) => [...node.matrixWorld.elements])
 
@@ -126,7 +117,7 @@ describe('cybertruck transformation playback', () => {
 
 describe('cybertruck locomotion', () => {
   it('walks and runs on finite poses with footfalls and grounded feet', () => {
-    const gait = new CybertruckGait()
+    const gait = new RobotGait()
     let footfalls = 0
     let lowest = Infinity
     for (const [speed, running] of [[3.4, false], [7.5, true]] as const) {
@@ -144,7 +135,7 @@ describe('cybertruck locomotion', () => {
   })
 
   it('runs with a flight phase: both feet leave the ground between steps', () => {
-    const gait = new CybertruckGait()
+    const gait = new RobotGait()
     let flights = 0
     for (let frame = 0; frame < 300; frame++) {
       const pose = gait.update(1 / 60, 7.5, 0, true, true)
@@ -157,7 +148,7 @@ describe('cybertruck locomotion', () => {
   })
 
   it('jumps: the whole robot leaves the ground and lands back on its feet', () => {
-    const gait = new CybertruckGait()
+    const gait = new RobotGait()
     const jump = new RobotJump()
     jump.start()
     let highest = 0

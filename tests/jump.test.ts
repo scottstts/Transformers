@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CybertruckGait } from '../src/content/cybertruck/animation/gait'
+import { RobotGait } from '../src/content/transformer/animation/gait'
 import { RobotJump } from '../src/game/jump'
 
 describe('jump choreography', () => {
@@ -45,7 +45,7 @@ describe('jump choreography', () => {
   })
 
   it.each([0, 3.4, 7.5])('keeps shoulders, elbows and foot targets continuous when jumping at %f m/s', (speed) => {
-    const gait = new CybertruckGait()
+    const gait = new RobotGait()
     const jump = new RobotJump()
     const dt = 1 / 240
     let previous = gait.update(dt, speed, 0, speed > 4, true)

@@ -4,9 +4,11 @@ import { PerspectiveCamera, Scene, Vector3 } from 'three/webgpu'
 import { createHeadlessRenderer } from './headless'
 import { bakeEnvironment, configureRenderer, createPostPipeline } from '../../src/rendering/look'
 import { createDesertWorld } from '../../src/worlds/desert'
-import { createCybertruck } from '../../src/content/cybertruck'
-import { decodeCybertruckAsset } from '../../src/content/cybertruck/asset/loader'
-import type { CybertruckManifest } from '../../src/content/cybertruck/asset/format'
+import { rosterEntry } from '../../src/content/roster'
+import { decodeTransformerAsset } from '../../src/content/transformer/asset/loader'
+import type { TransformerManifest } from '../../src/content/transformer/asset/format'
+import type { Character } from '../../src/content/transformer/character'
+import { AudioMix } from '../../src/audio/mix'
 import { createMotionState } from '../../src/game/types'
 import { updateCar } from '../../src/game/movement'
 
@@ -19,7 +21,7 @@ type Shot = (ctx: Stage) => Promise<void> | void
 interface Stage {
   scene: Scene
   camera: PerspectiveCamera
-  player: ReturnType<typeof createCybertruck>
+  player: Character
   world: ReturnType<typeof createDesertWorld>
   state: ReturnType<typeof createMotionState>
   step: (T: number) => void
@@ -43,13 +45,13 @@ const drive = (steer: (frame: number) => number, from: [number, number, number],
   for (let i = 0; i < 300; i++) {
     input.driveThrottle = i < 260 ? 0.6 : -1
     input.driveSteering = steer(i)
-    updateCar(s.state, input, DT, false)
+    updateCar(s.state, input, DT, false, s.player.profile.drive)
     s.step(0)
     path.push([s.state.pos.x, s.state.pos.z, s.state.yaw])
   }
   input.driveThrottle = 0
   for (let i = 0; i < 480; i++) {
-    updateCar(s.state, input, DT, false)
+    updateCar(s.state, input, DT, false, s.player.profile.drive)
     s.step(0)
   }
   const [x, z, yaw] = path[path.length - 60]
@@ -72,21 +74,23 @@ const SHOTS: Record<string, Shot> = {
   'tracks-top': drive((i) => (i > 80 && i < 220 ? 0.3 : 0), [0, 14, -2], [0, 0, 2]),
 }
 
-export async function renderShots(outDir: string, names: string[]): Promise<void> {
+/** `car`: a roster id (default: the first car). */
+export async function renderShots(outDir: string, names: string[], car: string | null = null): Promise<void> {
   mkdirSync(outDir, { recursive: true })
-  const manifest = JSON.parse(readFileSync('public/models/cybertruck.json', 'utf8')) as CybertruckManifest
-  const bin = readFileSync('public/models/cybertruck.bin')
-  const asset = decodeCybertruckAsset(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength))
+  const entry = rosterEntry(car)
+  const manifest = JSON.parse(readFileSync(`public/models/${entry.id}.json`, 'utf8')) as TransformerManifest
+  const bin = readFileSync(`public/models/${entry.id}.bin`)
+  const asset = decodeTransformerAsset(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength), entry.label)
   const { renderer, capture } = await createHeadlessRenderer(WIDTH, HEIGHT)
   for (const name of names.length ? names : Object.keys(SHOTS)) {
     const shot = SHOTS[name]
     if (!shot) throw new Error(`unknown shot ${name}; known: ${Object.keys(SHOTS).join(', ')}`)
     const scene = new Scene()
     const world = createDesertWorld(scene)
-    const player = createCybertruck(asset, world.contactEffects)
+    const player = entry.create(asset, world.contactEffects, new AudioMix())
     const camera = new PerspectiveCamera(42, WIDTH / HEIGHT, 0.1, 6000)
     configureRenderer(renderer)
-    scene.add(player.model.root, player.effects.thrusters.object)
+    scene.add(player.model.root, player.effects.object)
     bakeEnvironment(renderer, scene, world.environmentScene())
     const pipeline = createPostPipeline(renderer, scene, camera)
     const state = createMotionState()

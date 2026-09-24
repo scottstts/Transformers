@@ -1,6 +1,6 @@
 # Cybertruck audio
 
-All sound is synthesized with Web Audio (`src/content/cybertruck/audio/`).
+All sound is synthesized with Web Audio (`src/content/cybertruck/audio/`) on the game's shared mix (`src/audio/mix.ts`). The actuator machine and the footfall voice are shared with other characters (`src/content/transformer/audio/`); the Cybertruck plays them with the `HEAVY_MACHINE` and `HEAVY_FOOT` tunings.
 
 ## Transformation
 
@@ -33,4 +33,4 @@ Driving plays only a plain electric drive motor: a soft hum following road speed
 
 ## Mix and textures
 
-Textures (noise, chatter, roar, crackle) are rendered once at start-up. Continuous loops are generated past their end and crossfaded so they don't click. The mix goes through a compressor, a gentle air lowpass and an outdoor space: a ground reflection, sparse early reflections and a short dark tail.
+Textures (noise, chatter, roar, crackle) are rendered once when the shared mix starts. Continuous loops are generated past their end and crossfaded so they don't click. The mix goes through a compressor, a gentle air lowpass and an outdoor space: a ground reflection, sparse early reflections and a short dark tail.

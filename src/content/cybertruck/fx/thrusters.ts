@@ -1,5 +1,5 @@
 import { Group, PointLight, Vector3, type Object3D } from 'three/webgpu'
-import type { CybertruckModel } from '../model/transformer'
+import type { TransformerModel } from '../../transformer/model/transformer'
 import { ImpingementSheet, PlasmaJet, jetLength } from './plasma'
 
 /**
@@ -47,7 +47,7 @@ export class Thrusters {
   private readonly side = new Vector3()
   private time = 0
 
-  constructor(model: CybertruckModel) {
+  constructor(model: TransformerModel) {
     this.chest = model.node('bone:chest')
     for (const jet of this.jets) this.object.add(jet.mesh)
     this.object.add(this.sheet.mesh, this.light)
