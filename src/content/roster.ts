@@ -9,9 +9,7 @@ import { F1_LABEL, createF1, loadF1Asset } from './ferrari-f1'
 export interface RosterEntry {
   id: string
   label: string
-  /** one line: what the car is and what it becomes */
-  tagline: string
-  /** accent colour of its menu card (CSS) */
+  /** accent colour under its name in the vehicle menu (CSS) */
   accent: string
   load(): Promise<TransformerAsset>
   create(asset: TransformerAsset, contactEffects: ContactEffects, mix: AudioMix): Character
@@ -21,7 +19,6 @@ export const ROSTER: readonly RosterEntry[] = [
   {
     id: 'cybertruck',
     label: CYBERTRUCK_LABEL,
-    tagline: 'Stainless pickup · heavy robot on lift thrusters',
     accent: '#b8bcc0',
     load: loadCybertruckAsset,
     create: createCybertruck,
@@ -29,7 +26,6 @@ export const ROSTER: readonly RosterEntry[] = [
   {
     id: 'ferrari-f1',
     label: F1_LABEL,
-    tagline: 'SF-25 racer · agile robot that sits up and rises',
     accent: '#c8102e',
     load: loadF1Asset,
     create: createF1,

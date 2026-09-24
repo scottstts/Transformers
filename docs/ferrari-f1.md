@@ -66,7 +66,7 @@ Everything must sound like a recording of the real thing: no percussive, novelty
   - **Gearbox (`Gearbox`):** 8 speeds, upshift at 11 600 rpm with an 18 ms torque dip (no clunk), rev-matched downshifts, launch revs from clutch slip.
   - **Idle:** hunts slightly around 4 800 rpm.
   - **Start and stop:** it starts with a rev flare the first time audio runs and whenever the car re-forms, and it runs down as the transformation begins. No pops or crackles.
-- **Transformation:** the shared actuator machine tuned as fast carbon-racer servos (`RACER_SERVOS`): higher motor pitch, finer gear mesh, a lighter supply hum.
+- **Transformation:** the shared machine (see cybertruck-audio.md) as a racer would build it (`RACER_MACHINE`): smaller, quicker drives (still low: a 220 Hz top whirr) with a faster ratchet, a small fast pump, and a stiff, well-damped carbon monocoque. Its panel modes are higher and die away quickly, so its seats are drier than the truck's. It is heard through a 2 kHz distance lowpass.
 - **Footfall:** the shared voice tuned for a lighter robot (`RACER_FOOT`).
 
 ## Build issues found at export (left as authored)
