@@ -16,14 +16,16 @@ from .kit import V
 
 # ------------------------------------------------------------------ datums
 NOSE, TAIL = 2.84, -2.84          # front / rear faces (forward coordinate)
-APEX = 0.10                       # roof apex (windshield / roof glass break)
-Z_NOSE, Z_APEX, Z_TAIL = 1.06, 1.80, 1.42
+APEX = 0.32                       # roof apex (windshield / roof glass break), ~43 % of the length from the nose
+Z_NOSE, Z_APEX, Z_TAIL = 1.06, 1.80, 1.34
 X_NOSE, X_APEX, X_TAIL = 0.93, 0.665, 0.82   # roof-edge half widths
 XS = 1.0                          # side plane half width
 FA, RA = 1.95, -1.86              # axle stations
 WR, WX = 0.445, 0.86              # wheel radius, wheel centre half track
 A_BASE = 1.22                     # cowl / A-pillar base station
-B_SEAM = 0.05                     # B-pillar seam station
+B_SEAM = 0.05                     # B-pillar seam station (also the roof glass split)
+WS_BASE = 2.00                    # windshield base / cowl station, just ahead of the front axle (short hood)
+WS_SPLIT = 1.40                   # windshield split: upper glass rides the thigh, lower glass the shin
 R_SEAM = -0.98                    # rear door / quarter seam station at the belt
 R_SEAM_TOP = -0.92                # ... at the roof edge
 F_SEAM_TOP = 1.04                 # front door leading edge at the roof edge
@@ -31,13 +33,15 @@ VAULT = -0.95                     # roof glass / vault cover break
 LOW = 0.63                        # lower body crease
 SILL = 0.50                       # bottom of the side skin
 BAND = 0.045                      # lower band inset at the sill
-BELT_NOSE, BELT_A, BELT_TAIL = 1.00, 1.17, 1.30
+BELT_NOSE, BELT_A, BELT_TAIL = 1.00, 1.17, 1.34   # the sail facet closes at the tail: full-width rear top edge
 NOSE_SPLIT = 0.50                 # toe cap / foot guard split of the nose, bumper and light bar
 COWL = 0.09                       # black cowl strip between windshield and hood
 NOSE_CUT = 0.03                   # nose / hood seam distance behind the front face
 FASCIA_BOTTOM = 0.80              # steel fascia / front bumper split
-TAILGATE_BOTTOM = 0.63
-LIGHTBAR_BOTTOM, LIGHTBAR_TOP = 1.19, 1.31
+TAILGATE_BOTTOM = 0.72            # rear face 0.62 m tall
+REAR_RAKE = 0.13                  # rear face leans back 7.4 deg (bottom edge 8 cm ahead of the top): the most the folded helmet clears
+LIGHTBAR_BOTTOM, LIGHTBAR_TOP = 1.215, 1.32   # light band right under a 2 cm steel lip
+LIGHTBAR_GROOVE = (1.2495, 1.2855)   # LED channel in the light band
 G = 0.0025                        # half reveal (panel gap 5 mm)
 SKIN = 0.028                      # stamped steel skin
 GLASS = 0.012
@@ -46,6 +50,23 @@ ARCH_HW, ARCH_LEG, ARCH_TW, ARCH_TOP = 0.63, 0.61, 0.38, 0.985   # opening hexag
 FLARE_W = FA - ARCH_HW - (A_BASE + 2 * G)   # cladding band round the opening: its rear edge keeps the door reveal
 BUMPER_F = FA + ARCH_HW + FLARE_W + 0.003         # front bumper / fender lower edge meets the flare
 REAR_BUMPER_F = RA - ARCH_HW - FLARE_W - 0.003
+TAIL_CLEAR = TAIL + 0.16          # first surface ring ahead of the raked rear face (clears its foot at the sill)
+
+
+def rear_face_f(z):
+    """Forward station of the raked rear face at height z."""
+    return TAIL + (Z_TAIL - z) * REAR_RAKE
+
+
+def rear_face_region(z0, z1, depth=0.04):
+    """Side-view (f, z) region behind the rear face plane + depth, z0..z1 (vertical above the tail top)."""
+    poly = [(-3.5, z0), (rear_face_f(z0) + depth, z0)]
+    if z1 > Z_TAIL:
+        poly += [(TAIL + depth, Z_TAIL), (TAIL + depth, z1)]
+    else:
+        poly.append((rear_face_f(z1) + depth, z1))
+    return poly + [(-3.5, z1)]
+
 
 
 def ztop(f):
@@ -82,8 +103,10 @@ def arch_opening(a):
 # ----------------------------------------------------------------- surface
 
 def f_samples(step=0.09):
-    breaks = [TAIL, R_SEAM, VAULT, B_SEAM, APEX, A_BASE, NOSE]
-    out = []
+    # the tail ring is sheared onto the raked rear face; the next ring must lie ahead of its foot
+    assert rear_face_f(SILL) < TAIL_CLEAR
+    breaks = [TAIL_CLEAR, R_SEAM, VAULT, B_SEAM, APEX, A_BASE, NOSE]
+    out = [TAIL]
     for i in range(len(breaks) - 1):
         a, b = breaks[i], breaks[i + 1]
         n = max(1, int(math.ceil((b - a) / step)))
@@ -101,7 +124,7 @@ def section(f):
 
 def outer_surface():
     fs = f_samples()
-    rings = [[V(x, f, z) for (x, z) in section(f)] for f in fs]
+    rings = [[V(x, rear_face_f(z) if f == TAIL else f, z) for (x, z) in section(f)] for f in fs]
     verts, faces = kit.loft(rings, cap_start=False, cap_end=False, close=False)
     n = len(rings[0])
     # front / rear faces close each end (bottom edge left open like the sides)

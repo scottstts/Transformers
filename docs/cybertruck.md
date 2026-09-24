@@ -3,7 +3,7 @@
 The car, the robot and the transformation between them are authored procedurally in Blender (`blender/cybertruck_build/`, package `ctb`) and exported as one asset, `public/models/cybertruck.{json,bin}`. The game replays that asset; it does not build geometry. Rebuild and export with:
 
 ```bash
-/Applications/Blender.app/Contents/MacOS/Blender -b blender/cybertruck-transformer.blend --python blender/cybertruck_build/export_game.py
+/Applications/Blender.app/Contents/MacOS/Blender -b --python blender/cybertruck_build/export_game.py
 ```
 
 The export also saves `blender/cybertruck-transformer-baked.blend` with the timeline keyed (240 frames = T 0..1) for scrubbing.
@@ -11,6 +11,25 @@ The export also saves `blender/cybertruck-transformer-baked.blend` with the time
 ## Frames
 
 Authoring frame: x = robot left, -y = forward, z = up, metres. The runtime keeps it and applies one -90° X rotation into three.js (y up, +z forward). The robot stands where its ankles lay in the truck: `rig.dims.robotF` (2.10 m ahead of the car origin) is the gameplay `robotOffset`. The duration (8 s) comes from the asset.
+
+## Body proportions
+
+Datums live in `ctb/car_body.py`. Overall dimensions follow the production truck: 5.68 m long, 3.81 m wheelbase, 1.80 m tall. `refs/ref_images/cybertruck3.jpeg` is the 2019 prototype blueprint (231.7 in long, 75 in tall). Use it for station ratios measured from the axles, not for absolute sizes.
+
+- **Top line:** the apex sits about 43 % of the length back from the nose, just ahead of the B-pillar. The front deck is steeper and shorter than the rear deck.
+- **Windshield and hood:** the windshield base (`WS_BASE`) sits just ahead of the front axle, so the hood is short. The glass is split at `WS_SPLIT`. The upper part is sized for the thigh plate; the lower part, cowl, hood and wipers form one shin plate, about as long as the old hood. There is one wiper per half because the halves go to separate legs.
+- **Roof glass:** split at the B-pillar line (`B_SEAM`). The piece ahead of the pillar would make the forearm plate longer than the forearm.
+- **Tail:** the top edge is at 1.34 m, and the belt meets it there. The sail facet closes to a point, so the rear top edge runs horizontally at full width.
+- **Rear face:** 0.62 m of steel (0.72–1.34 m), topped by the light band and a 2 cm steel lip. It is raked 7.4° (`REAR_RAKE`), bottom edge forward; that is the most the folded robot's helmet clears (the blueprint shows about 9°). The tail surface ring is sheared onto this plane, so the rear panels are cut with side-view regions (`rear_face_region`), not top-view strips.
+- **Rear bumper:** a black wedge raked parallel to the rear face, standing 5 cm proud of the tailgate's foot. Its underside rises toward the tail. It has a hidden pocket in its inboard top for the folded helmet.
+- **Tailgate hub:** `TG_HUB` sits behind the light band. `TG_HINGE` is derived from `TG_HUB_SWUNG`, so moving the hub never changes where the lid lands in robot mode.
+- **Door seams and wheel arches** stay as they are. The front door seam is tied to the front flare width, so moving it means reshaping the arch.
+
+## Robot head
+
+- **Neck joint:** a chrome ball on the neck column, centred on the head pivot. The head's socket has a spherical cavity 4 mm clear of the ball, so the joint stays visibly closed at any head pitch. The socket rim sits 1.8 cm above the column, which allows ±8° of pitch.
+- **Helmet details:** a dark crown band at brow height, a brow hood pitched 7° down over the visor, and bolt circles on the ears. There are vented, bolted plates on the flank and back facets. `facet_frame` shears these plates onto the flat helmet facet between two stations, so they sit flush at any height.
+- **Fold limits:** the head retracts into the chest's head well at the fold. Keep additions within the plan limits in `robot_head.py`, and keep the crown low: the crown faces the tailgate at the fold.
 
 ## Asset and runtime
 

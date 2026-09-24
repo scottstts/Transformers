@@ -4,7 +4,7 @@ from mathutils import Vector, Matrix
 from . import kit
 from . import car_body as B
 from .kit import V
-from .car_body import (NOSE, TAIL, XS, FA, RA, WR, WX, A_BASE, belt, ztop, xtop, ARCH_HW, ARCH_LEG, ARCH_TW,
+from .car_body import (NOSE, XS, FA, RA, WR, WX, belt, ztop, xtop, ARCH_HW, ARCH_LEG, ARCH_TW,
                        ARCH_TOP, FLARE_W, FASCIA_BOTTOM, TAILGATE_BOTTOM, SILL, BAND, G)
 
 GROUND_Z = 0.36          # lowest body line (rocker / bumper bottoms)
@@ -148,17 +148,27 @@ def front_bumper(S, s, coll):
 
 
 def rear_bumper(S, s, coll):
+    """Black rear bumper half: a raked wedge standing 5 cm proud of the tailgate's foot, its underside
+    rising from the wheel arch to the tail."""
     f_front = B.REAR_BUMPER_F
-    ft = TAIL - 0.05
+    z_top, z_low = TAILGATE_BOTTOM - G, 0.48
+    ft = B.rear_face_f(TAILGATE_BOTTOM) - 0.05             # rearmost edge (top)
+    face = lambda z: ft + (z_top - z) * B.REAR_RAKE         # raked parallel to the rear face
     top = [(G, ft), (XS - 0.06, ft), (XS + 0.004, ft + 0.08), (XS + 0.004, f_front), (G, f_front)]
-    side = [(ft, 0.40), (ft + 0.1, GROUND_Z), (f_front, GROUND_Z), (f_front, TAILGATE_BOTTOM - G), (ft, TAILGATE_BOTTOM - G)]
+    side = [(face(z_low), z_low), (f_front, GROUND_Z), (f_front, z_top), (ft, z_top)]
     o = block(top if s > 0 else B.mirror_poly_x(top), side, 'plastic', 'rbumper.' + S, coll)
     sx = lambda x0, x1: (min(s * x0, s * x1), max(s * x0, s * x1))
-    plate = B.side_prism([(ft - 0.1, 0.43), (ft + 0.018, 0.43), (ft + 0.018, 0.58), (ft - 0.1, 0.58)], *sx(0.012, 0.17), shrink=0)
-    refl = B.side_prism([(ft - 0.1, 0.545), (ft + 0.012, 0.545), (ft + 0.012, 0.577), (ft - 0.1, 0.577)], *sx(0.76, 0.92), shrink=0)
-    kit.cut(o, plate, refl)
+    recess = lambda z0, z1, d: [(ft - 0.1, z0), (face(z0) + d, z0), (face(z1) + d, z1), (ft - 0.1, z1)]
+    plate = B.side_prism(recess(0.525, 0.675, 0.018), *sx(0.012, 0.17), shrink=0)
+    refl = B.side_prism(recess(0.61, 0.642, 0.012), *sx(0.76, 0.92), shrink=0)
+    # hidden pocket in the inboard top behind a 6 cm outer wall: the folded robot's helmet sits there
+    pocket = [(-0.01, ft + 0.06), (0.34, ft + 0.06), (0.34, f_front + 0.1), (-0.01, f_front + 0.1)]
+    pocket = B.top_prism(pocket if s > 0 else B.mirror_poly_x(pocket), 0.595, 1.0, shrink=0)
+    kit.cut(o, plate, refl, pocket)
     b = kit.Builder()
-    b.add_mesh(kit.box((0.144, 0.013, 0.024), (s * 0.84, -(ft + 0.0055), 0.561)), 'reflector')
+    zr = 0.626
+    M = Matrix.Translation(V(s * 0.84, face(zr) + 0.0055, zr)) @ Matrix.Rotation(-math.atan(B.REAR_RAKE), 4, 'X')
+    b.add_mesh(kit.box((0.144, 0.013, 0.024), M=M), 'reflector')
     kit.append_builder(o, b)
     kit.finish(o, 0.005, 2, 30)
     return [o]
@@ -189,8 +199,10 @@ def front_lightbar(nose_objs, S, s, coll):
 
 def rear_lightbar(coll):
     b = kit.Builder()
-    # LED lens seated in the light-band groove (groove floor at TAIL + 0.004), 1 mm proud
-    b.add_mesh(kit.box((1.89, 0.005, 0.026), (0.0, -(TAIL + 0.004 - 0.0025), 1.247)), 'lightRed')
+    # LED lens seated in the light-band groove (floor 4 mm into the raked face), 1 mm proud
+    z = sum(B.LIGHTBAR_GROOVE) / 2
+    M = Matrix.Translation(V(0.0, B.rear_face_f(z) + 0.0015, z)) @ Matrix.Rotation(-math.atan(B.REAR_RAKE), 4, 'X')
+    b.add_mesh(kit.box((1.89, 0.005, 0.026), M=M), 'lightRed')
     o = b.build('taillight', coll)
     kit.finish(o, 0.002, 1, 30)
     return o
@@ -224,12 +236,14 @@ def mirror(S, s, coll):
     return o
 
 
-def wiper(coll):
-    """Single wiper parked along the windshield base, pivoting on the cowl (right half)."""
+def wiper(S, s, coll):
+    """Wiper parked along the windshield base, pivoting on the cowl near the outer edge.
+    One per half: each lower windshield half rides its own shin, and the blade stays inside it."""
     slope = (B.Z_APEX - B.Z_NOSE) / (NOSE - B.APEX)
     n = Vector((0, -slope, 1)).normalized()          # front deck: z = c + slope * Y
-    pivot = V(-0.62, A_BASE + B.COWL / 2, ztop(A_BASE + B.COWL / 2))
-    tip = V(0.56, A_BASE - 0.11, ztop(A_BASE - 0.11))
+    f_piv, f_tip = B.WS_BASE + B.COWL / 2, B.WS_BASE - 0.10
+    pivot = V(s * 0.66, f_piv, ztop(f_piv))
+    tip = V(s * 0.07, f_tip, ztop(f_tip))
     d = (tip - pivot)
     d = d - n * d.dot(n)
     L = d.length
@@ -240,7 +254,7 @@ def wiper(coll):
                            M=kit.frame_from(pivot, (1, 0, 0), n) @ Matrix.Rotation(-math.pi / 2, 4, 'X')), 'graphite')
     b.add_mesh(kit.box((L - 0.02, 0.016, 0.02), ((L + 0.02) / 2, 0.003 + 0.008, 0.0), M=M), 'plastic')
     b.add_mesh(kit.box((L * 0.62, 0.012, 0.016), (L * 0.31, 0.019 + 0.006, 0.0), M=M), 'graphite')
-    o = b.build('wiper', coll)
+    o = b.build('wiper.' + S, coll)
     kit.finish(o, 0.002, 1, 30)
     return o
 
@@ -311,8 +325,8 @@ def build(coll, body):
             parts[o.name] = o
         parts['marker.' + S] = side_marker('marker.' + S, s, NOSE - 0.16, 'lightAmber', coll)
         parts['mirror.' + S] = mirror(S, s, coll)
+        parts['wiper.' + S] = wiper(S, s, coll)
     parts['taillight'] = rear_lightbar(coll)
-    parts['wiper'] = wiper(coll)
     for S, s in (('L', 1), ('R', -1)):
         for axle, f in (('F', FA), ('R', RA)):
             w = tyre_and_wheel('wheel%s.%s' % (axle, S), coll)
