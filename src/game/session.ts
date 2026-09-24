@@ -11,6 +11,9 @@ import { advanceTransformation, isTransforming, requestTransformation, resolveCi
 import { createMotionState, type Form } from './types'
 import { RobotJump } from './jump'
 
+/** Frames rendered behind the switch cover before the new car is revealed. */
+const SWITCH_SETTLE_FRAMES = 3
+
 export class GameSession {
   readonly scene = new Scene()
   readonly camera: PerspectiveCamera
@@ -27,6 +30,9 @@ export class GameSession {
   /** characters built so far (their GPU resources stay warm for switching back) */
   private readonly built = new Map<string, Character>()
   private switching: string | null = null
+  private standing = false
+  /** called when the robot comes to stand or leaves it (car form, transforming); for UI such as the touch jump button */
+  onStandingChange: ((standing: boolean) => void) | null = null
   private readonly timer = new Timer()
   private readonly jump = new RobotJump()
   private readonly up = new Vector3(0, 1, 0)
@@ -48,6 +54,7 @@ export class GameSession {
     bakeEnvironment(renderer, this.scene, this.environment.environmentScene())
 
     this.cameraRig = new FollowCamera(this.camera, renderer.domElement, this.state.yaw, this.character.robotOffset, this.character.profile.camera)
+    this.cameraRig.showSide(this.state.yaw)
     this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.audio.resume())
     this.pipeline = createPostPipeline(renderer, this.scene, this.camera)
     this.cameraRig.update(1 / 60, this.state, this.character.model.root)
@@ -55,7 +62,7 @@ export class GameSession {
   }
 
   selectForm(form: Form): void {
-    if (this.jump.active) return
+    if (this.jump.active || this.switching) return
     requestTransformation(this.state, form)
   }
 
@@ -75,14 +82,19 @@ export class GameSession {
 
   /**
    * Swap in another car where the current one stands, in the same form. Its
-   * asset downloads once; its shaders compile against this scene's lighting
-   * before it appears, so the swap itself does not hitch. Resolves false if
-   * the swap was no longer possible once the car was ready.
+   * asset downloads once; its shaders compile against this scene's lighting.
+   * While it loads, controls are locked and the audio output is held silent
+   * (the UI covers the screen). The swap then happens behind that cover, and
+   * the promise resolves only once the GPU has finished the new car's first
+   * frames (first-use uploads and pipelines), so picture and sound return
+   * together. Resolves false if the swap was no longer possible once the car
+   * was ready.
    */
   async switchCharacter(entry: RosterEntry): Promise<boolean> {
     if (entry.id === this.character.id) return true
     if (this.switching) return false
     this.switching = entry.id
+    this.audio.hold(true)
     try {
       let next = this.built.get(entry.id)
       if (!next) {
@@ -94,10 +106,19 @@ export class GameSession {
       }
       if (!this.canSwitch) return false
       this.swap(next)
+      await this.settleFrames(SWITCH_SETTLE_FRAMES)
       return true
     } finally {
       this.switching = null
+      this.audio.hold(false)
     }
+  }
+
+  /** Let the render loop draw `frames` frames, then wait until the GPU has finished them. */
+  private async settleFrames(frames: number): Promise<void> {
+    for (let i = 0; i < frames; i++) await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()) })
+    const device = (this.renderer.backend as { device?: GPUDevice }).device
+    if (device) await device.queue.onSubmittedWorkDone()
   }
 
   frame(): void {
@@ -142,9 +163,15 @@ export class GameSession {
     const state = this.state
     const { model, gait, effects, profile } = this.character
     const previous = advanceTransformation(state, dt, this.character.transformationDuration)
-    const busy = isTransforming(state)
+    // a car switch in progress locks the controls, as a transformation does
+    const busy = isTransforming(state) || this.switching !== null
     if (this.input.consumeJump() && !busy && state.mode === 'robot' && state.progress >= 1) this.jump.start()
     const jump = this.jump.update(dt)
+    const standing = state.mode === 'robot' && state.progress >= 1
+    if (standing !== this.standing) {
+      this.standing = standing
+      this.onStandingChange?.(standing)
+    }
     if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive)
     else updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)
     resolveCircleCollisions(state, this.world.colliders, this.character.robotOffset, profile)

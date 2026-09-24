@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { fog, densityFogFactor, color, positionWorld, float, mix, smoothstep } from 'three/tsl';
-import { skyMaterial, groundMaterial, rockMaterial, SKY } from './materials.ts';
+import { skyMaterial, groundMaterial, rockMaterial, hazeColor, viewDirection, SKY } from './materials.ts';
 import type { CircleCollider } from '../../game/types';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 
 interface RockItem {
 	x: number; z: number; r: number;
@@ -33,27 +34,47 @@ function rng( seed ) {
 
 }
 
+/**
+ * A weathered stone: a lumpy ellipsoid (two octaves of per-direction
+ * displacement, so shared vertices stay welded) broken by a few fracture
+ * planes that flatten it into the broad facets of split rock.
+ */
 function rockGeometry( r, seed, detail = 1 ) {
 
 	const g = new THREE.IcosahedronGeometry( 1, detail );
 	const rand = rng( seed );
 	const pos = g.attributes.position;
 	const v = new THREE.Vector3();
-	// deterministic per-direction displacement so shared vertices stay welded
-	const k = [ rand() * 10, rand() * 10, rand() * 10 ];
+	const k = [ rand() * 10, rand() * 10, rand() * 10, rand() * 10 ];
+	const cuts: { n: THREE.Vector3; d: number }[] = [];
+	for ( let c = 0; c < 5; c ++ ) {
+
+		const n = new THREE.Vector3( rand() - 0.5, ( rand() - 0.3 ) * 0.8, rand() - 0.5 ).normalize();
+		cuts.push( { n, d: 0.62 + rand() * 0.22 } );
+
+	}
+
 	for ( let i = 0; i < pos.count; i ++ ) {
 
 		v.fromBufferAttribute( pos, i );
 		const n = Math.sin( v.x * 3.1 + k[ 0 ] ) * Math.sin( v.y * 2.7 + k[ 1 ] ) * Math.sin( v.z * 3.3 + k[ 2 ] );
-		v.multiplyScalar( 1 + n * 0.28 );
+		const n2 = Math.sin( v.x * 7.3 + k[ 3 ] ) * Math.sin( v.y * 8.1 + k[ 0 ] ) * Math.sin( v.z * 6.7 + k[ 1 ] );
+		v.multiplyScalar( 1 + n * 0.26 + n2 * 0.07 );
+		for ( const cut of cuts ) {
+
+			const over = v.dot( cut.n ) - cut.d;
+			if ( over > 0 ) v.addScaledVector( cut.n, - over );
+
+		}
+
 		v.y *= 0.62;
 		pos.setXYZ( i, v.x * r, v.y * r, v.z * r );
 
 	}
 
 	g.deleteAttribute( 'uv' );
-	g.computeVertexNormals();
-	return g;
+	// hard edges where fracture faces meet, smooth shading across the lumpy weathered parts
+	return toCreasedNormals( g, THREE.MathUtils.degToRad( 38 ) );
 
 }
 
@@ -75,8 +96,8 @@ export class DesertWorld {
 		this.instanceMatrix = new THREE.Matrix4();
 		this.instancePosition = new THREE.Vector3();
 
-		// fog: exponential-squared haze tinted to the horizon
-		scene.fogNode = fog( color( SKY.horizon ).mul( 0.97 ), densityFogFactor( float( 0.0016 ) ) );
+		// fog: exponential-squared haze in the same view-dependent colour as the sky's horizon
+		scene.fogNode = fog( hazeColor( viewDirection() ), densityFogFactor( float( 0.0013 ) ) );
 
 		// sky dome follows the camera
 		this.sky = new THREE.Mesh( new THREE.SphereGeometry( 4000, 48, 24 ), skyMaterial() );
@@ -152,9 +173,9 @@ export class DesertWorld {
 			g.setIndex( idx );
 			g.computeVertexNormals();
 			const m = new THREE.MeshBasicNodeMaterial( { side: THREE.DoubleSide, fog: false } );
-			// aerial perspective: blend toward horizon haze with height
+			// aerial perspective: blend toward the horizon haze with height
 			const t = smoothstep( float( - 20 ), float( L.h ), positionWorld.y );
-			m.colorNode = mix( color( SKY.horizon ), color( L.col ), t.mul( 0.5 ).add( 0.35 ) );
+			m.colorNode = mix( hazeColor( viewDirection() ), color( L.col ), t.mul( 0.5 ).add( 0.35 ) );
 			const mesh = new THREE.Mesh( g, m );
 			mesh.frustumCulled = false;
 			this.far.add( mesh );
@@ -208,8 +229,8 @@ export class DesertWorld {
 		};
 
 		make( 2400, 160, 0.03, 0.22, 0, 11, false );
-		make( 240, 420, 0.25, 1.1, 1, 21, false );
-		make( 36, 900, 2.5, 7.5, 2, 41, true );
+		make( 240, 420, 0.25, 1.1, 2, 21, false );
+		make( 36, 900, 2.5, 7.5, 3, 41, true );
 
 	}
 

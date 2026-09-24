@@ -1,21 +1,101 @@
-:root { color-scheme: dark; font-family: system-ui, sans-serif; }
+:root { color-scheme: dark; font-family: system-ui, sans-serif; --ink: #2b2724; --ember: #c4562c; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
 * { box-sizing: border-box; }
-html, body, #app { margin: 0; width: 100%; height: 100%; overflow: hidden; }
-body { background: #cbbfae; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
+/* pinned to the viewport: the canvas always covers it, whatever the document does */
+#app { position: fixed; inset: 0; }
+body { background: #cbbfae; -webkit-tap-highlight-color: transparent; }
+body.touch { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #app canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-.veil { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: #d7ccbd; color: #494541; transition: opacity 0.6s ease, visibility 0s 0.6s; }
-#boot-status { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; }
-body.ready .veil { opacity: 0; visibility: hidden; }
-body.failed .veil { background: #171b1e; color: #f3eee7; }
-body.failed #boot-status { display: grid; gap: 16px; width: min(100%, 620px); padding: 30px; text-transform: none; letter-spacing: 0; line-height: 1.5; }
-body.failed #boot-status strong { font-size: 20px; font-weight: 600; }
-body.failed #boot-status span { overflow-wrap: anywhere; color: #d9c9b8; }
-body.failed #boot-status small { color: #9caaa8; font: 12px/1.5 ui-monospace, monospace; }
 
-/* vehicle menu: a carousel of names on a glass bar over the paused game */
-.garage { position: fixed; inset: 0; z-index: 20; display: grid; place-items: end center; padding: 16px 16px max(32px, 7vh); background: linear-gradient(to top, rgba(12, 13, 15, 0.46), rgba(12, 13, 15, 0) 55%); touch-action: pan-y; }
-.garage[hidden] { display: none; }
-.garage-panel { --item: 250px; --accent: #f3eee7; position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; width: min(620px, 100%); padding: 16px 14px 20px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px; background: rgba(20, 22, 25, 0.66); backdrop-filter: blur(20px) saturate(1.25); -webkit-backdrop-filter: blur(20px) saturate(1.25); color: #f3eee7; box-shadow: 0 20px 56px rgba(0, 0, 0, 0.38); user-select: none; animation: garage-in 0.2s ease-out; }
+/* ── entry: a sun rising over a drawn ridge line while the game boots ─────────────── */
+@property --cut { syntax: "<length>"; inherits: false; initial-value: 12px; }
+.veil { --progress: 0; position: fixed; inset: 0; z-index: 30; display: grid; justify-items: center; align-content: start; padding: max(9vh, env(safe-area-inset-top)) 20px max(22px, env(safe-area-inset-bottom)); overflow: hidden; color: var(--ink); transition: opacity 0.8s ease, visibility 0s 0.8s; }
+/* once ready, the drawing dissolves to a broadside of the car; light haze at the top and foot keeps the type legible and leaves the car clear */
+.veil::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(234, 226, 214, 0.62), rgba(234, 226, 214, 0.2) 40%, rgba(234, 226, 214, 0) 52%, rgba(234, 226, 214, 0) 82%, rgba(234, 226, 214, 0.42)); }
+.veil-sky { position: absolute; inset: 0; background: linear-gradient(#c2c6c5, #d6d0c4 46%, #e5d7c3 70%, #dccab2); transition: opacity 1.6s ease; }
+.veil-sun { position: absolute; left: 64%; bottom: 30vh; width: 34vmin; aspect-ratio: 1; margin: 0 0 -17vmin -17vmin; border-radius: 50%; background: radial-gradient(circle, #fffaf1 0 12.5%, rgba(255, 244, 223, 0.88) 14%, rgba(255, 236, 206, 0.36) 31%, rgba(255, 230, 196, 0) 68%); transform: translateY(calc((1 - var(--progress)) * 27vh)); transition: transform 1.4s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.veil-ridges { position: absolute; left: 0; bottom: 0; width: 100%; height: 42vh; }
+.veil-ridge-far { fill: #bfb4a6; }
+.veil-ridge-near { fill: #cdb9a0; }
+.veil-floor { fill: #d5c1a4; }
+body.entry .veil-sky { opacity: 0; }
+body.ready .veil { opacity: 0; visibility: hidden; }
+
+.entry { position: relative; display: grid; justify-items: center; text-align: center; }
+.entry-mark { margin: 0 -0.34em 0 0; font: 300 clamp(26px, 6vw, 76px)/1 system-ui, sans-serif; letter-spacing: 0.34em; white-space: nowrap; }
+/* each letter folds up from its baseline like a panel swinging into place */
+.entry-mark span { display: inline-block; transform-origin: 50% 100%; animation: entry-fold 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(120ms + var(--i) * 55ms); }
+.entry-line { margin: 18px 0 0; font: 500 10.5px/1.4 var(--mono); letter-spacing: 0.34em; text-transform: uppercase; color: rgba(43, 39, 36, 0.6); animation: entry-rise 0.8s 0.8s both; }
+.entry-deck { position: relative; display: grid; place-items: center; width: min(440px, 78vw); height: 58px; margin-top: 30px; }
+/* a survey rule: fine ticks, a heavier one every fifth, the ember fill and a diamond marker for progress */
+.entry-gauge { position: absolute; inset: 50% 0 auto; height: 12px; margin-top: -6px; background:
+  repeating-linear-gradient(90deg, rgba(43, 39, 36, 0.5) 0 1px, transparent 1px 50px) left bottom / 100% 10px no-repeat,
+  repeating-linear-gradient(90deg, rgba(43, 39, 36, 0.3) 0 1px, transparent 1px 10px) left bottom / 100% 5px no-repeat,
+  linear-gradient(rgba(43, 39, 36, 0.3), rgba(43, 39, 36, 0.3)) left bottom / 100% 1px no-repeat;
+  animation: entry-rise 0.8s 0.6s both; transition: opacity 0.35s ease, transform 0.5s cubic-bezier(0.5, 0, 0.2, 1); }
+.entry-gauge-fill { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: var(--ember); transform: scaleX(var(--progress)); transform-origin: left; transition: transform 1.2s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.entry-gauge-mark { position: absolute; bottom: -4px; left: calc(var(--progress) * 100%); width: 9px; height: 9px; margin-left: -4.5px; background: var(--ember); transform: rotate(45deg); transition: left 1.2s cubic-bezier(0.2, 0.7, 0.2, 1); }
+body.entry .entry-gauge { opacity: 0; transform: scaleX(0.15); }
+
+/* the Enter plate opens out of the rule like a shutter, chamfered corners, an ember sweep on hover */
+.entry-button { --cut: 12px; position: relative; display: inline-flex; align-items: center; gap: 18px; height: 58px; padding: 0 30px 0 36px; border: 0; background: #25211e; color: #f1e9dd; font: 600 13px/1 system-ui, sans-serif; letter-spacing: 0.42em; text-transform: uppercase; cursor: pointer; clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); transition: --cut 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.entry-button[hidden] { display: none; }
+body.entry .entry-button { animation: entry-open 0.75s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.entry-button::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--ember); transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.entry-button > * { position: relative; }
+.entry-button svg { width: 24px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.entry-button:hover, .entry-button:focus-visible { --cut: 20px; outline: none; }
+.entry-button:hover::before, .entry-button:focus-visible::before { width: 100%; }
+.entry-button:hover svg, .entry-button:focus-visible svg { transform: translateX(5px); }
+.entry-button:active { filter: brightness(0.9); }
+
+.entry-stage { display: flex; gap: 14px; margin: 18px 0 0; font: 500 10.5px/1.4 var(--mono); letter-spacing: 0.24em; text-transform: uppercase; color: rgba(43, 39, 36, 0.7); animation: entry-rise 0.8s 0.7s both; }
+.entry-count { color: #a94a26; }
+.entry-keys { position: fixed; left: 50%; bottom: max(22px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100% - 32px); translate: -50% 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin: 0; font: 11px/1.6 system-ui, sans-serif; letter-spacing: 0.06em; color: rgba(43, 39, 36, 0.68); opacity: 0; transform: translateY(6px); transition: opacity 0.6s 0.5s ease, transform 0.6s 0.5s ease; }
+.entry-keys kbd { min-width: 22px; padding: 2px 6px; border: 1px solid rgba(43, 39, 36, 0.26); border-bottom-width: 2px; border-radius: 4px; background: rgba(255, 255, 255, 0.3); font: 600 10px/14px var(--mono); text-align: center; color: var(--ink); }
+.entry-keys i { width: 3px; height: 3px; margin: 0 7px; border-radius: 50%; background: rgba(43, 39, 36, 0.35); }
+.entry-keys-touch, body.touch .entry-keys-desk { display: none; }
+body.touch .entry-keys-touch { display: flex; }
+body.entry .entry-keys { opacity: 1; transform: none; }
+
+/* failure: the diagnostic view */
+.entry-error { display: grid; gap: 14px; width: min(100%, 620px); margin-top: 34px; padding: 24px 28px; border-left: 2px solid var(--ember); background: rgba(255, 255, 255, 0.04); text-align: left; line-height: 1.5; }
+.entry-error[hidden] { display: none; }
+.entry-error strong { font-size: 18px; font-weight: 600; }
+.entry-error span { overflow-wrap: anywhere; color: #d9c9b8; }
+.entry-error small { color: #9caaa8; font: 12px/1.5 var(--mono); }
+body.failed .veil { align-content: center; background: #171b1e; color: #f3eee7; }
+body.failed .veil::before, body.failed .veil-sky, body.failed .entry-line, body.failed .entry-deck, body.failed .entry-stage, body.failed .entry-keys { display: none; }
+body.failed .entry-mark { font-size: clamp(20px, 4vw, 40px); }
+
+@keyframes entry-fold { from { opacity: 0; transform: perspective(600px) rotateX(-100deg); } }
+@keyframes entry-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes entry-open { from { clip-path: polygon(0 50%, 100% 50%, 100% 50%, 100% 50%, 0 50%, 0 50%); } }
+
+/* ── vehicle menu: a hint pill that grows into a carousel of names ─────────────────── */
+.garage { position: fixed; inset: 0; z-index: 20; pointer-events: none; transition: opacity 0.5s ease; }
+body:not(.ready) .garage { opacity: 0; visibility: hidden; }
+.garage::before { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(12, 13, 15, 0.46), rgba(12, 13, 15, 0) 55%); opacity: 0; transition: opacity 0.35s ease; }
+.garage.touch::before { background: linear-gradient(to bottom, rgba(12, 13, 15, 0.46), rgba(12, 13, 15, 0) 55%); }
+.garage.open { pointer-events: auto; touch-action: pan-y; }
+.garage.open::before { opacity: 1; }
+/* laid out at full size throughout; collapsed, the clip shows only the pill at its foot */
+.garage-panel { --item: 250px; --accent: #f3eee7; --hint-h: 34px; --hint-w: 220px; position: absolute; left: 50%; bottom: max(22px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; width: min(620px, calc(100% - 32px)); padding: 16px 14px 20px; border-radius: 20px; background: rgba(20, 22, 25, 0.62); backdrop-filter: blur(20px) saturate(1.25); -webkit-backdrop-filter: blur(20px) saturate(1.25); color: #f3eee7; user-select: none; pointer-events: auto; transform: translateX(-50%); clip-path: inset(calc(100% - var(--hint-h)) calc(50% - var(--hint-w) / 2) 0 round calc(var(--hint-h) / 2)); transition: clip-path 0.5s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.garage.open .garage-panel { clip-path: inset(0 round 20px); }
+.garage.touch .garage-panel { top: max(14px, env(safe-area-inset-top)); bottom: auto; clip-path: inset(0 calc(50% - var(--hint-w) / 2) calc(100% - var(--hint-h)) round calc(var(--hint-h) / 2)); }
+.garage.touch.open .garage-panel { clip-path: inset(0 round 20px); }
+.garage-body { display: contents; }
+.garage-body > * { opacity: 0; transition: opacity 0.2s ease; }
+.garage.open .garage-body > * { opacity: 1; transition: opacity 0.3s 0.14s ease; }
+.garage-hint { position: absolute; left: 50%; bottom: 0; width: var(--hint-w); height: var(--hint-h); padding: 0; font: inherit; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; background: none; color: rgba(243, 238, 231, 0.88); cursor: pointer; transform: translateX(-50%); transition: width 0.35s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease; }
+.garage.touch .garage-hint { top: 0; bottom: auto; }
+.garage.open .garage-hint { opacity: 0; pointer-events: none; }
+.garage-hint:focus-visible { outline: none; border-color: rgba(255, 255, 255, 0.4); }
+.garage-hint-label { position: absolute; top: 0; left: 50%; display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 16px; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; opacity: 0; transform: translateX(-50%); transition: opacity 0.25s ease; }
+.garage-hint-label.shown { opacity: 1; transition-delay: 0.1s; }
+.garage-hint-label kbd { min-width: 20px; padding: 1px 6px; border: 1px solid rgba(255, 255, 255, 0.2); border-bottom-width: 2px; border-radius: 5px; font: 600 10px/15px var(--mono); letter-spacing: 0.04em; text-align: center; color: #efe9e0; }
+.garage-hint-label i { width: 3px; height: 3px; margin: 0 5px; border-radius: 50%; background: rgba(243, 238, 231, 0.4); }
+.garage-hint-label svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transform: rotate(180deg); }
 .garage-view { position: relative; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
 .garage-track { display: flex; padding-inline: calc(50% - var(--item) / 2); transform: translateX(calc(var(--i, 0) * var(--item) * -1)); transition: transform 0.42s cubic-bezier(0.22, 0.8, 0.24, 1); }
 .garage-track.still { transition: none; }
@@ -31,15 +111,49 @@ body.failed #boot-status small { color: #9caaa8; font: 12px/1.5 ui-monospace, mo
 .garage-arrow svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .garage-arrow:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.28); }
 .garage-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.garage-arrow:disabled { opacity: 0.22; cursor: default; }
+.garage.open .garage-body > .garage-arrow:disabled { opacity: 0.22; cursor: default; }
 .garage-status { grid-column: 1 / -1; min-height: 0; margin: 0; font-size: 11.5px; text-align: center; color: #cdbfb1; overflow-wrap: anywhere; }
 .garage-status:not(:empty) { margin-top: 8px; }
-.resume-chip kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 5px; font: 600 10.5px/16px ui-monospace, monospace; text-align: center; color: #e7e1d8; }
-.resume-chip { position: fixed; left: 50%; bottom: 22px; z-index: 15; padding: 8px 14px; border-radius: 999px; background: rgba(22, 24, 27, 0.55); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: rgba(243, 238, 231, 0.86); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transform: translate(-50%, 6px); transition: opacity 0.2s ease, transform 0.2s ease; }
-.resume-chip.shown { opacity: 1; transform: translate(-50%, 0); }
 @media (max-width: 480px) { .garage-panel { --item: 190px; } .garage-name { font-size: 17px; letter-spacing: 0.14em; } }
-@keyframes garage-in { from { opacity: 0; transform: translateY(8px); } }
+/* switching cover: the screen darkens, the game is locked and silent until the new car is ready */
+.garage.busy { pointer-events: auto; }
+.garage-cover { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(8, 9, 10, 0.66); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.22s ease, visibility 0s 0.22s; }
+.garage.busy .garage-cover { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 0.18s ease; }
+.garage-loader { display: grid; justify-items: center; gap: 18px; transform: translateY(-4vh); }
+.garage-loader p { margin: 0; font: 500 10.5px/1.4 var(--mono); letter-spacing: 0.3em; text-transform: uppercase; color: rgba(239, 232, 222, 0.66); }
+.garage-loader b { font-weight: 600; color: #f3eee7; }
+/* the entry screen's survey rule, with its ember marker sweeping to and fro */
+.garage-loader-rule { position: relative; width: 180px; height: 10px; background:
+  repeating-linear-gradient(90deg, rgba(243, 238, 231, 0.5) 0 1px, transparent 1px 45px) left bottom / 100% 10px no-repeat,
+  repeating-linear-gradient(90deg, rgba(243, 238, 231, 0.26) 0 1px, transparent 1px 9px) left bottom / 100% 5px no-repeat,
+  linear-gradient(rgba(243, 238, 231, 0.3), rgba(243, 238, 231, 0.3)) left bottom / 100% 1px no-repeat; }
+.garage-loader-rule i { position: absolute; left: -4.5px; bottom: -4px; width: 9px; height: 9px; background: var(--ember); box-shadow: 0 0 10px rgba(226, 110, 60, 0.6); animation: garage-sweep 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+@keyframes garage-sweep { from { transform: translateX(0) rotate(45deg); } to { transform: translateX(180px) rotate(45deg); } }
 @keyframes garage-load { from { background-position: -60% 0; } to { background-position: 160% 0; } }
 @keyframes garage-nudge-prev { 40% { translate: 14px 0; } }
 @keyframes garage-nudge-next { 40% { translate: -14px 0; } }
-@media (prefers-reduced-motion: reduce) { .garage-panel, .garage-track, .garage-name, .garage-panel.loading .garage-view::after { animation: none; transition: none; } .resume-chip { transition: none; } }
+
+/* ── touch controls: floating stick on the left, transform and jump on the right ──── */
+.touch-controls { position: fixed; inset: 0; z-index: 12; display: none; touch-action: none; transition: opacity 0.25s ease; }
+body.touch.ready .touch-controls { display: block; }
+body.menu-open .touch-controls { opacity: 0; pointer-events: none; }
+.touch-stick { position: absolute; left: 0; top: 0; width: 128px; height: 128px; margin: -64px 0 0 -64px; border: 1.5px solid rgba(255, 255, 255, 0.34); border-radius: 50%; background: radial-gradient(circle, rgba(20, 22, 25, 0.08), rgba(20, 22, 25, 0.26)); pointer-events: none; opacity: 0.55; transform: translate(calc(env(safe-area-inset-left) + 96px), calc(100dvh - env(safe-area-inset-bottom) - 100px)); transition: transform 0.28s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+.touch-stick.held { opacity: 1; transition: opacity 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+.touch-stick.run { border-color: rgba(255, 196, 140, 0.95); box-shadow: 0 0 0 5px rgba(255, 170, 96, 0.16); }
+.touch-knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(243, 238, 231, 0.84); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24); }
+.touch-stick:not(.held) .touch-knob { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.touch-button { position: absolute; display: grid; place-items: center; padding: 0; border: 1.5px solid rgba(255, 255, 255, 0.38); border-radius: 50%; background: rgba(20, 22, 25, 0.4); color: #f3eee7; touch-action: none; transition: transform 0.12s ease, background 0.12s ease; }
+.touch-button svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.touch-button.pressed { background: rgba(20, 22, 25, 0.62); transform: scale(0.92); }
+.touch-transform { right: calc(env(safe-area-inset-right) + 22px); bottom: calc(env(safe-area-inset-bottom) + 44px); width: 78px; height: 78px; }
+.touch-transform svg { width: 36px; height: 36px; }
+.touch-jump { right: calc(env(safe-area-inset-right) + 116px); bottom: calc(env(safe-area-inset-bottom) + 24px); width: 58px; height: 58px; }
+.touch-jump svg { width: 26px; height: 26px; }
+.touch-jump.away { opacity: 0; transform: scale(0.6); pointer-events: none; }
+.touch-jump { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-mark span, .entry-line, .entry-gauge, .entry-stage, body.entry .entry-button { animation: none; }
+  .veil-sun, .entry-gauge-fill, .entry-gauge-mark, .garage-panel, .garage-hint, .garage-track, .garage-name, .garage-panel.loading .garage-view::after, .touch-stick, .garage-cover { transition: none; animation: none; }
+  .garage-loader-rule i { animation-duration: 3s; }
+}

@@ -72,6 +72,16 @@ const SHOTS: Record<string, Shot> = {
   tracks: drive((i) => (i > 80 && i < 220 ? 0.3 : 0), [0, 5, -9], [0, 0, 7]),
   'tracks-low': drive(() => 0, [1.8, 1.4, -4], [0, 0, 6]),
   'tracks-top': drive((i) => (i > 80 && i < 220 ? 0.3 : 0), [0, 14, -2], [0, 0, 2]),
+  // the opening broadside (FollowCamera.showSide) at the Cybertruck framing: 7.875 m out, pitch 0.07, focus 1.1 m
+  side: (s) => { s.look([-7.875 * Math.cos(0.07), 1.1 + 7.875 * Math.sin(0.07), 0], [0, 1.1, 0]) },
+  boulder: (s) => {
+    // the nearest large rock, from a low eye height on its sunlit side
+    s.look([0, 2, -8], [0, 1, 0])
+    let best = s.world.world.colliders[0]
+    for (const c of s.world.world.colliders) if (Math.hypot(c.x, c.z) < Math.hypot(best.x, best.z)) best = c
+    const d = best.r * 3.2
+    s.look([best.x + 0.55 * d, 1.8, best.z + 0.72 * d], [best.x, best.r * 0.25, best.z], true)
+  },
 }
 
 /** `car`: a roster id (default: the first car). */

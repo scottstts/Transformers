@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { float, vec3, mix, positionWorld, cameraViewMatrix } from 'three/tsl';
 import { N } from '../../rendering/noise.ts';
-import { groundAlbedo, groundSlope } from './materials.ts';
+import { groundSurface } from './materials.ts';
 
 /**
  * Shading shared by imprints pressed into the sand (tyre tracks, footprints).
@@ -44,16 +44,17 @@ export function sandImprintMaterial( i: Imprint ): THREE.MeshStandardNodeMateria
 	const h0 = i.height( i.x, i.y );
 	const gx = i.height( i.x.add( i.dx ), i.y ).sub( h0 ).div( float( i.metresX ).mul( i.dx ) );
 	const gy = i.height( i.x, i.y.add( i.dy ) ).sub( h0 ).div( float( i.metresY ).mul( i.dy ) );
-	const ground = groundSlope( positionWorld.xz );
-	const n = vec3( ground.x, 1, ground.y ).sub( i.axisX.mul( gx ) ).sub( i.axisY.mul( gy ) ).normalize();
+	const ground = groundSurface( positionWorld.xz );
+	// the load presses the wind ripples flat
+	const slope = ground.slope.sub( ground.rippleSlope.mul( i.pressed ) );
+	const n = vec3( slope.x, 1, slope.y ).sub( i.axisX.mul( gx ) ).sub( i.axisY.mul( gy ) ).normalize();
 	m.normalNode = n.transformDirection( cameraViewMatrix );
 
 	const wander = sandGrain().r.sub( 0.5 );
 	const deep = h0.negate().div( i.depth ).clamp( 0, 1 );
-	const albedo = groundAlbedo( positionWorld.xz );
 	// turned-over sand is a little darker (finer, shaded grains) and smoother where compacted
-	m.colorNode = albedo.color.mul( mix( float( 1 ), wander.mul( 0.08 ).add( 0.85 ), i.pressed ) ).mul( float( 1 ).sub( deep.mul( 0.08 ) ) );
-	m.roughnessNode = mix( float( 0.93 ).sub( albedo.grit.mul( 0.08 ) ), float( 0.86 ), i.pressed );
+	m.colorNode = ground.color.mul( mix( float( 1 ), wander.mul( 0.08 ).add( 0.85 ), i.pressed ) ).mul( float( 1 ).sub( deep.mul( 0.08 ) ) );
+	m.roughnessNode = mix( ground.roughness, float( 0.86 ), i.pressed );
 	m.metalnessNode = float( 0 );
 	m.opacityNode = i.opacity;
 	return m;

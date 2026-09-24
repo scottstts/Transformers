@@ -15,6 +15,10 @@ const LOCK_SETTLE_MS = 80
 const MAX_EVENT_MOVE = 400
 /** A new character's framing (focus heights, distances) eases in over this long (s). */
 const FRAMING_GLIDE = 1.2
+/** Orbit pitch (rad) of the opening broadside shot: low, close to eye height beside the car. */
+const SIDE_PITCH = 0.07
+/** Half the span (m) the opening broadside keeps in frame: half a car length plus a margin. */
+const SIDE_HALF_SPAN = 3.4
 
 export class FollowCamera {
   private readonly camera: PerspectiveCamera
@@ -39,6 +43,10 @@ export class FollowCamera {
   private freshLock = false
   /** mouse look held by an overlay (the vehicle menu) while the pointer stays locked */
   private held = false
+  /** the opening broadside holds until the first look or the car first moves */
+  private broadside = false
+  /** false on touch devices: the on-screen controls drive the look and nothing locks the pointer */
+  pointerLock = true
   private readonly onPointerLockChange = (): void => {
     if (document.pointerLockElement !== this.canvas) return
     // the orbit is kept exactly as it was: re-locking must never move the camera
@@ -56,9 +64,7 @@ export class FollowCamera {
     }
     if (now - this.lockedAt < LOCK_SETTLE_MS) return
     if (Math.abs(event.movementX) > MAX_EVENT_MOVE || Math.abs(event.movementY) > MAX_EVENT_MOVE) return
-    this.yaw -= event.movementX * 0.005
-    this.pitch = clamp(this.pitch + event.movementY * 0.004, -0.05, 1.1)
-    this.lastLook = now / 1000
+    this.look(event.movementX, event.movementY)
   }
   constructor(camera: PerspectiveCamera, canvas: HTMLCanvasElement, initialYaw: number, robotOffset: number, framing: CameraProfile = DEFAULT_FRAMING) {
     this.camera = camera
@@ -72,6 +78,18 @@ export class FollowCamera {
     canvas.addEventListener('pointerdown', this.onPointerDown)
     document.addEventListener('pointerlockchange', this.onPointerLockChange)
     document.addEventListener('mousemove', this.onMouseMove)
+  }
+
+  /**
+   * Frame the car broadside, from its sunlit right (the sun stands to the car's
+   * right-rear at the start heading). This is only a starting orbit, so the
+   * normal rules take over from it: a look drag orbits away, and once the car
+   * drives the camera swings in behind it.
+   */
+  showSide(carYaw: number): void {
+    this.yaw = wrap(carYaw - Math.PI / 2)
+    this.pitch = SIDE_PITCH
+    this.broadside = true
   }
 
   /**
@@ -93,8 +111,17 @@ export class FollowCamera {
 
   get locked(): boolean { return document.pointerLockElement === this.canvas }
 
+  /** Orbit by a pointer movement in CSS pixels (mouse under pointer lock, or a touch drag). */
+  look(dx: number, dy: number): void {
+    if (this.held) return
+    this.broadside = false
+    this.yaw -= dx * 0.005
+    this.pitch = clamp(this.pitch + dy * 0.004, -0.05, 1.1)
+    this.lastLook = performance.now() / 1000
+  }
+
   activate(): void {
-    if (this.locked || !this.canvas.isConnected) return
+    if (!this.pointerLock || this.locked || !this.canvas.isConnected) return
     try {
       void Promise.resolve(this.canvas.requestPointerLock()).catch(() => {
         // The entry veil or canvas click can retry with a user gesture.
@@ -118,7 +145,10 @@ export class FollowCamera {
       this.pitch = damp(this.pitch, 0.16, 1.6, dt)
     }
     const k = easedRange(state.progress, 0.1, 0.6)
-    const distance = lerp(this.framing.carDistance, this.framing.robotDistance, k)
+    if (this.broadside && (Math.abs(state.speed) > 0.3 || state.progress > 0)) this.broadside = false
+    let distance = lerp(this.framing.carDistance, this.framing.robotDistance, k)
+    // on a narrow (portrait) screen the broadside backs off until the whole car fits across
+    if (this.broadside) distance = Math.max(distance, SIDE_HALF_SPAN / (Math.tan(this.camera.fov * Math.PI / 360) * this.camera.aspect))
     const focus = this.focusPoint(state, root)
     if (!this.initialized) {
       this.target.copy(focus)
