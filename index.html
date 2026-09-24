@@ -2,14 +2,92 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#d7ccbd" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Transformer</title>
+    <meta name="description" content="Transformer is a free WebGPU browser game: drive a Cybertruck or a Formula 1 car across an open desert, then transform it into a walking robot, mid-drive, with one key." />
+    <meta name="keywords" content="Transformer game, transforming car game, robot car, WebGPU game, browser game, three.js, Cybertruck robot, F1 robot, desert driving game" />
+    <meta name="author" content="Scott Sun" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://transformer.scottsun.io" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <meta name="theme-color" content="#d7ccbd" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="application-name" content="Transformer" />
+    <meta name="apple-mobile-web-app-title" content="Transformer" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Transformer" />
+    <meta property="og:url" content="https://transformer.scottsun.io" />
+    <meta property="og:title" content="Transformer — Cars That Stand Up and Walk" />
+    <meta property="og:description" content="Drive across an open desert, then transform your car into a walking robot. A WebGPU browser game." />
+    <meta property="og:image" content="https://transformer.scottsun.io/og_image.png" />
+    <meta property="og:image:secure_url" content="https://transformer.scottsun.io/og_image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A transforming robot car standing in the desert" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Transformer — Cars That Stand Up and Walk" />
+    <meta name="twitter:description" content="Drive across an open desert, then transform your car into a walking robot. A WebGPU browser game." />
+    <meta name="twitter:image" content="https://transformer.scottsun.io/og_image.png" />
+    <meta name="twitter:image:alt" content="A transforming robot car standing in the desert" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "Transformer",
+        "url": "https://transformer.scottsun.io",
+        "image": "https://transformer.scottsun.io/og_image.png",
+        "description": "A WebGPU browser game: drive across an open desert, then transform your car into a walking robot.",
+        "genre": ["Driving", "Action"],
+        "gamePlatform": "Web browser",
+        "applicationCategory": "Game",
+        "operatingSystem": "Any (WebGPU-capable browser)",
+        "playMode": "SinglePlayer",
+        "author": { "@type": "Person", "name": "Scott Sun" },
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
-    <div class="veil" role="status" aria-live="polite"><span id="boot-status">Loading</span></div>
+    <div class="veil" style="--progress: 0">
+      <div class="veil-sky" aria-hidden="true">
+        <div class="veil-sun"></div>
+        <svg class="veil-ridges" viewBox="0 0 1440 320" preserveAspectRatio="none">
+          <path class="veil-ridge-far" d="M0 196C110 176 196 146 318 154C432 162 478 116 596 106C706 97 770 146 884 138C1002 130 1078 84 1198 94C1310 104 1378 144 1440 154V320H0Z" />
+          <path class="veil-ridge-near" d="M0 246C154 232 262 212 402 222C540 232 622 202 762 207C902 212 984 238 1122 230C1262 222 1358 206 1440 214V320H0Z" />
+          <path class="veil-floor" d="M0 268H1440V320H0Z" />
+        </svg>
+      </div>
+      <main class="entry">
+        <h1 class="entry-mark" aria-label="Transformer">
+          <span aria-hidden="true" style="--i: 0">T</span><span aria-hidden="true" style="--i: 1">R</span><span aria-hidden="true" style="--i: 2">A</span><span aria-hidden="true" style="--i: 3">N</span><span aria-hidden="true" style="--i: 4">S</span><span aria-hidden="true" style="--i: 5">F</span><span aria-hidden="true" style="--i: 6">O</span><span aria-hidden="true" style="--i: 7">R</span><span aria-hidden="true" style="--i: 8">M</span><span aria-hidden="true" style="--i: 9">E</span><span aria-hidden="true" style="--i: 10">R</span>
+        </h1>
+        <p class="entry-line">Cars that stand up and walk</p>
+        <div class="entry-deck">
+          <div class="entry-gauge" aria-hidden="true"><span class="entry-gauge-fill"></span><span class="entry-gauge-mark"></span></div>
+          <button class="entry-button" id="entry-button" type="button" hidden>
+            <span class="entry-button-label">Enter</span>
+            <svg viewBox="0 0 24 12" aria-hidden="true"><path d="M1 6h20M16 1l5 5-5 5" /></svg>
+          </button>
+        </div>
+        <p class="entry-stage" role="status" aria-live="polite"><span class="entry-count" id="boot-count">00/07</span><span id="boot-status">Loading</span></p>
+        <p class="entry-keys entry-keys-desk"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move <i></i><kbd>Shift</kbd> boost <i></i><kbd>Space</kbd> jump <i></i><kbd>R</kbd> transform <i></i><kbd>Tab</kbd> vehicles</p>
+        <p class="entry-keys entry-keys-touch">Left thumb moves <i></i> drag to look <i></i> push to the rim to boost</p>
+        <div class="entry-error" id="boot-error" role="alert" hidden></div>
+        <noscript><p class="entry-error">Transformer needs JavaScript and a WebGPU-capable browser.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

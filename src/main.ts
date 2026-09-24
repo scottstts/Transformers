@@ -1,25 +1,27 @@
 import './style.css'
-import { showBootError, setBootStage, showGame } from './platform/boot-ui'
+import { showBootError, setBootStage, showEntry, showGame } from './platform/boot-ui'
+import { isTouchDevice } from './platform/device'
 
 async function boot(): Promise<void> {
+  const touch = isTouchDevice()
+  document.body.classList.toggle('touch', touch)
   setBootStage('Loading game modules')
   try {
-    const { startGame, attachVehicleMenu } = await import('./game/start')
+    const { startGame, attachControls } = await import('./game/start')
     const session = await startGame(setBootStage)
-    attachVehicleMenu(session)
-    const veil = document.querySelector<HTMLElement>('.veil')
-    if (!veil) throw new Error('Missing entry veil')
-    setBootStage('Click to enter')
-    const requestEntry = (): void => { session.cameraRig.activate() }
+    const controls = attachControls(session, touch)
+    // play starts once the pointer locks (mouse and keyboard) or at once (touch)
     const enter = (): void => {
-      if (!session.cameraRig.locked) return
-      veil.removeEventListener('pointerdown', requestEntry)
+      if (!touch && !session.cameraRig.locked) return
       document.removeEventListener('pointerlockchange', enter)
       showGame()
+      controls.menu.refreshHint()
     }
-    veil.addEventListener('pointerdown', requestEntry)
     document.addEventListener('pointerlockchange', enter)
-    session.cameraRig.activate()
+    showEntry(() => {
+      if (touch) enter()
+      else session.cameraRig.activate()
+    })
   } catch (error) {
     showBootError(error)
   }

@@ -11,30 +11,53 @@ export interface VehicleHost {
   /** pause / restore mouse look while the menu sits over the locked pointer */
   holdLook(held: boolean): void
   readonly playing: boolean
+  /** on-screen touch controls instead of mouse and keyboard */
+  readonly touch: boolean
+  /** the menu opened or closed */
+  openChanged?(open: boolean): void
 }
 
 /** Horizontal drag (px) that counts as a swipe. */
 const SWIPE_PX = 40
 
+type HintMode = 'play' | 'paused' | 'touch'
+
+const HINTS: Record<HintMode, string> = {
+  play: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span>',
+  paused: '<span>Click to play</span><i></i><kbd>Tab</kbd><span>to switch</span>',
+  touch: '<span>Switch vehicle</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg>',
+}
+
 /**
- * The vehicle menu: a carousel of car names. Tab opens it over the locked
- * pointer (mouse look and game keys pause; Escape still releases the pointer,
- * as browsers require, leaving the menu open for the mouse); the arrow keys, the arrow buttons, a horizontal swipe or a click
- * on a neighbouring name swipe to the next car, which is swapped in live
+ * The vehicle menu. Collapsed, it is a small hint pill at the bottom of the
+ * screen (on touch screens at the top, clear of the thumbs) saying how to
+ * switch and transform; opening it grows the same glass panel out of the pill
+ * into a carousel of car names. The morph is one clip-path transition on the
+ * panel, laid out at full size throughout, so nothing reflows while it runs.
+ *
+ * Tab opens it over the locked pointer (mouse look and game keys pause;
+ * Escape still releases the pointer, as browsers require, leaving the menu open
+ * for the mouse); the arrow keys, the arrow buttons, a horizontal swipe or a
+ * click on a neighbouring name swipe to the next car, which is swapped in live
  * behind the panel. Tab, Escape, Enter or the backdrop closes it and returns
- * to play. While the game is paused (pointer released) a small chip says how
- * to resume and open it; normal play shows nothing.
+ * to play. On touch screens a tap on the pill opens it.
  */
 export class VehicleMenu {
   private readonly host: VehicleHost
   private readonly root: HTMLDivElement
   private readonly panel: HTMLDivElement
+  private readonly body: HTMLDivElement
   private readonly track: HTMLDivElement
   private readonly names: HTMLButtonElement[] = []
   private readonly prev: HTMLButtonElement
   private readonly next: HTMLButtonElement
   private readonly status: HTMLParagraphElement
-  private readonly chip: HTMLDivElement
+  private readonly hint: HTMLButtonElement
+  /** darkens the screen while a car loads; the game is locked and silent until it lifts */
+  private readonly cover: HTMLDivElement
+  private readonly coverName: HTMLElement
+  private readonly hintLabels = new Map<HintMode, HTMLSpanElement>()
+  private hintMode: HintMode | null = null
   private open = false
   /** the car shown in the centre (the one being switched to while loading) */
   private index = 0
@@ -45,6 +68,8 @@ export class VehicleMenu {
     if (!document.body.classList.contains('ready')) return
     if (event.code === 'Tab') {
       event.preventDefault()
+      // the menu stays until the car it is loading is ready
+      if (this.loading) return
       if (this.open) this.close(true)
       else this.show()
       return
@@ -57,23 +82,39 @@ export class VehicleMenu {
       if (!event.repeat) this.swipe(event.code === 'ArrowLeft' ? -1 : 1)
     } else if (event.code === 'Escape' || event.code === 'Enter') {
       event.preventDefault()
-      this.close(true)
+      if (!this.loading) this.close(true)
     }
   }
 
-  private readonly onLockChange = (): void => { this.refreshChip() }
+  private readonly onLockChange = (): void => { this.refreshHint() }
+  private readonly onResize = (): void => { this.measureHint() }
 
   constructor(host: VehicleHost) {
     this.host = host
     this.root = document.createElement('div')
     this.root.className = 'garage'
-    this.root.hidden = true
-    this.root.setAttribute('role', 'dialog')
-    this.root.setAttribute('aria-modal', 'true')
-    this.root.setAttribute('aria-label', 'Vehicle')
+    this.root.classList.toggle('touch', host.touch)
 
     this.panel = document.createElement('div')
     this.panel.className = 'garage-panel'
+    this.panel.setAttribute('role', 'dialog')
+    this.panel.setAttribute('aria-label', 'Vehicle')
+
+    this.hint = document.createElement('button')
+    this.hint.type = 'button'
+    this.hint.className = 'garage-hint'
+    this.hint.setAttribute('aria-label', 'Switch vehicle')
+    for (const mode of Object.keys(HINTS) as HintMode[]) {
+      const label = document.createElement('span')
+      label.className = 'garage-hint-label'
+      label.innerHTML = HINTS[mode]
+      this.hint.append(label)
+      this.hintLabels.set(mode, label)
+    }
+    this.hint.addEventListener('click', () => { this.show() })
+
+    this.body = document.createElement('div')
+    this.body.className = 'garage-body'
     this.prev = this.arrow('prev', 'Previous vehicle', -1)
     this.next = this.arrow('next', 'Next vehicle', 1)
     const view = document.createElement('div')
@@ -94,12 +135,27 @@ export class VehicleMenu {
     this.status = document.createElement('p')
     this.status.className = 'garage-status'
     this.status.setAttribute('aria-live', 'polite')
-    this.panel.append(this.prev, view, this.next, this.status)
-    this.root.append(this.panel)
+    this.body.append(this.prev, view, this.next, this.status)
+    this.body.inert = true
+    this.panel.append(this.body, this.hint)
+    this.cover = document.createElement('div')
+    this.cover.className = 'garage-cover'
+    this.cover.setAttribute('role', 'status')
+    const loader = document.createElement('div')
+    loader.className = 'garage-loader'
+    loader.innerHTML = '<span class="garage-loader-rule" aria-hidden="true"><i></i></span>'
+    const caption = document.createElement('p')
+    caption.append('Loading ')
+    this.coverName = document.createElement('b')
+    caption.append(this.coverName)
+    loader.append(caption)
+    this.cover.append(loader)
+    this.root.append(this.cover, this.panel)
 
-    // a click on the backdrop closes the menu; a horizontal drag on the panel swipes
+    // a tap on the backdrop closes the menu; a horizontal drag on the panel swipes
     this.root.addEventListener('pointerdown', (event) => {
-      if (event.target === this.root) this.close(true)
+      if (!this.open) return
+      if (event.target === this.root && !this.loading) this.close(true)
       else this.dragX = event.clientX
     })
     this.root.addEventListener('pointerup', (event) => {
@@ -109,19 +165,21 @@ export class VehicleMenu {
       if (Math.abs(dx) > SWIPE_PX) this.swipe(dx < 0 ? 1 : -1)
     })
     this.root.addEventListener('wheel', (event) => {
+      if (!this.open) return
       if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && Math.abs(event.deltaX) > 24) {
         event.preventDefault()
         this.swipe(event.deltaX > 0 ? 1 : -1)
       }
     }, { passive: false })
 
-    this.chip = document.createElement('div')
-    this.chip.className = 'resume-chip'
-    this.chip.innerHTML = 'Click to play <span aria-hidden="true">·</span> <kbd>Tab</kbd> vehicles'
-    document.body.append(this.root, this.chip)
+    document.body.append(this.root)
+    this.index = this.currentIndex()
+    this.render(false)
+    this.measureHint()
     window.addEventListener('keydown', this.onKey, true)
+    window.addEventListener('resize', this.onResize)
     document.addEventListener('pointerlockchange', this.onLockChange)
-    this.refreshChip()
+    this.refreshHint()
   }
 
   show(): void {
@@ -131,24 +189,45 @@ export class VehicleMenu {
     this.index = this.currentIndex()
     this.status.textContent = ''
     this.render(false)
-    this.root.hidden = false
-    this.refreshChip()
+    this.root.classList.add('open')
+    this.body.inert = false
+    this.hint.inert = true
+    this.host.openChanged?.(true)
   }
 
   close(resume: boolean): void {
     if (!this.open) return
     this.open = false
-    this.root.hidden = true
-    this.refreshChip()
+    this.root.classList.remove('open')
+    this.body.inert = true
+    this.hint.inert = false
+    this.refreshHint()
     this.host.holdLook(false)
+    this.host.openChanged?.(false)
     if (resume) this.host.resume()
+  }
+
+  /** Refresh the pill after the game starts or stops playing. */
+  refreshHint(): void {
+    const mode: HintMode = this.host.touch ? 'touch' : this.host.playing ? 'play' : 'paused'
+    if (mode === this.hintMode) return
+    this.hintMode = mode
+    this.hintLabels.forEach((label, key) => { label.classList.toggle('shown', key === mode) })
+    this.measureHint()
   }
 
   dispose(): void {
     window.removeEventListener('keydown', this.onKey, true)
+    window.removeEventListener('resize', this.onResize)
     document.removeEventListener('pointerlockchange', this.onLockChange)
     this.root.remove()
-    this.chip.remove()
+  }
+
+  /** The pill's width follows its current label; the collapsed clip reads it from `--hint-w`. */
+  private measureHint(): void {
+    const label = this.hintMode && this.hintLabels.get(this.hintMode)
+    if (!label) return
+    this.panel.style.setProperty('--hint-w', `${Math.ceil(label.offsetWidth)}px`)
   }
 
   private arrow(side: 'prev' | 'next', label: string, dir: number): HTMLButtonElement {
@@ -167,9 +246,9 @@ export class VehicleMenu {
     return Math.max(0, this.host.roster.findIndex((entry) => entry.id === this.host.current()))
   }
 
-  /** Move the carousel by `dir` cars and swap that car in (the latest swipe wins while one loads). */
+  /** Move the carousel by `dir` cars and swap that car in; swipes wait while a car loads. */
   private swipe(dir: number): void {
-    if (!this.open) return
+    if (!this.open || this.loading) return
     const target = Math.min(this.host.roster.length - 1, Math.max(0, this.index + dir))
     if (target === this.index) {
       this.nudge(dir)
@@ -186,10 +265,15 @@ export class VehicleMenu {
     void this.settle()
   }
 
-  /** Switch until the game drives the car shown in the centre. */
+  /**
+   * Switch until the game drives the car shown in the centre. Once it does, the
+   * menu closes and play resumes with the new car, as the cover lifts; after a
+   * failure the menu stays open with the reason.
+   */
   private async settle(): Promise<void> {
     if (this.loading) return
     this.loading = true
+    let arrived = false
     try {
       while (this.host.roster[this.index].id !== this.host.current()) {
         const entry = this.host.roster[this.index]
@@ -205,11 +289,13 @@ export class VehicleMenu {
           this.index = this.currentIndex()
           break
         }
+        arrived = true
       }
     } finally {
       this.loading = false
       this.render(true)
     }
+    if (arrived) this.close(true)
   }
 
   private render(animate: boolean): void {
@@ -218,7 +304,10 @@ export class VehicleMenu {
     this.track.classList.toggle('still', !animate)
     this.track.style.setProperty('--i', String(i))
     this.panel.style.setProperty('--accent', this.host.roster[i].accent)
-    this.panel.classList.toggle('loading', this.loading && i !== current)
+    const loading = this.loading && i !== current
+    this.panel.classList.toggle('loading', loading)
+    this.root.classList.toggle('busy', loading)
+    if (loading) this.coverName.textContent = this.host.roster[i].label
     this.names.forEach((name, k) => {
       name.classList.toggle('centre', k === i)
       name.setAttribute('aria-current', String(k === current))
@@ -232,10 +321,5 @@ export class VehicleMenu {
     this.track.classList.remove('nudge-prev', 'nudge-next')
     void this.track.offsetWidth
     this.track.classList.add(dir < 0 ? 'nudge-prev' : 'nudge-next')
-  }
-
-  private refreshChip(): void {
-    const paused = document.body.classList.contains('ready') && !this.open && !this.host.playing
-    this.chip.classList.toggle('shown', paused)
   }
 }

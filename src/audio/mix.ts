@@ -22,6 +22,8 @@ const OUT_LEVEL = 0.9
 export class AudioMix {
   ctx: AudioContext | null = null
   private muted = false
+  /** output silenced for a moment (a car loading behind the switch modal); voices keep running */
+  private held = false
   private out!: GainNode
   private dryBus!: GainNode
   private verbSend!: GainNode
@@ -46,7 +48,21 @@ export class AudioMix {
 
   setMuted(muted: boolean): void {
     this.muted = muted
-    if (this.ctx) this.out.gain.setTargetAtTime(muted ? 0 : OUT_LEVEL, this.ctx.currentTime, 0.05)
+    this.level(0.05)
+  }
+
+  /**
+   * Hold the output silent, or release it with a short fade-in. Unlike `setMuted`
+   * the voices keep running, so what was held (an engine starting while its car
+   * loads) is heard in step when the picture appears.
+   */
+  hold(held: boolean): void {
+    this.held = held
+    this.level(held ? 0.03 : 0.12)
+  }
+
+  private level(fade: number): void {
+    if (this.ctx) this.out.gain.setTargetAtTime(this.muted || this.held ? 0 : OUT_LEVEL, this.ctx.currentTime, fade)
   }
 
   private init(): boolean {
@@ -55,7 +71,7 @@ export class AudioMix {
     if (!Context) return false
     const ctx = new Context()
     this.out = ctx.createGain()
-    this.out.gain.value = this.muted ? 0 : OUT_LEVEL
+    this.out.gain.value = this.muted || this.held ? 0 : OUT_LEVEL
     const comp = ctx.createDynamicsCompressor()
     comp.threshold.value = -16
     comp.knee.value = 10
