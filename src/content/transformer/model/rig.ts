@@ -3,7 +3,7 @@ import type { RigBone, RigDims } from '../asset/format'
 
 /**
  * The robot's skeleton in the authoring frame (x = robot left, -y = forward,
- * z = up), mirroring the Blender rig (ctb/rig.py, ctb/motion.py): joint frames
+ * z = up), mirroring the Blender rigs (ctb/ and f1b/ rig.py, motion.py): joint frames
  * are composed parent -> child as T(offset + slide) * R. The live pose at T = 1
  * starts from the exported stand pose, adds the gait's channels and solves
  * the legs with the same two-bone IK the transformation was audited with.
@@ -79,6 +79,8 @@ export class RobotRig {
       this.local[i].q.copy(S[i].q)
     }
     const set = (name: string, q: Quaternion): void => { this.local[this.index[name]].q.copy(q) }
+    // torso channels act on top of the stand (a racer's stand leans its spine, levels its head)
+    const onStand = (name: string, q: Quaternion): void => { const i = this.index[name]; this.local[i].q.copy(S[i].q).multiply(q) }
     const tmp = _q0
 
     // pelvis: the stance crouch plus the gait's bob, sway, lean and roll
@@ -87,10 +89,10 @@ export class RobotRig {
       .multiply(_m0.makeRotationX(deg(g.lean * 0.5)))
       .multiply(_m0.makeRotationY(deg(g.roll)))
 
-    set('spine', eulerXYZ(g.lean * 0.4 + g.breath, 0, g.twist, tmp))
-    set('chest', eulerXYZ(g.lean * 0.3 - g.breath, 0, g.twist * 0.6, tmp))
-    set('neck', eulerXYZ(-g.lean * 0.4, 0, g.headYaw * 0.4, tmp))
-    set('head', eulerXYZ(g.headPitch, 0, g.headYaw * 0.6, tmp))
+    onStand('spine', eulerXYZ(g.lean * 0.4 + g.breath, 0, g.twist, tmp))
+    onStand('chest', eulerXYZ(g.lean * 0.3 - g.breath, 0, g.twist * 0.6, tmp))
+    onStand('neck', eulerXYZ(-g.lean * 0.4, 0, g.headYaw * 0.4, tmp))
+    onStand('head', eulerXYZ(g.headPitch, 0, g.headYaw * 0.6, tmp))
     const curl = g.curl / GAIT_REST_CURL
     for (const [side, s] of [['L', 1], ['R', -1]] as const) {
       set(`upperarm.${side}`, eulerXYZ(g.arms[side], -s * d.armAbduct, 0, tmp))
@@ -120,10 +122,14 @@ export class RobotRig {
   private solve(root: Matrix4, g: GaitPose): void {
     const d = this.dims
     this.forward(root)
-    const pole = _v1.set(0, -1, 0).applyMatrix4(_m0.extractRotation(this.world[this.index.pelvis]))
+    // knee pole: pelvis front, blended with pelvis up for rigs whose legs also fold forward
+    const pelvis = _m0.extractRotation(this.world[this.index.pelvis])
+    const pole = _v1.set(0, -1, d.kneePoleUp ?? 0).applyMatrix4(pelvis).normalize()
+    const stanceX = d.stanceX ?? d.hipX
+    const footF = d.footF ?? d.robotF
     for (const [side, s] of SIDES) {
       const leg = g.legs[side]
-      _v2.set(s * d.hipX, -(d.robotF + leg.step), d.ankleZ + leg.up)
+      _v2.set(s * stanceX, -(footF + leg.step), d.ankleZ + leg.up)
       const knee = solveLeg(this.world[this.index[`hip.${side}`]], _v2, d.thigh, d.shin, pole, this.local[this.index[`thigh.${side}`]].q)
       this.local[this.index[`shin.${side}`]].q.setFromAxisAngle(X_AXIS, knee)
     }
@@ -156,8 +162,11 @@ const _d = new Vector3()
 const _e = new Vector3()
 
 /**
- * Two-bone leg IK (port of ctb/motion.solve_leg): the thigh frame's -Z runs
- * along the bone and -Y faces the pole. Returns the thigh's local rotation in
+ * Two-bone leg IK (port of f1b/motion.solve_leg): the thigh frame's -Z runs
+ * along the bone and -Y faces the pole. The hinge axis comes from the leg plane
+ * (hip -> target, pole), never from the pole against the thigh, which flips the
+ * twist when the thigh lines up with the pole (identical to ctb/motion.solve_leg
+ * everywhere else). Returns the thigh's local rotation in
  * the hip frame and the knee flexion (radians).
  */
 export function solveLeg(hip: Matrix4, target: Vector3, L1: number, L2: number, pole: Vector3, out: Quaternion): number {
@@ -174,8 +183,8 @@ export function solveLeg(hip: Matrix4, target: Vector3, L1: number, L2: number, 
   side.normalize()
   const thighDir = dir.applyQuaternion(_q0.setFromAxisAngle(side, a)).normalize()
   const z = _d.copy(thighDir).negate()
-  const y = p.sub(_e.copy(thighDir).multiplyScalar(p.dot(thighDir))).normalize().negate()
-  const x = _c.copy(y).cross(z)
+  const x = side.negate()
+  const y = _e.copy(z).cross(x)
   out.setFromRotationMatrix(_m0.makeBasis(x, y, z))
   return knee
 }

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { createMotionState } from '../src/game/types'
 import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions, updateCar } from '../src/game/movement'
 import { RobotJump } from '../src/game/jump'
+import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck'
+
+const CAR = CYBERTRUCK_PROFILE.drive
 
 describe('transformation motion', () => {
   it('waits for the vehicle to stop before unfolding', () => {
@@ -49,7 +52,7 @@ describe('world collisions', () => {
     const state = createMotionState()
     state.pos.set(1, 0, 0)
     state.speed = 10
-    resolveCircleCollisions(state, [{ x: 0, z: 0, r: 1 }], 0.3)
+    resolveCircleCollisions(state, [{ x: 0, z: 0, r: 1 }], 0.3, CYBERTRUCK_PROFILE)
     expect(state.pos.x).toBeCloseTo(3.4)
     expect(state.speed).toBe(5)
   })
@@ -59,7 +62,7 @@ describe('car controls', () => {
   it('does not apply throttle from steering alone', () => {
     const state = createMotionState()
     const controls = { driveThrottle: 0, driveSteering: 1, running: false }
-    for (let i = 0; i < 60; i++) updateCar(state, controls, 1 / 60, false)
+    for (let i = 0; i < 60; i++) updateCar(state, controls, 1 / 60, false, CAR)
     expect(state.speed).toBe(0)
     expect(state.pos.length()).toBe(0)
     expect(state.steer).toBeLessThan(0)
@@ -75,8 +78,8 @@ describe('car controls', () => {
     const rightControls = { driveThrottle: 0, driveSteering: 1, running: false }
     const leftControls = { driveThrottle: 0, driveSteering: -1, running: false }
     for (let i = 0; i < 30; i++) {
-      updateCar(right, rightControls, 1 / 60, false)
-      updateCar(left, leftControls, 1 / 60, false)
+      updateCar(right, rightControls, 1 / 60, false, CAR)
+      updateCar(left, leftControls, 1 / 60, false, CAR)
     }
     expect(right.yaw).toBeLessThan(0)
     expect(right.pos.x).toBeLessThan(0)
@@ -87,12 +90,12 @@ describe('car controls', () => {
   it('brakes before changing from forward to reverse', () => {
     const state = createMotionState()
     const controls = { driveThrottle: 1, driveSteering: 0, running: false }
-    for (let i = 0; i < 120; i++) updateCar(state, controls, 1 / 60, false)
+    for (let i = 0; i < 120; i++) updateCar(state, controls, 1 / 60, false, CAR)
     expect(state.speed).toBeGreaterThan(0)
     controls.driveThrottle = -1
-    updateCar(state, controls, 1 / 60, false)
+    updateCar(state, controls, 1 / 60, false, CAR)
     expect(state.speed).toBeGreaterThan(0)
-    for (let i = 0; i < 120; i++) updateCar(state, controls, 1 / 60, false)
+    for (let i = 0; i < 120; i++) updateCar(state, controls, 1 / 60, false, CAR)
     expect(state.speed).toBeLessThan(0)
   })
 })

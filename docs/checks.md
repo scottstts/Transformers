@@ -9,11 +9,18 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 - 360 walking and running frames with grounded feet;
 - the lift-thruster throttle window, and that no geometry enters the exhaust during the burn.
 
+`tests/ferrari-f1.test.ts` runs the same asset, playback, orientation, wheel-contact, handover and locomotion checks for the F1. It also checks:
+
+- a game material for every exported slot;
+- that the soles stay down while the skeleton blends into the gait;
+- top speeds with the F1 profile;
+- the gearbox shifting up through all eight gears and back inside the rev range.
+
 `tests/desert-world.test.ts` checks tyre-track ribbon continuity and restarts.
 
 `tests/movement.test.ts` checks that transform requests cannot reverse or queue during braking or playback in either direction. `tests/jump.test.ts` checks frame-rate-independent jump timing, one-shot take-off/landing events, replay, arm and foot-target continuity from idle/walk/run, and a two-foot landing without stray stride footfalls.
 
-The Blender build carries the geometry and mechanism audits. Run them after changing panels, the robot or the choreography, then re-export:
+The Blender build carries the geometry and mechanism audits. Run them after changing panels, the robot or the choreography, then re-export (`ferrari-f1.md` has the F1 export command):
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b blender/cybertruck-transformer.blend --python blender/cybertruck_build/audit_game.py
@@ -26,5 +33,7 @@ For a look at effects without a browser, `tools/preview.mjs` renders fixed shots
 ```bash
 node tools/preview.mjs preview-out rise-close tracks-low
 ```
+
+`PREVIEW_CAR=ferrari-f1` renders the same shots with the F1 (the `rise-*` framing is set for the truck).
 
 The browser view is left for manual visual review. Headless checks catch invalid or drifting transforms and solid clashes. They cannot judge silhouette, shading or the feel of motion and sound.

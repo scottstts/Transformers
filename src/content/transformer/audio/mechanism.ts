@@ -1,7 +1,8 @@
-import type { Textures } from './textures'
+import type { Textures } from '../../../audio/textures'
+import type { VoiceOutput } from '../../../audio/mix'
 
 /**
- * Transformation sound: the hum of one large electro-hydraulic machine.
+ * Transformation sound: the hum of one machine (tuned per character).
  *
  * Every stroke is an electric actuator whose pitch and load follow the
  * stroke's speed profile: it spins up from rest, runs, and spins down as the
@@ -12,18 +13,39 @@ import type { Textures } from './textures'
  * transformation is in progress.
  */
 
-export interface VoiceOutput {
-  dry: AudioNode
-  send: AudioNode
+/**
+ * A machine's voice: every character tunes the same actuator model to its
+ * own size and build (a truck-sized electro-hydraulic machine, a carbon racer's
+ * high-speed servos).
+ */
+export interface MechanismTuning {
+  /** motor fundamentals (Hz) by part size; kind trims them slightly */
+  motorHz: { large: number; medium: number; small: number }
+  /** gear-mesh partial over the motor fundamental (non-integer: a reduction stage) */
+  gearRatio: number
+  /** spectral slope of the motor timbre (higher: darker) */
+  timbreSlope: number
+  /** machine bed supply hum (Hz) and level */
+  bedHz: number
+  bedLevel: number
+  /** the two drive motors carrying the body's weight (Hz) */
+  liftHz: [number, number]
+  /** overall stroke level */
+  level: number
 }
 
-/** Motor fundamentals (Hz) by part size; kind trims them slightly. */
-const MOTOR_HZ = { large: 58, medium: 82, small: 116 }
-/** Gear-mesh partial over the motor fundamental (non-integer: a reduction stage). */
-const GEAR_RATIO = 4.37
+export const HEAVY_MACHINE: MechanismTuning = {
+  motorHz: { large: 58, medium: 82, small: 116 },
+  gearRatio: 4.37,
+  timbreSlope: 1.45,
+  bedHz: 52,
+  bedLevel: 0.045,
+  liftHz: [38, 57],
+  level: 1,
+}
+
 /** Points in the speed-profile curves handed to the audio thread. */
 const CURVE_POINTS = 64
-const BED_LEVEL = 0.045
 
 interface MachineBed {
   gain: GainNode
@@ -36,16 +58,19 @@ export class MechanismVoices {
   private readonly out: VoiceOutput
   private readonly wave: PeriodicWave
   private readonly bed: MachineBed
+  private readonly tune: MechanismTuning
+  private readonly sources: AudioScheduledSourceNode[] = []
 
-  constructor(ctx: AudioContext, textures: Textures, out: VoiceOutput) {
+  constructor(ctx: AudioContext, textures: Textures, out: VoiceOutput, tuning: MechanismTuning = HEAVY_MACHINE) {
     this.ctx = ctx
+    this.tune = tuning
     this.tex = textures
     this.out = out
     // motor timbre: a soft harmonic series with the slot harmonics (6th, 12th) lifted
     const n = 16
     const real = new Float32Array(n + 1)
     const imag = new Float32Array(n + 1)
-    for (let k = 1; k <= n; k++) imag[k] = Math.pow(k, -1.45) * (k % 6 === 0 ? 2.4 : 1)
+    for (let k = 1; k <= n; k++) imag[k] = Math.pow(k, -tuning.timbreSlope) * (k % 6 === 0 ? 2.4 : 1)
     this.wave = ctx.createPeriodicWave(real, imag)
     this.bed = this.buildBed()
   }
@@ -59,11 +84,11 @@ export class MechanismVoices {
    */
   motor(t: number, dur: number, size: number, pan: number, level = 1, trim = 1): void {
     const ctx = this.ctx
-    const f0 = (size > 2 ? MOTOR_HZ.large : size > 0.6 ? MOTOR_HZ.medium : MOTOR_HZ.small) * trim
+    const f0 = (size > 2 ? this.tune.motorHz.large : size > 0.6 ? this.tune.motorHz.medium : this.tune.motorHz.small) * trim
     const speed = speedProfile(dur)
     const freq = speed.map((v) => f0 * (0.5 + 0.5 * v))
     const load = speed.map((v) => Math.sqrt(v))
-    const gain = 0.05 * level * (size > 2 ? 1.25 : size > 0.6 ? 1 : 0.8)
+    const gain = 0.05 * this.tune.level * level * (size > 2 ? 1.25 : size > 0.6 ? 1 : 0.8)
     const bus = this.voiceBus(t, dur, gain, pan, 0.2)
 
     const body = ctx.createBiquadFilter()
@@ -80,7 +105,7 @@ export class MechanismVoices {
     motor.frequency.setValueCurveAtTime(freq, t, dur)
     motor.connect(body)
     const gear = ctx.createOscillator()
-    gear.frequency.setValueCurveAtTime(freq.map((f) => f * GEAR_RATIO), t, dur)
+    gear.frequency.setValueCurveAtTime(freq.map((f) => f * this.tune.gearRatio), t, dur)
     const gearGain = ctx.createGain()
     gearGain.gain.value = 0.09
     gear.connect(gearGain).connect(loadGain)
@@ -128,7 +153,7 @@ export class MechanismVoices {
     lp.frequency.value = 420
     lp.Q.value = 0.5
     lp.connect(loadGain).connect(bus)
-    for (const [f, g] of [[38, 0.7], [57, 0.45]]) {
+    for (const [f, g] of [[this.tune.liftHz[0], 0.7], [this.tune.liftHz[1], 0.45]]) {
       const o = ctx.createOscillator()
       o.setPeriodicWave(this.wave)
       // spins up, then labours a little under the load at mid-lift
@@ -142,20 +167,26 @@ export class MechanismVoices {
     this.texture(this.tex.brown, t, dur, loadGain, 'lowpass', 90, 0.6, 0.6)
   }
 
+  /** Stops the machine bed (strokes in flight end on their own). */
+  dispose(): void {
+    for (const s of this.sources) s.stop()
+    this.bed.gain.disconnect()
+  }
+
   /* ----------------------------------------------------------------- bed */
 
   /** Machine bed on while the transformation runs; `spool` glides the supply up to speed. */
   bedLevel(on: boolean): void {
     const t = this.ctx.currentTime
-    this.bed.gain.gain.setTargetAtTime(on ? BED_LEVEL : 0, t, on ? 0.35 : 0.9)
+    this.bed.gain.gain.setTargetAtTime(on ? this.tune.bedLevel : 0, t, on ? 0.35 : 0.9)
   }
 
   spool(): void {
     const t = this.ctx.currentTime
     const f = this.bed.hum.frequency
     f.cancelScheduledValues(t)
-    f.setValueAtTime(26, t)
-    f.exponentialRampToValueAtTime(52, t + 1.4)
+    f.setValueAtTime(this.tune.bedHz * 0.5, t)
+    f.exponentialRampToValueAtTime(this.tune.bedHz, t + 1.4)
   }
 
   private buildBed(): MachineBed {
@@ -168,7 +199,7 @@ export class MechanismVoices {
     gain.connect(send).connect(this.out.send)
     const hum = ctx.createOscillator()
     hum.setPeriodicWave(this.wave)
-    hum.frequency.value = 52
+    hum.frequency.value = this.tune.bedHz
     const lp = ctx.createBiquadFilter()
     lp.type = 'lowpass'
     lp.frequency.value = 240
@@ -176,6 +207,7 @@ export class MechanismVoices {
     hg.gain.value = 0.7
     hum.connect(lp).connect(hg).connect(gain)
     hum.start()
+    this.sources.push(hum)
     // pump drone: brown noise through a broad low resonance
     const src = ctx.createBufferSource()
     src.buffer = this.tex.brown
@@ -188,6 +220,7 @@ export class MechanismVoices {
     pg.gain.value = 0.9
     src.connect(bp).connect(pg).connect(gain)
     src.start()
+    this.sources.push(src)
     return { gain, hum }
   }
 

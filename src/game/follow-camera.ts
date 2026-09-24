@@ -1,46 +1,99 @@
 import { PerspectiveCamera, Vector3, type Object3D } from 'three/webgpu'
 import type { MotionState } from './types'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
+import type { CameraProfile } from '../content/transformer/character'
 
-const CAR_DISTANCE = 7.875
-const ROBOT_DISTANCE = 12.75
+const DEFAULT_FRAMING: CameraProfile = { carDistance: 7.875, robotDistance: 12.75, carFocus: 1.1, robotFocus: 3.9 }
+/**
+ * Browsers can report the cursor's whole unlocked travel as the first movement
+ * after the pointer locks (e.g. coming back from the vehicle menu), whenever that
+ * first movement comes: the first event after every lock is dropped, so is
+ * anything in a short settle window after locking, and no single event may swing
+ * the orbit further than a real flick.
+ */
+const LOCK_SETTLE_MS = 80
+const MAX_EVENT_MOVE = 400
+/** A new character's framing (focus heights, distances) eases in over this long (s). */
+const FRAMING_GLIDE = 1.2
 
 export class FollowCamera {
   private readonly camera: PerspectiveCamera
   private readonly canvas: HTMLCanvasElement
-  private readonly robotOffset: number
+  private robotOffset: number
+  /** the framing in use: glides from `framingFrom` to `framingTo` after a character switch */
+  private readonly framing: CameraProfile
+  private readonly framingFrom: CameraProfile
+  private framingTo: CameraProfile
+  private framingGlide = 1
   private yaw: number
   private pitch = 0.16
   private lastLook = -10
   private initialized = false
-  private radius = CAR_DISTANCE
+  private radius: number
   private readonly target = new Vector3()
   private readonly position = new Vector3()
   private readonly localFocus = new Vector3()
   private readonly focus = new Vector3()
   private readonly onPointerDown = (): void => { this.activate() }
+  private lockedAt = -Infinity
+  private freshLock = false
+  /** input suspended by the game until the pointer locks again */
+  private suspended = false
   private readonly onPointerLockChange = (): void => {
     if (document.pointerLockElement !== this.canvas) return
-    const offset = this.camera.position.clone().sub(this.target)
-    this.yaw = Math.atan2(offset.x, offset.z)
-    this.pitch = clamp(Math.atan2(offset.y, Math.hypot(offset.x, offset.z)), -0.05, 1.1)
-    this.lastLook = performance.now() / 1000
+    // the orbit is kept exactly as it was: re-locking must never move the camera
+    this.lockedAt = performance.now()
+    this.freshLock = true
+    this.suspended = false
+    this.lastLook = this.lockedAt / 1000
   }
   private readonly onMouseMove = (event: MouseEvent): void => {
-    if (document.pointerLockElement !== this.canvas) return
+    if (document.pointerLockElement !== this.canvas || this.suspended) return
     if (event.movementX === 0 && event.movementY === 0) return
+    const now = performance.now()
+    if (this.freshLock) {
+      this.freshLock = false
+      return
+    }
+    if (now - this.lockedAt < LOCK_SETTLE_MS) return
+    if (Math.abs(event.movementX) > MAX_EVENT_MOVE || Math.abs(event.movementY) > MAX_EVENT_MOVE) return
     this.yaw -= event.movementX * 0.005
     this.pitch = clamp(this.pitch + event.movementY * 0.004, -0.05, 1.1)
-    this.lastLook = performance.now() / 1000
+    this.lastLook = now / 1000
   }
-  constructor(camera: PerspectiveCamera, canvas: HTMLCanvasElement, initialYaw: number, robotOffset: number) {
+  constructor(camera: PerspectiveCamera, canvas: HTMLCanvasElement, initialYaw: number, robotOffset: number, framing: CameraProfile = DEFAULT_FRAMING) {
     this.camera = camera
     this.canvas = canvas
     this.robotOffset = robotOffset
+    this.framing = { ...framing }
+    this.framingFrom = { ...framing }
+    this.framingTo = framing
+    this.radius = framing.carDistance
     this.yaw = initialYaw + Math.PI
     canvas.addEventListener('pointerdown', this.onPointerDown)
     document.addEventListener('pointerlockchange', this.onPointerLockChange)
     document.addEventListener('mousemove', this.onMouseMove)
+  }
+
+  /**
+   * Frame another character. The orbit (yaw, pitch) is untouched; focus heights
+   * and distances ease to the new framing. The robot station switches at once:
+   * the session moves the car origin so the robot, and so the focus, stay put.
+   */
+  setCharacter(robotOffset: number, framing: CameraProfile): void {
+    this.robotOffset = robotOffset
+    Object.assign(this.framingFrom, this.framing)
+    this.framingTo = framing
+    this.framingGlide = 0
+  }
+
+  /**
+   * Stop taking mouse input until the pointer locks again: call before the game
+   * releases the pointer itself (the release can deliver a cursor-restore
+   * movement while the lock still reads as held).
+   */
+  suspendInput(): void {
+    this.suspended = true
   }
 
   get locked(): boolean { return document.pointerLockElement === this.canvas }
@@ -58,18 +111,19 @@ export class FollowCamera {
 
   focusPoint(state: MotionState, root: Object3D): Vector3 {
     const k = easedRange(state.progress, 0.1, 0.75)
-    this.localFocus.set(0, lerp(1.1, 3.9, k), lerp(0, this.robotOffset, k))
+    this.localFocus.set(0, lerp(this.framing.carFocus, this.framing.robotFocus, k), lerp(0, this.robotOffset, k))
     return this.focus.copy(this.localFocus).applyMatrix4(root.matrixWorld)
   }
 
   update(dt: number, state: MotionState, root: Object3D, driving = false): void {
     const now = performance.now() / 1000
+    if (this.framingGlide < 1) this.glideFraming(dt)
     if (state.progress < 0.5 && driving && now - this.lastLook > 0.3) {
       this.yaw += wrap(state.yaw + Math.PI - this.yaw) * (1 - Math.exp(-dt * 2.4))
       this.pitch = damp(this.pitch, 0.16, 1.6, dt)
     }
     const k = easedRange(state.progress, 0.1, 0.6)
-    const distance = lerp(CAR_DISTANCE, ROBOT_DISTANCE, k)
+    const distance = lerp(this.framing.carDistance, this.framing.robotDistance, k)
     const focus = this.focusPoint(state, root)
     if (!this.initialized) {
       this.target.copy(focus)
@@ -93,6 +147,18 @@ export class FollowCamera {
       this.camera.fov = fov
       this.camera.updateProjectionMatrix()
     }
+  }
+
+  private glideFraming(dt: number): void {
+    this.framingGlide = Math.min(1, this.framingGlide + dt / FRAMING_GLIDE)
+    const u = easedRange(this.framingGlide, 0, 1)
+    const a = this.framingFrom
+    const b = this.framingTo
+    const f = this.framing
+    f.carDistance = lerp(a.carDistance, b.carDistance, u)
+    f.robotDistance = lerp(a.robotDistance, b.robotDistance, u)
+    f.carFocus = lerp(a.carFocus, b.carFocus, u)
+    f.robotFocus = lerp(a.robotFocus, b.robotFocus, u)
   }
 
   dispose(): void {

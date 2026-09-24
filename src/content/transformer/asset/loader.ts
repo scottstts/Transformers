@@ -1,15 +1,13 @@
 import { BufferAttribute, BufferGeometry, Vector3 } from 'three/webgpu'
-import type { CybertruckManifest, MeshRecord } from './format'
-
-const MODEL_URL = 'models/cybertruck'
+import type { TransformerManifest, MeshRecord } from './format'
 
 export interface DecodedMesh {
   material: string
   geometry: BufferGeometry
 }
 
-export interface CybertruckAsset {
-  manifest: CybertruckManifest
+export interface TransformerAsset {
+  manifest: TransformerManifest
   /** per node, the decoded meshes (node frame) */
   meshes: DecodedMesh[][]
   /** frames x nodes x (tx, ty, tz, qx, qy, qz, qw), local to the parent node */
@@ -18,19 +16,22 @@ export interface CybertruckAsset {
   lift: Float32Array
 }
 
-/** Fetches and decodes the exported model; any failure rejects (boot error UI). */
-export async function loadCybertruckAsset(base = import.meta.env.BASE_URL): Promise<CybertruckAsset> {
-  const root = `${base}${MODEL_URL}`
+/**
+ * Fetches and decodes an exported model (`public/models/<name>.{json,bin}`);
+ * any failure rejects with a message naming `label`.
+ */
+export async function loadTransformerAsset(name: string, label: string, base = import.meta.env.BASE_URL): Promise<TransformerAsset> {
+  const root = `${base}models/${name}`
   const [manifestResponse, binaryResponse] = await Promise.all([fetch(`${root}.json`), fetch(`${root}.bin`)])
-  if (!manifestResponse.ok) throw new Error(`Cybertruck manifest: HTTP ${manifestResponse.status}`)
-  if (!binaryResponse.ok) throw new Error(`Cybertruck geometry: HTTP ${binaryResponse.status}`)
-  const manifest = await manifestResponse.json() as CybertruckManifest
+  if (!manifestResponse.ok) throw new Error(`${label} manifest: HTTP ${manifestResponse.status}`)
+  if (!binaryResponse.ok) throw new Error(`${label} geometry: HTTP ${binaryResponse.status}`)
+  const manifest = await manifestResponse.json() as TransformerManifest
   const buffer = await binaryResponse.arrayBuffer()
-  return decodeCybertruckAsset(manifest, buffer)
+  return decodeTransformerAsset(manifest, buffer, label)
 }
 
-export function decodeCybertruckAsset(manifest: CybertruckManifest, buffer: ArrayBuffer): CybertruckAsset {
-  if (manifest.version !== 1) throw new Error(`Unsupported Cybertruck asset version ${manifest.version}`)
+export function decodeTransformerAsset(manifest: TransformerManifest, buffer: ArrayBuffer, label = 'Transformer'): TransformerAsset {
+  if (manifest.version !== 1) throw new Error(`Unsupported ${label} asset version ${manifest.version}`)
   const meshes = manifest.nodes.map((node) => node.meshes.map((record) => ({
     material: record.material,
     geometry: decodeGeometry(buffer, record),

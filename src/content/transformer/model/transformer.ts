@@ -1,11 +1,11 @@
 import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material } from 'three/webgpu'
-import type { CybertruckAsset } from '../asset/loader'
+import type { TransformerAsset } from '../asset/loader'
 import { supportPoints } from '../asset/loader'
 import type { NodeKind, RigDims } from '../asset/format'
 import { RobotRig, type GaitPose } from './rig'
 
 /**
- * The Cybertruck transformer at runtime.
+ * A transformer character at runtime (the Cybertruck, the Ferrari F1, ...).
  *
  * Every rigid body of the mechanism (skeleton bone, car assembly, wheel,
  * lifter stage) is a node whose local transform relative to its parent was
@@ -35,15 +35,25 @@ export interface Contacts {
   feet: Record<Side, Vector3>
 }
 
+/** Default start of the skeleton's blend into the live gait (T). */
 const GAIT_BLEND_FROM = 0.9
 const CAR_FADE = 0.06
 const TO_THREE = new Matrix4().makeRotationX(-Math.PI / 2)
 const FROM_THREE = TO_THREE.clone().invert()
-const FOOT_NODES = ['bone:foot.L', 'bone:foot.R', 'asm:toecap.L', 'asm:toecap.R']
 
 const smooth = (u: number): number => u * u * u * (u * (u * 6 - 15) + 10)
 
-export class CybertruckModel {
+export interface TransformerOptions {
+  /** name used in error messages */
+  label: string
+  /** nodes whose support points form the soles (a `.L` / `.R` suffix gives the side) */
+  footNodes: string[]
+  /** T at which the skeleton starts blending into the live gait */
+  gaitBlendFrom?: number
+}
+
+export class TransformerModel {
+  readonly label: string
   /** game-world placement (position / yaw), owned by the session */
   readonly root = new Group()
   /** car-mode body suspension in game space (pitch / roll about the body), owned by the session */
@@ -71,9 +81,12 @@ export class CybertruckModel {
   private readonly tracks: Float32Array
   private readonly liftTrack: Float32Array
   private readonly frames: number
+  private readonly gaitBlendFrom: number
 
-  constructor(asset: CybertruckAsset, materials: Record<string, Material>) {
+  constructor(asset: TransformerAsset, materials: Record<string, Material>, options: TransformerOptions) {
     const { manifest } = asset
+    this.label = options.label
+    this.gaitBlendFrom = options.gaitBlendFrom ?? GAIT_BLEND_FROM
     this.dims = manifest.rig.dims
     this.duration = manifest.rig.dims.duration
     this.tracks = asset.tracks
@@ -107,12 +120,12 @@ export class CybertruckModel {
       this.nodes.push(node)
       if (record.kind === 'wheel') this.wheels.push({ node: i, front: record.name.startsWith('wheel:wheelF') })
     })
-    for (const name of FOOT_NODES) {
+    for (const name of options.footNodes) {
       const i = byName[name]
-      if (i === undefined) throw new Error(`Cybertruck asset lacks ${name}`)
-      this.footSupport.push({ node: i, side: name.endsWith('.L') ? 'L' : 'R', points: supportPoints(asset.meshes[i].map((m) => m.geometry)) })
+      if (i === undefined) throw new Error(`${this.label} asset lacks ${name}`)
+      this.footSupport.push({ node: i, side: /\.L($|\.)/.test(name) ? 'L' : 'R', points: supportPoints(asset.meshes[i].map((m) => m.geometry)) })
     }
-    this.footNode = { L: byName['bone:foot.L'], R: byName['bone:foot.R'] }
+    this.footNode = { L: this.index('bone:foot.L'), R: this.index('bone:foot.R') }
     this.frontWheel = new Uint8Array(count)
     for (const w of this.wheels) this.frontWheel[w.node] = w.front ? 1 : 0
     this.contactPoints = { wheels: this.wheels.map((w) => ({ p: new Vector3(), front: w.front })), feet: { L: new Vector3(), R: new Vector3() } }
@@ -127,9 +140,13 @@ export class CybertruckModel {
 
   /** A mechanism node (bone, assembly, wheel or lifter stage) by its asset name. */
   node(name: string): Group {
+    return this.nodes[this.index(name)]
+  }
+
+  private index(name: string): number {
     const i = this.byName[name]
-    if (i === undefined) throw new Error(`Cybertruck asset lacks ${name}`)
-    return this.nodes[i]
+    if (i === undefined) throw new Error(`${this.label} asset lacks ${name}`)
+    return i
   }
 
   /** Pose the whole model at transformation time T; `gait` drives the robot at T = 1. */
@@ -138,7 +155,7 @@ export class CybertruckModel {
     const fpos = MathUtils.clamp(T, 0, 1) * (this.frames - 1)
     const f0 = Math.min(Math.floor(fpos), this.frames - 2)
     const a = fpos - f0
-    const gw = gait ? smooth(MathUtils.clamp((T - GAIT_BLEND_FROM) / (1 - GAIT_BLEND_FROM), 0, 1)) : 0
+    const gw = gait ? smooth(MathUtils.clamp((T - this.gaitBlendFrom) / (1 - this.gaitBlendFrom), 0, 1)) : 0
     if (gw > 0 && gait) this.rig.poseLive(gait)
     const carW = 1 - smooth(MathUtils.clamp(T / CAR_FADE, 0, 1))
 
@@ -205,6 +222,17 @@ export class CybertruckModel {
     return -low
   }
 
+  /** Height of a foot's lowest support point above the ground (game space, after the last pose). */
+  footClearance(side: Side): number {
+    let low = Infinity
+    for (const s of this.footSupport) {
+      if (s.side !== side) continue
+      const W = this.nodes[s.node].matrixWorld
+      for (const p of s.points) low = Math.min(low, _v.copy(p).applyMatrix4(W).y)
+    }
+    return low
+  }
+
   /**
    * Outline of a foot (sole and toe cap) on the ground, in game space: the
    * support points within 6 cm of its lowest, boxed along the foot's heading.
@@ -213,12 +241,7 @@ export class CybertruckModel {
     const foot = this.nodes[this.footNode[side]].matrixWorld
     out.forward.set(0, -1, 0).transformDirection(foot).setY(0).normalize()
     const f = out.forward
-    let low = Infinity
-    for (const s of this.footSupport) {
-      if (s.side !== side) continue
-      const W = this.nodes[s.node].matrixWorld
-      for (const p of s.points) low = Math.min(low, _v.copy(p).applyMatrix4(W).y)
-    }
+    const low = this.footClearance(side)
     let a0 = Infinity, a1 = -Infinity, c0 = Infinity, c1 = -Infinity
     for (const s of this.footSupport) {
       if (s.side !== side) continue
