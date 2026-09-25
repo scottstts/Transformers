@@ -13,6 +13,8 @@ import { RobotCombat } from '../../src/game/combat/robot-combat'
 import { CameraFx } from '../../src/game/combat/camera-fx'
 import { Director, type DirectorSubject } from '../../src/game/combat/director'
 import { Lens } from '../../src/rendering/lens'
+import { decodeSoldierAsset, type SoldierManifest } from '../../src/content/soldier/asset'
+import { Horde, type EnemyTarget } from '../../src/game/enemies/horde'
 
 const CELL_W = 480
 const CELL_H = 270
@@ -40,6 +42,8 @@ export interface FightSheet {
   views: string[]
   /** scale of the views' distances (the F1 robot is smaller) */
   zoom?: number
+  /** fight a fort's garrison: the robot stands in fort `brawl`'s yard (index), the soldiers alerted */
+  brawl?: number
 }
 
 /**
@@ -77,8 +81,40 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
   state.target = 1
   state.progress = 1
   state.yaw = 0
+  // the brawl: the garrison of a fort, the robot standing in its yard facing the hangar
+  let horde: Horde | null = null
+  const target: EnemyTarget = { x: 0, z: 0, radius: player.profile.robotRadius, vx: 0, vz: 0, height: player.model.dims.hipZ * 1.8, heading: 0, guard: 0, present: true }
+  if (sheet.brawl !== undefined) {
+    const [sm, sb] = read('soldier')
+    horde = new Horde(decodeSoldierAsset(sm as SoldierManifest, sb), world.world.forts, world.contactEffects, new AudioMix())
+    scene.add(horde.object)
+    const fort = world.world.forts.list[sheet.brawl]
+    const c = fort.toWorld(0, 4)
+    const h = fort.toWorld(fort.plan.hangars[0].at[0], fort.plan.hangars[0].at[1])
+    state.yaw = Math.atan2(h.x - c.x, h.z - c.z)
+    state.pos.set(c.x - Math.sin(state.yaw) * player.robotOffset, 0, c.z - Math.cos(state.yaw) * player.robotOffset)
+  }
+  const guards = sheet.clicks.filter((c) => c.startsWith('G')).map((c) => c.slice(1).split('-').map(Number) as [number, number])
   const fx = new CameraFx(lens)
   const fight = new RobotCombat(player.combat, player.model, player.robotOffset, state, fx)
+  if (horde) {
+    const h = horde
+    fight.aimAssist = (x, z, heading) => h.assist(x, z, heading)
+    fight.onHit = (hit) => {
+      if (process.env.HITS && hit.sweep < 0) {
+        const near = h.nearby(hit.x, hit.z, 12).map((k) => {
+          const d = Math.hypot(k.x - hit.x, k.z - hit.z)
+          const a = Math.atan2(k.x - hit.x, k.z - hit.z) - hit.heading
+          return `${d.toFixed(1)}@${((Math.atan2(Math.sin(a), Math.cos(a)) * 180) / Math.PI).toFixed(0)}:${k.mode}`
+        })
+        console.log('   near', near.join(' '))
+      }
+      const caught = h.hit(hit)
+      if (process.env.HITS && (hit.sweep < 0 || caught > 0)) console.log(`  hit ${hit.shape} ${hit.kind} reach ${hit.reach.toFixed(1)} caught ${caught}`)
+      if (caught > 0 && hit.shape === 'sector') fx.hitStop(0.05, 0.18)
+    }
+    h.onStruck = (at, from, strength) => player.combat.effects.struck(at, from, strength, fight.guarded)
+  }
   const director = new Director()
   const weapon = player.combat.effects.weapon
   const subject: DirectorSubject = {
@@ -94,7 +130,7 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
   const views = sheet.views.map((name) => ({ name, ...(VIEWS[name] ?? VIEWS.side) }))
   const zoom = sheet.zoom ?? 1
   const frames = [...sheet.frames].sort((a, b) => a - b)
-  const clicks = sheet.clicks.filter((c) => !c.startsWith('F')).map(Number).sort((a, b) => a - b)
+  const clicks = sheet.clicks.filter((c) => !c.startsWith('F') && !c.startsWith('G')).map(Number).sort((a, b) => a - b)
   const rows = Math.ceil(frames.length / COLUMNS)
   const images = views.map(() => new Uint8Array(CELL_W * COLUMNS * CELL_H * rows * 4))
   const point = new Vector3()
@@ -116,6 +152,7 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
     aim.position.set(state.pos.x, 3, state.pos.z)
     aim.lookAt(state.pos.x + Math.sin(state.yaw), 3, state.pos.z + Math.cos(state.yaw))
     aim.updateMatrixWorld()
+    fight.setGuard(guards.some(([a, b]) => t >= a && t < b))
     fight.update(dt, state, aim)
     const pose = player.gait.update(dt, state.speed, state.yawRate, false, true, null)
     if (fight.poseWeight > 0) pose.air = (pose.air ?? 0) + (fight.air - (pose.air ?? 0)) * fight.poseWeight
@@ -125,6 +162,14 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
     player.model.pose(1, pose)
     player.effects.timeline(1, 1)
     player.effects.update(dt, state)
+    if (horde) {
+      target.x = state.pos.x + Math.sin(state.yaw) * player.robotOffset
+      target.z = state.pos.z + Math.cos(state.yaw) * player.robotOffset
+      target.heading = state.yaw
+      target.present = !fight.cinematic && fight.air < 1
+      target.guard = fight.guarded ? player.combat.effects.guardReach() : 0
+      horde.update(dt, target, aim)
+    }
     if (director.active && !fight.cinematic) director.stop()
     return dt
   }
@@ -167,6 +212,7 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
       camera.updateMatrixWorld()
       fx.apply(camera)
       camera.updateMatrixWorld()
+      horde?.drawFor(camera)
       world.world.update(camera, point)
       await renderer.compileAsync(scene, camera)
       pipeline.render()
@@ -177,7 +223,8 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
         images[v].set(cell.subarray(y * CELL_W * 4, (y + 1) * CELL_W * 4), ((cy + y) * CELL_W * COLUMNS + cx) * 4)
       }
     }
-    console.log(`t ${frames[k].toFixed(2)}  move ${fight.poseWeight.toFixed(2)}`)
+    const garrison = horde?.status(point.x, point.z)
+    console.log(`t ${frames[k].toFixed(2)}  move ${fight.poseWeight.toFixed(2)}${garrison ? `  soldiers ${garrison.alive} destroyed ${horde?.destroyed}${garrison.alert ? ' alerted' : ''}` : ''}`)
   }
   views.forEach((view, v) => writePng(`${out}-${view.name}.png`, CELL_W * COLUMNS, CELL_H * rows, images[v]))
 }

@@ -10,6 +10,10 @@ Each character package (`src/content/cybertruck/`, `src/content/ferrari-f1/`) su
 
 `src/content/roster.ts` lists the playable cars: label, menu tagline and accent, loader and factory. Adding a car means adding a package and a roster entry. Assets download once per session (the promise is shared; a failed download can be retried). The last choice is remembered in local storage and used at boot.
 
+## Enemies and forts
+
+The desert's forts (`src/worlds/desert/fort/`, forts.md) are world scenery; their garrisons are `src/game/enemies/` (enemies.md), with the soldier's asset, rig and rendering in `src/content/soldier/` (soldier-model.md). The session owns one `Horde` for every fort and one `CarBarrier`. It routes the fight's `onHit` events to the horde and the horde's blade strikes to the playing character's `struck`. The soldier asset loads at boot beside the car's, as its own observed stage.
+
 ## Switching cars
 
 `GameSession.switchCharacter` swaps cars in either form when no transformation or jump is running. A car is built the first time it is chosen:
@@ -30,7 +34,7 @@ Besides the touch controls, the in-game UI is the vehicle menu (`src/ui/vehicle-
 - a floating stick on the left 45 % of the screen, which centres under the thumb;
 - a drag anywhere else to look (`FollowCamera.look`, the same path as mouse movement);
 - a transform button;
-- jump, attack and special buttons, shown only while the robot stands (`GameSession.onStandingChange`); the special's rim shows its energy;
+- jump, attack, guard (held) and special buttons, shown only while the robot stands (`GameSession.onStandingChange`); the special's rim shows its energy;
 - a held drift button in the jump button's exact slot while the car is fully settled. It drives the same Shift state as the keyboard and is released as soon as transformation, switching, the menu, or focus loss makes car actions unavailable.
 
 The stick maps onto the keyboard controls rather than adding a separate car mode. Forward and back switch the throttle on and off, as W and S do, and sideways steers the car proportionally. In car form the stick never implies Shift, even at full deflection: ordinary joystick driving stays in the same aided regime as desktop WASD. The held Drift button is the only touch source for the car's Shift state, and releasing it follows the exact desktop Shift-release path. For the robot, the stick gives a camera-relative walking direction and pushing it to the rim still runs. The menu pill moves to the top on touch screens, clear of the thumbs, and a tap opens it. The touch controls hide and release every finger while the menu is open.

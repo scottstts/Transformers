@@ -19,6 +19,9 @@ import type { SpecialMove } from '../../transformer/combat/special'
 const IMPACT = 4.45
 const LANDING = 12
 
+/** Where and when Skyfall lands (hits.ts). */
+export const SKYFALL = { impact: IMPACT, landing: LANDING, launch: 1.26 } as const
+
 export const CYBERTRUCK_SPECIAL: SpecialMove = {
   name: 'skyfall',
   handback: 6.9,

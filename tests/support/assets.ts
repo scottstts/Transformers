@@ -4,6 +4,7 @@ import type { TransformerManifest } from '../../src/content/transformer/asset/fo
 import type { ContactEffects } from '../../src/game/contact-effects.ts'
 import type { GaitPose } from '../../src/content/transformer/model/rig.ts'
 import { decodeWeaponAsset, type WeaponAsset, type WeaponManifest } from '../../src/content/transformer/asset/weapon.ts'
+import { decodeSoldierAsset, type SoldierAsset, type SoldierManifest } from '../../src/content/soldier/asset.ts'
 
 /** An exported model from public/models, decoded as the game does. */
 export function readAsset(name: string): TransformerAsset {
@@ -39,4 +40,11 @@ export function readWeapon(name: string): WeaponAsset {
   const manifest = JSON.parse(readFileSync(`public/models/${name}.json`, 'utf8')) as WeaponManifest
   const binary = readFileSync(`public/models/${name}.bin`)
   return decodeWeaponAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength), name)
+}
+
+/** The enemy soldier from public/models, decoded as the game does. */
+export function readSoldier(): SoldierAsset {
+  const manifest = JSON.parse(readFileSync('public/models/soldier.json', 'utf8')) as SoldierManifest
+  const binary = readFileSync('public/models/soldier.bin')
+  return decodeSoldierAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength))
 }

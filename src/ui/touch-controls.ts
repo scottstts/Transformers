@@ -9,6 +9,8 @@ export interface TouchHost {
   /** hold/release Shift while driving */
   drift(held: boolean): void
   attack(): void
+  /** hold/release the guard */
+  guard(held: boolean): void
   special(): void
 }
 
@@ -26,6 +28,8 @@ const JUMP_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="m9 15 7-
 const DRIFT_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 22c5.5-1 7.5-9.5 15-12"/><path d="m18.5 8.5 4.5 1.5-1.5 4.5"/><path d="M7.5 26h.01M12.5 25h.01"/></svg>'
 /** A four-pointed flare: the special. */
 const SPECIAL_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4.5 18.3 13.7 27.5 16 18.3 18.3 16 27.5 13.7 18.3 4.5 16 13.7 13.7z"/></svg>'
+/** A shield: the guard. */
+const GUARD_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5.5 25 9v6.5c0 5.4-3.8 9.5-9 11.5-5.2-2-9-6.1-9-11.5V9z"/><path d="M16 10v12"/></svg>'
 const ATTACK_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8.5 23.5 23 9"/><path d="M15 8.5h8.5V17"/><path d="m7 17 3.5 3.5"/></svg>'
 
 /**
@@ -45,7 +49,10 @@ export class TouchControls {
   private readonly driftButton: HTMLButtonElement
   private readonly attackButton: HTMLButtonElement
   private readonly specialButton: HTMLButtonElement
-  private driftPointer: number | null = null
+  private readonly guardButton: HTMLButtonElement
+  /** release functions of the held buttons (drift, guard) */
+  private readonly releaseDrift: () => void
+  private readonly releaseGuard: () => void
   private stickPointer: number | null = null
   private readonly stickOrigin = { x: 0, y: 0 }
   private lookPointer: number | null = null
@@ -99,7 +106,8 @@ export class TouchControls {
     this.knob.className = 'touch-knob'
     this.base.append(this.knob)
     this.jumpButton = this.button('touch-jump', 'Jump', JUMP_ICON, () => host.jump())
-    this.driftButton = this.holdButton('touch-drift', 'Drift', DRIFT_ICON, (held) => host.drift(held))
+    ;[this.driftButton, this.releaseDrift] = this.holdButton('touch-drift', 'Drift', DRIFT_ICON, (held) => host.drift(held))
+    ;[this.guardButton, this.releaseGuard] = this.holdButton('touch-guard', 'Guard', GUARD_ICON, (held) => host.guard(held))
     this.attackButton = this.button('touch-attack', 'Attack', ATTACK_ICON, () => host.attack())
     this.specialButton = this.button('touch-special', 'Special', SPECIAL_ICON, () => host.special())
     this.setRobotActions(false)
@@ -110,6 +118,7 @@ export class TouchControls {
       this.jumpButton,
       this.driftButton,
       this.attackButton,
+      this.guardButton,
       this.specialButton,
     )
     this.root.addEventListener('pointerdown', this.onDown)
@@ -121,12 +130,13 @@ export class TouchControls {
     document.body.append(this.root)
   }
 
-  /** Show the jump, attack and special buttons only while the robot stands. */
+  /** Show the jump, attack, guard and special buttons only while the robot stands. */
   setRobotActions(available: boolean): void {
-    for (const button of [this.jumpButton, this.attackButton, this.specialButton]) {
+    for (const button of [this.jumpButton, this.attackButton, this.guardButton, this.specialButton]) {
       button.classList.toggle('away', !available)
       button.inert = !available
     }
+    if (!available) this.releaseGuard()
   }
 
   /** The special's energy (0..1) on the button's rim, its colour, and whether it can be played. */
@@ -147,6 +157,7 @@ export class TouchControls {
   release(): void {
     this.releaseStick()
     this.releaseDrift()
+    this.releaseGuard()
     this.lookPointer = null
   }
 
@@ -175,41 +186,40 @@ export class TouchControls {
     return button
   }
 
-  private holdButton(kind: string, label: string, icon: string, held: (on: boolean) => void): HTMLButtonElement {
+  /** A button held down (its own pointer, captured) rather than tapped; returns it and a forced release. */
+  private holdButton(kind: string, label: string, icon: string, held: (on: boolean) => void): [HTMLButtonElement, () => void] {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = `touch-button ${kind}`
     button.setAttribute('aria-label', label)
     button.innerHTML = icon
+    let pointer: number | null = null
     button.addEventListener('pointerdown', (event) => {
-      if (this.driftPointer !== null) return
+      if (pointer !== null) return
       event.stopPropagation()
       event.preventDefault()
-      this.driftPointer = event.pointerId
+      pointer = event.pointerId
       button.classList.add('pressed')
       button.setPointerCapture(event.pointerId)
       held(true)
     })
     const lift = (event: PointerEvent): void => {
-      if (event.pointerId !== this.driftPointer) return
-      this.driftPointer = null
+      if (event.pointerId !== pointer) return
+      pointer = null
       button.classList.remove('pressed')
       held(false)
     }
     button.addEventListener('pointerup', lift)
     button.addEventListener('pointercancel', lift)
     button.addEventListener('lostpointercapture', lift)
-    return button
-  }
-
-  private releaseDrift(): void {
-    if (this.driftPointer === null && !this.driftButton.classList.contains('pressed')) return
-    if (this.driftPointer !== null && this.driftButton.hasPointerCapture(this.driftPointer)) {
-      this.driftButton.releasePointerCapture(this.driftPointer)
+    const release = (): void => {
+      if (pointer === null && !button.classList.contains('pressed')) return
+      if (pointer !== null && button.hasPointerCapture(pointer)) button.releasePointerCapture(pointer)
+      pointer = null
+      button.classList.remove('pressed')
+      held(false)
     }
-    this.driftPointer = null
-    this.driftButton.classList.remove('pressed')
-    this.host.drift(false)
+    return [button, release]
   }
 
   private moveStick(x: number, y: number): void {

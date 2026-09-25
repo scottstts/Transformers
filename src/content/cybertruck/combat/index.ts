@@ -12,7 +12,8 @@ import { Weapon } from '../../transformer/combat/weapon'
 import { HEAVY_GAIT } from '../../transformer/animation/gait'
 import { createMaterials } from '../materials'
 import type { CybertruckEffects } from '../effects'
-import { CYBERTRUCK_MOVES } from './moves'
+import { CYBERTRUCK_MOVES, CYBERTRUCK_GUARD } from './moves'
+import { CYBERTRUCK_HITS } from './hits'
 import { CYBERTRUCK_SPECIAL } from './special'
 import { SkyfallFx } from './special-fx'
 
@@ -43,6 +44,7 @@ const STYLE: FighterStyle = {
   palette: 1,
   light: 0xa8c4ff,
   step: 0.9,
+  shield: [0.35, 0.62, 1.0],
 }
 
 class CybertruckFighter extends Fighter {
@@ -133,5 +135,5 @@ export function createCybertruckCombat(model: TransformerModel, weaponAsset: Wea
     : null
   const effects = new CybertruckFighter(model, truck, contact, mix, weapon, lightbar)
   truck.object.add(effects.object)
-  return { moveset: CYBERTRUCK_MOVES, overlay, effects, stepLift: 0.3, special: CYBERTRUCK_SPECIAL }
+  return { moveset: CYBERTRUCK_MOVES, overlay, effects, stepLift: 0.3, special: CYBERTRUCK_SPECIAL, hits: CYBERTRUCK_HITS, guard: CYBERTRUCK_GUARD }
 }

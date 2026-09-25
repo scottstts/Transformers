@@ -252,6 +252,9 @@ const ahead = (d: number, side: number): Point => [STOP_LAT + (d - side) * FACE,
 /** A point share `k` of the way from the stopped robot back to the ring's centre. */
 const between = (k: number): Point => [STOP_LAT * (1 - k), STOP_FWD + (CENTER - STOP_FWD) * k]
 
+/** The dash's geometry for what it does to the soldiers in its way (hits.ts). */
+export const RED_LINE = { center: CENTER, radius: RADIUS, cuts: PLAN.cuts, hairpins: PLAN.hairpins, ignite: IGNITE } as const
+
 export const F1_SPECIAL: SpecialMove = {
   name: 'red-line',
   handback: 5.6,

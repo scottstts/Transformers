@@ -158,8 +158,11 @@ body.menu-open .touch-controls { opacity: 0; pointer-events: none; }
 .touch-special.ready { color: #fff; border-color: rgba(255, 255, 255, 0.7); background: color-mix(in srgb, var(--charge) 34%, rgba(20, 22, 25, 0.5)); box-shadow: 0 0 16px color-mix(in srgb, var(--charge) 65%, transparent); animation: touch-ready 1.3s ease-in-out infinite; }
 .touch-special.ready svg { filter: drop-shadow(0 0 4px var(--charge)); }
 @keyframes touch-ready { 50% { box-shadow: 0 0 26px var(--charge); } }
-.touch-jump.away, .touch-drift.away, .touch-attack.away, .touch-special.away { opacity: 0; transform: scale(0.6); pointer-events: none; animation: none; }
-.touch-jump, .touch-drift, .touch-attack, .touch-special { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
+.touch-guard { right: calc(env(safe-area-inset-right) + 36px); bottom: calc(env(safe-area-inset-bottom) + 214px); width: 50px; height: 50px; }
+.touch-guard svg { width: 22px; height: 22px; }
+.touch-guard.pressed { background: rgba(120, 170, 255, 0.28); border-color: rgba(200, 225, 255, 0.8); }
+.touch-jump.away, .touch-drift.away, .touch-attack.away, .touch-guard.away, .touch-special.away { opacity: 0; transform: scale(0.6); pointer-events: none; animation: none; }
+.touch-jump, .touch-drift, .touch-attack, .touch-guard, .touch-special { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
 .touch-special { transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease; }
 
 /* ── special energy: a shift-light strip in a small glass plate, top left ─────────────── */
@@ -206,3 +209,8 @@ body.cinematic .garage, body.cinematic .touch-controls { opacity: 0; pointer-eve
   .energy.full .energy-cells::after, .energy.full .energy-core, .touch-special.ready { animation: none; }
   .garage-loader-rule i { animation-duration: 3s; }
 }
+.fort-hint { position: fixed; top: calc(env(safe-area-inset-top) + 22px); left: 50%; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 16px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 999px; background: rgba(18, 19, 21, 0.42); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: rgba(243, 238, 231, 0.9); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transform: translate(-50%, -6px); transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.3, 0.8, 0.2, 1); z-index: 5; }
+.fort-hint.shown { opacity: 1; transform: translate(-50%, 0); }
+.fort-hint kbd { min-width: 20px; padding: 1px 6px; border: 1px solid rgba(255, 255, 255, 0.2); border-bottom-width: 2px; border-radius: 5px; font: 600 10px/15px var(--mono); letter-spacing: 0.04em; text-align: center; color: #efe9e0; }
+.fort-hint i { width: 3px; height: 3px; margin: 0 4px; border-radius: 50%; background: rgba(243, 238, 231, 0.4); }
+body.cinematic .fort-hint, body.menu-open .fort-hint { opacity: 0; }

@@ -54,3 +54,5 @@ export function createMotionState(): MotionState {
 }
 
 export interface CircleCollider { x: number; z: number; r: number }
+/** A capsule: the segment a-b swept by radius r (walls, the sides of buildings). */
+export interface SegmentCollider { ax: number; az: number; bx: number; bz: number; r: number }

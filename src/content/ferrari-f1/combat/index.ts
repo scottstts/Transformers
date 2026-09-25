@@ -12,7 +12,8 @@ import { Weapon } from '../../transformer/combat/weapon'
 import { N } from '../../../rendering/noise.ts'
 import { createF1Materials } from '../materials'
 import type { F1Effects } from '../effects'
-import { F1_MOVES } from './moves'
+import { F1_MOVES, F1_GUARD } from './moves'
+import { F1_HITS } from './hits'
 import { F1_SPECIAL } from './special'
 import { RedLineFx } from './special-fx'
 import { SlashArcs } from './fx/slashes'
@@ -37,6 +38,7 @@ const STYLE: FighterStyle = {
   palette: 0,
   light: 0xffb070,
   step: 0.8,
+  shield: [1.0, 0.5, 0.2],
 }
 
 class F1Fighter extends Fighter {
@@ -134,5 +136,5 @@ export function createF1Combat(model: TransformerModel, weaponAsset: WeaponAsset
     : null
   const effects = new F1Fighter(model, racer, contact, mix, weapon)
   racer.object.add(effects.object)
-  return { moveset: F1_MOVES, overlay, effects, stepLift: 0.22, special: F1_SPECIAL }
+  return { moveset: F1_MOVES, overlay, effects, stepLift: 0.22, special: F1_SPECIAL, hits: F1_HITS, guard: F1_GUARD }
 }
