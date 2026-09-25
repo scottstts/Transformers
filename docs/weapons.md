@@ -16,6 +16,7 @@ The large character assets are not touched. Build, save the `.blend` and export 
 
 - **Weapon frame:** +z runs along the haft or blade toward the head or tip, +x faces the cutting edge and y is normal to the flats. The main hand's grip centre is the origin.
 - **Grips in the hands:** the haft leaves the fist past the index finger and the edge faces the knuckles, the same for either hand. Two hands on one haft therefore hold it palm to palm.
+  Combat uses a handle-specific finger curl and opposed thumb, distinct from the punching fist. Grip offsets are measured inside that curled loop. Two-handed posing fits the weapon to both arms' reach before solving the wrists; the fixed asset grip stations remain unchanged.
 - **Export:** one rigid body per weapon, stored per material slot with the characters' mesh encoding.
 - **Manifest:** also carries the grips (`main`, `off`), the cutting edge's two ends (traced for the trail), the z extent and the radius (for the forming front).
 - **Materials:** slots are the character's own (`src/content/<character>/materials.ts`) plus the weapon's own:

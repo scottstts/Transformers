@@ -17,19 +17,28 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - Each fist is authored as a direction, reach and elbow roll from its shoulder, in the chest frame: a torso twist carries the punch.
   - Arm channels are mirrored, so one set of numbers means the same move on either side.
   - Two-bone IK solves each arm.
+  - Handle grips use a separate finger curl from punching fists, with thumb opposition. The handle axis sits inside the curled finger loop, rather than below a fully closed fist.
 - **Weapon:**
   - It is placed in the body frame: the heading, at the pelvis, from the main shoulder's rest place. The torso's twist and lean don't turn it.
   - In the chest frame (the first attempt), 60° of twist plus 46° of lean compounded with the weapon's own angles, and a cleave ended behind the robot. In the body frame, the authored arc is the arc on screen, and the arms and torso follow it.
   - The main hand is solved to the grip; the off hand solves onto the off grip where the weapon actually is.
+  - With two hands engaged, the weapon wrist target is projected into both arms' shared reach before either arm is solved. This bounded, allocation-free correction preserves elbow flexion and prevents the off hand clamping short of the haft. Reach correction is not collision avoidance: authored arcs still need clearance checks.
 - **Two-handed grips need the haft in front of the body.** With the head of the weapon up and back, the off grip sits behind the helmet, and the far arm would cross the face. So:
   - wind-ups are one-handed, and the second hand takes the haft after the strike or in front;
-  - an overhead raise puts both hands above the helmet, centred.
+  - the truck's overhead raise stays one-handed and offset beside the helmet; the off hand braces the haft after the downward strike, then releases while the axe stays low;
+  - the post-slam brace holds the haft upright and well forward: the axe's pommel runs 0.9 m past the main hand, so a haft leaning back toward the robot buries it in the chest plate;
+  - recovery releases the off hand first, before lowering the weapon, so it cannot follow the haft across the face.
 - **Feet** are a world-space planner (`feet.ts`). A foot stays exactly where it landed until a step lifts it, so root motion (a lunge, a charge) never skates it.
   - Steps are authored in the move's ground frame: the origin and heading where the move began.
   - A step with no lift is a skid: it follows the body's ease-in-out, so dragged feet trail the body rather than leading it.
   - A step with a `via` point is a kick.
   - A planted foot the body outruns rises onto its toe, pivoting about the sole's toe edge, instead of floating.
 - **Aim:** each move turns toward the camera's heading, by at most 40° at the first move and 26° when chained. Feet that stay planted limit how far the hips can turn.
+- **Forward travel:** every move gains ground, including the jab and roundhouse. Completed move distances are 0.85 / 1.0 / 1.4 / 8.7 m for the truck and 0.6 / 0.75 / 1.05 / 10.3 m for the F1. Chaining early keeps the distance already travelled; recovery keeps that world position. Wind-ups load the pose without reversing root travel. Foot placements must be tuned alongside root distances.
+- **Timing:** hips lead, spine follows, and chest follows through the strike. Punches keep a small elbow bend and rebound into guard instead of locking at full extension. The F1 dash cuts farther forward and lower, keeping the pommel clear of its chest.
+- **Truck finisher:** the charge takes 3.4 s, with the slam at 1.58 s. The descent, knee compression, supporting-hand brace, release and two regathering steps are separate phases. The axe stays low and dissolves before its main-hand IK releases into a matching empty-hand guard; recovery then lowers the arm. Wrist channels retain the holding orientation during release and unwind afterwards.
+- **Rig continuity:** elbow planes follow the actual blended wrist target, including weapons. Partial wrist grips unwrap the relative quaternion through 180° instead of switching interpolation branches. This state resets when a hand releases; fully held wrists may rebase without changing orientation.
+- **Known remaining tuning:** stopping after the truck's cleave (move 3) still produces a fast upper-arm recovery. Its continuity test records this as an expected failure; the finisher and the two unarmed exits have passing speed bounds.
 - **Hand-over:** the overlay blends with the gait by one weight: in over 0.12 s, out over the last 0.22 s of the recovery. Neutral arm channels are measured from the rig at rest, so the recovery ends in the gait's exact stance (a test checks this).
 
 ## Weapons (`weapon.ts`; geometry: weapons.md)
@@ -71,7 +80,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   1. A stepping right cross.
   2. A pivoting left hook (rear foot through).
   3. The axe formed over the right shoulder, then a one-handed diagonal cleave into a long step. The left hand takes the haft in the guard.
-  4. The thruster charge: the lift jets fire straight back (a combat override of `Thrusters`, the same plume and rocket voice), the feet plough about 7 m, a leap with a centred two-handed overhead raise, and the slam into the sand.
+  4. The thruster charge: the lift jets fire straight back (a combat override of `Thrusters`, the same plume and rocket voice), the feet plough about 7 m, a leap with an overhead raise beside the helmet, and the slam into the sand. The second hand braces the haft after impact.
 - **Ferrari F1** (fast and light):
   1. A snap jab.
   2. A pivoting roundhouse, the support foot on its ball.
@@ -92,4 +101,4 @@ node tools/fight-sheet.mjs out/combo cybertruck 0,0.6,1.35,2.5 2.6:4.5:12 right,
 
 - **`fight-probe`** prints, over time and in the robot's frame: heading, pelvis, hands, feet, ground lift and the weapon edge.
 - **`fight-sheet`** renders contact sheets, one per view, with the camera following the robot; `zoom` below 1 frames the smaller F1.
-- **`tests/combat.test.ts`** checks the whole combo for both robots: planted feet on the ground, wrists and the formed weapon never inside the chest, pelvis or head, the weapon gone and the gait back in charge at the end. Run it after every change to a move.
+- **`tests/combat.test.ts`** samples normal, early and late chains plus recovery after move 3 at 120 Hz. Checks cover wrists, the full formed haft (including pommel), cutting edge, off-hand attachment and conservative chest/pelvis/head cores. Separate tests check finger enclosure and forward travel at 30/120 Hz. These are numeric clearance checks, not a substitute for visual inspection of the meshes. Run them after every change to a move.

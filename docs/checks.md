@@ -21,8 +21,11 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 `tests/combo.test.ts` checks the click combo (one click one move, chaining only inside the window, early clicks ignored, a late click restarting from move 1, nothing after move 4) and that keyed curves pass their keys without overshoot. `tests/combat.test.ts` checks, for both robots:
 - four well-formed moves;
 - that neutral channels reproduce the gait's stance (a seamless hand-back);
-- the whole combo: planted feet on the ground, wrists and the formed weapon never inside the chest, pelvis or head, the weapon gone and the gait back in charge at the end;
+- normal/early/late chains and recovery after move 3 at 120 Hz: ground contact, wrists, full formed haft/pommel and cutting edge outside conservative body cores, off-hand grip contact, weapon cleanup and return to gait;
+- handle axes enclosed by curled fingers, with the thumbs nearby;
+- forward displacement on every move at 30/120 Hz, without losing ground during recovery;
 - a single click playing move 1 only.
+- truck finisher arm-joint speed bounds at 30/60/120 Hz and the two unarmed recovery exits; the standalone move-3 recovery continuity case is an expected failure pending its own authored exit.
 
 `tools/fight-probe.mjs` prints a combo's pose numbers and `tools/fight-sheet.mjs` renders contact sheets of it (combat.md).
 

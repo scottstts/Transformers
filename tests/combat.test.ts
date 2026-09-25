@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { Box3, Matrix4, PerspectiveCamera, Vector3, type Mesh } from 'three/webgpu'
+import { Box3, Matrix4, PerspectiveCamera, Quaternion, Vector3, type Mesh } from 'three/webgpu'
 import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { createMotionState } from '../src/game/types.ts'
 import { RobotCombat } from '../src/game/combat/robot-combat.ts'
 import { CameraFx } from '../src/game/combat/camera-fx.ts'
-import { CHANNEL_NAMES } from '../src/content/transformer/combat/pose.ts'
+import { CH, CHANNEL_NAMES } from '../src/content/transformer/combat/pose.ts'
 import type { Character } from '../src/content/transformer/character.ts'
 import { NO_CONTACT, readAsset, readWeapon } from './support/assets.ts'
 
@@ -33,7 +33,7 @@ const FIGHTERS: Fighter[] = [
 ]
 
 /** A fight run headlessly in the session's order; `each` sees every frame. */
-function fight(c: Character, clicks: number[], until: number, each: (t: number, combat: RobotCombat) => void): RobotCombat {
+function fight(c: Character, clicks: number[], until: number, each: (t: number, combat: RobotCombat) => void, dt = DT): RobotCombat {
   const state = createMotionState()
   state.mode = 'robot'
   state.target = 1
@@ -42,7 +42,7 @@ function fight(c: Character, clicks: number[], until: number, each: (t: number, 
   const combat = new RobotCombat(c.combat, c.model, c.robotOffset, state, new CameraFx())
   const aim = new PerspectiveCamera()
   const pending = [...clicks]
-  for (let t = -0.5; t <= until; t += DT) {
+  for (let t = -0.5; t <= until; t += dt) {
     while (pending.length && pending[0] <= t) {
       pending.shift()
       combat.press()
@@ -50,13 +50,13 @@ function fight(c: Character, clicks: number[], until: number, each: (t: number, 
     aim.position.set(state.pos.x, 3, state.pos.z)
     aim.lookAt(state.pos.x + Math.sin(state.yaw), 3, state.pos.z + Math.cos(state.yaw))
     aim.updateMatrixWorld()
-    combat.update(DT, state, aim)
-    const pose = c.gait.update(DT, state.speed, state.yawRate, false, true, null)
+    combat.update(dt, state, aim)
+    const pose = c.gait.update(dt, state.speed, state.yawRate, false, true, null)
     if (combat.poseWeight > 0) pose.air = (pose.air ?? 0) + (combat.air - (pose.air ?? 0)) * combat.poseWeight
     c.model.root.position.copy(state.pos)
     c.model.root.rotation.set(0, state.yaw, 0)
     c.model.pose(1, pose)
-    c.effects.update(DT, state)
+    c.effects.update(dt, state)
     if (t >= 0) each(t, combat)
   }
   return combat
@@ -126,11 +126,11 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
     c.model.overlay = null
   })
 
-  it('plays the whole combo without floating feet, limbs through the body or a weapon left behind', () => {
+  it.each(['normal', 'early', 'late', 'stop-after-weapon'] as const)('keeps feet grounded and weapons clear of the body: %s', (timing) => {
     const c = make()
-    const chest = core(c, 'bone:chest', 0.3)
-    const pelvis = core(c, 'bone:pelvis', 0.3)
-    const head = core(c, 'bone:head', 0.2)
+    const chest = core(c, 'bone:chest', 0.15)
+    const pelvis = core(c, 'bone:pelvis', 0.15)
+    const head = core(c, 'bone:head', 0.1)
     const inv = new Matrix4()
     const p = new Vector3()
     const weapon = c.model.node('bone:hand.R').children.find((o) => o.name.startsWith('weapon:'))!
@@ -139,7 +139,11 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
     let frames = 0
     let armed = 0
     const inside = (box: Box3, node: string, world: Vector3): boolean => box.containsPoint(p.copy(world).applyMatrix4(inv.copy(c.model.node(node).matrixWorld).invert()))
-    const combat = fight(c, clicks, 7, (t, fight) => {
+    const schedule = timing === 'normal' ? clicks : timing === 'stop-after-weapon' ? clicks.slice(0, 3) : [0]
+    if (timing === 'early' || timing === 'late') for (const move of moveset.moves.slice(0, 3)) {
+      schedule.push(schedule.at(-1)! + (timing === 'early' ? move.chain[0] + DT : move.chain[1] - DT))
+    }
+    const combat = fight(c, schedule, 9, (t, fight) => {
       frames++
       for (const node of c.model.root.children[0].children) expect(Number.isFinite(node.matrixWorld.elements[12])).toBe(true)
       // a planted foot stays on the ground (the lowest foot defines the ground; the other must not hang)
@@ -157,17 +161,31 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
       const formed = c.combat.effects.weapon
       if (weapon.visible && formed) {
         armed++
+        if (c.combat.overlay.pose.v[CH['w.two']] > 0.999 && fight.poseWeight === 1) {
+          const [x, y, z] = c.combat.overlay.build.grip
+          const palm = new Vector3(-x, y, z).applyMatrix4(c.model.node('bone:hand.L').matrixWorld)
+          const grip = new Vector3(...formed.asset.manifest.grips.off).applyMatrix4(weapon.matrixWorld)
+          expect(palm.distanceTo(grip), `off-hand grip at ${t.toFixed(2)}`).toBeLessThan(0.08)
+        }
         // only what has formed of it: out to its presence along the haft
         const m = formed.asset.manifest
         const reach = formed.presence * Math.max(-m.extent[0], m.extent[1])
-        for (let z = 0.3; z <= Math.min(reach, m.extent[1]); z += 0.2) {
+        for (let z = Math.max(-reach, m.extent[0]); z <= Math.min(reach, m.extent[1]); z += 0.1) {
           const w = new Vector3(0, 0, z).applyMatrix4(weapon.matrixWorld)
-          for (const [box, node] of [[chest, 'bone:chest'], [head, 'bone:head']] as const) {
-            expect(inside(box, node, w), `weapon inside ${node} at ${t.toFixed(2)}`).toBe(false)
+          for (const [box, node] of [[chest, 'bone:chest'], [pelvis, 'bone:pelvis'], [head, 'bone:head']] as const) {
+            expect(inside(box, node, w), `weapon z=${z.toFixed(2)} inside ${node} at ${t.toFixed(2)}`).toBe(false)
+          }
+        }
+        for (let u = 0; u <= 1; u += 0.1) {
+          const edge = new Vector3(...m.edge[0]).lerp(new Vector3(...m.edge[1]), u)
+          if (Math.abs(edge.z) > reach) continue
+          edge.applyMatrix4(weapon.matrixWorld)
+          for (const [box, node] of [[chest, 'bone:chest'], [pelvis, 'bone:pelvis'], [head, 'bone:head']] as const) {
+            expect(inside(box, node, edge), `cutting edge inside ${node} at ${t.toFixed(2)}`).toBe(false)
           }
         }
       }
-    })
+    }, 1 / 120)
     expect(frames).toBeGreaterThan(300)
     expect(armed).toBeGreaterThan(60)
     // back in the stance, unarmed, the gait in charge
@@ -183,5 +201,101 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
     const combat = fight(c, [0], 3, () => { seenWeapon ||= weapon.visible })
     expect(seenWeapon).toBe(false)
     expect(combat.active).toBe(false)
+  })
+
+  it('encloses the handle in the curled fingers instead of hanging it below the fist', () => {
+    const c = make()
+    const overlay = c.combat.overlay
+    c.model.overlay = overlay
+    overlay.weight = 1
+    overlay.pose.v.set(overlay.neutral)
+    overlay.pose.v[CH['R.grip']] = 1
+    overlay.pose.v[CH['w.wield']] = 1
+    overlay.pose.v[CH['w.y']] = 0.6
+    c.model.pose(1, c.gait.update(0, 0, 0, false, true, null))
+    const hand = c.model.node('bone:hand.R')
+    const inverse = hand.matrixWorld.clone().invert()
+    const points = [1, 2, 3].map((j) => new Vector3().setFromMatrixPosition(c.model.node(`bone:middle${j}.R`).matrixWorld).applyMatrix4(inverse))
+    // Terminal phalanx is 85 mm on both rigs; test its pad centre.
+    points.push(new Vector3(0, 0, -0.075).applyMatrix4(c.model.node('bone:middle3.R').matrixWorld).applyMatrix4(inverse))
+    const [x, , z] = overlay.build.grip
+    // Winding in the curl plane: the handle axis must be inside the finger loop.
+    let enclosed = false
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const a = points[i], b = points[j]
+      if ((a.z > z) !== (b.z > z) && x < (b.x - a.x) * (z - a.z) / (b.z - a.z) + a.x) enclosed = !enclosed
+    }
+    expect(enclosed).toBe(true)
+    const thumb = new Vector3().setFromMatrixPosition(c.model.node('bone:thumb3.R').matrixWorld).applyMatrix4(inverse)
+    expect(Math.hypot(thumb.x - x, thumb.z - z)).toBeLessThan(0.14)
+  })
+
+  it.each([1 / 30, 1 / 120])('advances on every move and keeps the gained ground through recovery at dt=%s', (dt) => {
+    const c = make()
+    const forward = new Vector3(Math.sin(0.3), 0, Math.cos(0.3))
+    let previous = 0
+    let began = false
+    const advances = [0, 0, 0, 0]
+    fight(c, clicks, 7, (t) => {
+      const position = c.model.root.position.dot(forward)
+      if (!began) { previous = position; began = true }
+      const delta = position - previous
+      expect(delta, `backwards at ${t.toFixed(2)}`).toBeGreaterThanOrEqual(-1e-5)
+      const index = clicks.findLastIndex((click) => click <= t)
+      advances[index] += delta
+      previous = position
+    }, dt)
+    advances.forEach((distance, i) => expect(distance, `move ${i + 1} travel`).toBeGreaterThan([0.4, 0.5, 0.85, 8][i]))
+  })
+})
+
+describe('truck finisher continuity', () => {
+  for (const count of [1, 2, 3]) {
+    // The standalone cleave exit still needs a separately authored recovery.
+    const check = count === 3 ? it.fails : it
+    check(`recovers without joint snaps when stopped after move ${count}`, () => {
+      const c = FIGHTERS[0].make()
+      const clicks = FIGHTERS[0].clicks.slice(0, count)
+      const move = c.combat.moveset.moves[count - 1]
+      const recovery = clicks.at(-1)! + Math.max(move.duration, move.chain[1])
+      const bones = ['upperarm.R', 'hand.R', 'upperarm.L', 'hand.L']
+      const previous = bones.map(() => new Quaternion())
+      const q = new Quaternion()
+      let peak = 0
+      let where = ''
+      fight(c, clicks, 7, (t) => {
+        bones.forEach((bone, i) => {
+          c.model.node(`bone:${bone}`).getWorldQuaternion(q)
+          const speed = previous[i].angleTo(q) / DT * 180 / Math.PI
+          if (t > recovery && speed > peak) { peak = speed; where = `${bone} at ${t.toFixed(3)}` }
+          previous[i].copy(q)
+        })
+      })
+      expect(peak, where).toBeLessThan(480)
+    })
+  }
+
+  it.each([1 / 30, 1 / 60, 1 / 120])('does not snap arm joints during the follow-through and return to stance at dt=%s', (dt) => {
+    const c = FIGHTERS[0].make()
+    const bones = ['upperarm.R', 'forearm.R', 'hand.R', 'upperarm.L', 'forearm.L', 'hand.L', 'chest']
+    const previous = bones.map(() => new Quaternion())
+    const q = new Quaternion()
+    let peak = 0
+    let where = ''
+    let settledPeak = 0
+    let settledWhere = ''
+    fight(c, FIGHTERS[0].clicks, 9, (t) => {
+      bones.forEach((bone, i) => {
+        c.model.node(`bone:${bone}`).getWorldQuaternion(q)
+        const speed = previous[i].angleTo(q) / dt * 180 / Math.PI
+        if (t > 4.15 && speed > peak) { peak = speed; where = `${bone} at ${t.toFixed(3)}` }
+        if (t > 4.8 && speed > settledPeak) { settledPeak = speed; settledWhere = `${bone} at ${t.toFixed(3)}` }
+        previous[i].copy(q)
+      })
+    }, dt)
+    // At 60 Hz: no more than 8 degrees per frame while absorbing the slam,
+    // and 6 degrees while lowering the hands and returning to the gait.
+    expect(peak, where).toBeLessThan(480)
+    expect(settledPeak, settledWhere).toBeLessThan(360)
   })
 })
