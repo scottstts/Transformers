@@ -87,8 +87,10 @@ function axeMaterials(lightbar: Node<'float'>): Record<string, Material> {
 export function createCybertruckCombat(model: TransformerModel, weaponAsset: WeaponAsset | undefined, truck: CybertruckEffects, contact: ContactEffects, mix: AudioMix): CharacterCombat {
   const overlay = new CombatOverlay(model.rig, {
     main: 'R',
-    grip: [0.1, 0.0, -0.47],
+    grip: [0.115, 0.0, -0.406],
     fist: [84, 98, 72],
+    handle: [48, 78, 72],
+    thumb: [18, 24, 18],
     offGrip: weaponAsset ? weaponAsset.manifest.grips.off : [0, 0, 0.95],
     sole: { heel: HEAVY_GAIT.heel, toe: HEAVY_GAIT.toe, ankle: HEAVY_GAIT.ankle },
   })

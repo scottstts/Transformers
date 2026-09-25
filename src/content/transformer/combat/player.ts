@@ -39,6 +39,9 @@ export class MovePlayer {
     this.cues = cues
     this.nextCue = 0
     for (let i = 0; i < CHANNELS; i++) this.curves[i].settle(this.values[i], neutral[i], seconds)
+    // Release the supporting hand before the main hand lowers/dissolves the
+    // weapon; following its off grip upright would sweep across the face.
+    this.curves[CH['w.two']].settle(this.values[CH['w.two']], neutral[CH['w.two']], Math.min(seconds, 0.14))
     this.sample()
   }
 

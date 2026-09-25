@@ -14,6 +14,10 @@ export interface CombatBuild {
   grip: [number, number, number]
   /** closed-fist finger joint angles, base to tip (deg) */
   fist: [number, number, number]
+  /** Finger curl around the handle, leaving space for its solid cross section. */
+  handle: [number, number, number]
+  /** Thumb opposition at the base and flexion at the two distal joints (deg). */
+  thumb: [number, number, number]
   /** the weapon's second grip in the weapon frame (m) */
   offGrip: [number, number, number]
   /** sole: heel and toe edges behind / ahead of the ankle, ankle height (m), as the gait style has them */
@@ -67,12 +71,16 @@ export class CombatOverlay implements RigOverlay {
     pelvis: number
     chest: number
     torso: Array<[number, number, 'spine' | 'chest' | 'neck' | 'head']>
-    arm: Record<Side, { upper: number; fore: number; hand: number; parent: number; fingers: number[] }>
+    arm: Record<Side, { upper: number; fore: number; hand: number; parent: number; fingers: number[]; thumbs: number[] }>
     hip: Record<Side, number>
   }
   private readonly gaitQ: Quaternion[]
   private readonly gripOffset: Record<Side, Vector3>
   private readonly offGrip: Vector3
+  /** Continuous quaternion branch while a hand takes/releases the weapon. */
+  private readonly wristDelta: Record<Side, Quaternion> = { R: new Quaternion(), L: new Quaternion() }
+  private readonly wristWeight: Record<Side, number> = { R: 0, L: 0 }
+  private readonly wristAxis: Record<Side, Vector3> = { R: new Vector3(1, 0, 0), L: new Vector3(1, 0, 0) }
   private readonly legs: Record<Side, GaitLeg> = { R: { step: 0, up: 0, pitch: 0, x: 0, yaw: 0 }, L: { step: 0, up: 0, pitch: 0, x: 0, yaw: 0 } }
 
   constructor(rig: RobotRig, build: CombatBuild) {
@@ -89,6 +97,7 @@ export class CombatOverlay implements RigOverlay {
       hand: bone(`hand.${s}`),
       parent: rig.parent[bone(`upperarm.${s}`)],
       fingers: FINGERS.flatMap((f) => [1, 2, 3].map((k) => bone(`${f}${k}.${s}`))),
+      thumbs: [1, 2, 3].map((k) => bone(`thumb${k}.${s}`)),
     })
     this.idx = {
       pelvis: bone('pelvis'),
@@ -197,7 +206,6 @@ export class CombatOverlay implements RigOverlay {
     const az = deg(v[o])
     const el = deg(v[o + 1])
     const dir = _vd.set(sgn * Math.sin(az) * Math.cos(el), -Math.cos(az) * Math.cos(el), Math.sin(el))
-    const pole = basePole(dir, sgn, _vp).applyAxisAngle(dir, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
     dir.applyQuaternion(chestQ)
     const target = _vt.copy(S).addScaledVector(dir, v[o + 2] * (L1 + L2))
 
@@ -214,6 +222,24 @@ export class CombatOverlay implements RigOverlay {
           .multiply(WEAPON_REST)
         handQ.copy(weaponQ).multiply(GRIP_ROT_INV)
         at.sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
+        // A two-handed weapon must fit both arms. Project its wrist target
+        // into their shared reach before solving either arm; otherwise the
+        // off hand silently clamps short and appears detached from the haft.
+        const two = v[CH['w.two']]
+        if (two > 0) {
+          const off: Side = side === 'R' ? 'L' : 'R'
+          const lengths = this.armLength[off]
+          const radius = (lengths[0] + lengths[1]) * 0.98
+          _offDelta.copy(this.offGrip).applyQuaternion(weaponQ)
+            .add(_v0.copy(this.gripOffset[side]).sub(this.gripOffset[off]).applyQuaternion(handQ))
+          _offCenter.setFromMatrixPosition(rig.world[this.idx.arm[off].upper]).sub(_offDelta)
+          _shared.copy(at)
+          for (let k = 0; k < 6; k++) {
+            projectReach(_shared, _offCenter, radius)
+            projectReach(_shared, S, (L1 + L2) * 0.98)
+          }
+          at.lerp(_shared, two)
+        }
         target.lerp(at, hold)
       } else {
         this.weapon.decompose(_vw, _qw, _s)
@@ -222,6 +248,12 @@ export class CombatOverlay implements RigOverlay {
         target.lerp(at, hold)
       }
     }
+
+    // Build the elbow plane from the actual blended wrist direction. A pole
+    // from the unused fist target can become parallel to a weapon arm and
+    // flip the elbow when its projection crosses zero during release.
+    dir.copy(target).sub(S).normalize().applyQuaternion(_q0.copy(chestQ).invert())
+    const pole = basePole(dir, sgn, _vp).applyAxisAngle(dir, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
 
     // two-bone IK (+Y of the upper arm faces the elbow)
     const parentQ = _qp.setFromRotationMatrix(rig.world[a.parent])
@@ -236,8 +268,21 @@ export class CombatOverlay implements RigOverlay {
     if (hold > 0) {
       // the forearm's world rotation as it will be: parent * upper * fore (the hand's own offset turns nothing)
       const fore = _q3.copy(parentQ).multiply(_q1).multiply(_q4.setFromAxisAngle(_x, -flex)).invert()
-      fist.slerp(fore.multiply(handQ), hold)
-    }
+      // A shortest-path slerp can switch sides at 180 degrees as the weapon
+      // rotates. At partial grip that turns into a visible one-frame wrist
+      // flip. Unwrap the relative quaternion before applying the grip weight.
+      const delta = _q6.copy(fist).invert().multiply(fore.multiply(handQ)).normalize()
+      const previous = this.wristDelta[side]
+      const continuous = this.wristWeight[side] > 0 && this.wristWeight[side] < 1
+      if (continuous ? delta.dot(previous) < 0 : delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w)
+      previous.copy(delta)
+      this.wristWeight[side] = hold
+      const sine = Math.hypot(delta.x, delta.y, delta.z)
+      const angle = Math.atan2(sine, delta.w)
+      const axis = this.wristAxis[side]
+      if (sine > 1e-6) axis.set(delta.x, delta.y, delta.z).multiplyScalar(1 / sine)
+      fist.multiply(_q7.setFromAxisAngle(axis, 2 * angle * hold))
+    } else this.wristWeight[side] = 0
     local[a.hand].q.copy(this.gaitQ[a.hand]).slerp(fist, w)
   }
 
@@ -248,12 +293,21 @@ export class CombatOverlay implements RigOverlay {
     for (const side of SIDES) {
       const s = side === 'L' ? 1 : -1
       const grip = this.pose.v[ARM[side] + 7]
+      const hold = this.pose.v[side === this.build.main ? CH['w.wield'] : CH['w.two']]
       const f = this.idx.arm[side].fingers
       for (let k = 0; k < f.length; k++) {
         const j = k % 3
         const gait = d.fingerCurl[j] * g.curl / GAIT_REST_CURL
-        const combat = d.fingerCurl[j] + (fist[j] - d.fingerCurl[j]) * grip
+        const closed = fist[j] + (this.build.handle[j] - fist[j]) * hold
+        const combat = d.fingerCurl[j] + (closed - d.fingerCurl[j]) * grip
         eulerXYZ(0, s * (gait + (combat - gait) * w), 0, rig.local[f[k]].q)
+      }
+      const thumbs = this.idx.arm[side].thumbs
+      for (let j = 0; j < thumbs.length; j++) {
+        const k = thumbs[j]
+        eulerXYZ(j === 0 ? this.build.thumb[j] : 0, j === 0 ? 0 : s * this.build.thumb[j], 0, _q0)
+        _q1.copy(rig.stand[k].q).multiply(_q0)
+        rig.local[k].q.copy(this.gaitQ[k]).slerp(_q1, grip * w)
       }
     }
   }
@@ -309,6 +363,13 @@ function basePole(d: Vector3, sgn: number, out: Vector3): Vector3 {
   return out.normalize()
 }
 
+/** Keep a wrist inside an arm's reach, preserving a little elbow flexion. */
+function projectReach(target: Vector3, shoulder: Vector3, radius: number): void {
+  _reach.subVectors(target, shoulder)
+  const distance = _reach.length()
+  if (distance > radius) target.copy(shoulder).addScaledVector(_reach, radius / distance)
+}
+
 /**
  * Two-bone arm IK: the upper arm's local rotation (in its parent, world
  * rotation `parentQ`) that puts the wrist on `target` with the elbow toward
@@ -355,6 +416,10 @@ const _vd = new Vector3()
 const _vp = new Vector3()
 const _vt = new Vector3()
 const _vw = new Vector3()
+const _offDelta = new Vector3()
+const _offCenter = new Vector3()
+const _shared = new Vector3()
+const _reach = new Vector3()
 const _a = new Vector3()
 const _b = new Vector3()
 const _c = new Vector3()
@@ -366,6 +431,8 @@ const _q2 = new Quaternion()
 const _q3 = new Quaternion()
 const _q4 = new Quaternion()
 const _q5 = new Quaternion()
+const _q6 = new Quaternion()
+const _q7 = new Quaternion()
 const _qc = new Quaternion()
 const _qh = new Quaternion()
 const _qp = new Quaternion()

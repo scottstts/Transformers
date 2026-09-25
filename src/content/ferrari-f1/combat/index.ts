@@ -94,8 +94,10 @@ function swordMaterials(): Record<string, Material> {
 export function createF1Combat(model: TransformerModel, weaponAsset: WeaponAsset | undefined, racer: F1Effects, contact: ContactEffects, mix: AudioMix, sole: { heel: number; toe: number; ankle: number }): CharacterCombat {
   const overlay = new CombatOverlay(model.rig, {
     main: 'R',
-    grip: [0.07, 0.0, -0.28],
+    grip: [0.105, 0.0, -0.24],
     fist: [88, 100, 72],
+    handle: [48, 78, 72],
+    thumb: [24, 28, 20],
     offGrip: weaponAsset ? weaponAsset.manifest.grips.off : [0, 0, -0.21],
     sole,
   })
