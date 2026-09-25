@@ -1,5 +1,5 @@
 import { Group, Mesh, Vector3, type Material, type Matrix4, type Node, type Object3D } from 'three/webgpu'
-import { abs, color, exp, max, positionLocal, smoothstep, uniform, vec2, vec3 } from 'three/tsl'
+import { abs, color, exp, max, positionLocal, smoothstep, time, uniform, vec2, vec3 } from 'three/tsl'
 import type { WeaponAsset } from '../asset/weapon'
 import { N } from '../../../rendering/noise.ts'
 
@@ -35,10 +35,13 @@ export class Weapon {
   readonly asset: WeaponAsset
   /** 0 absent .. 1 whole: where the forming front stands */
   presence = 0
+  /** 0..1 overcharged: the forming heat runs back out along the metal toward the head, flickering (a special) */
+  charge = 0
   /** cutting edge ends in the weapon frame */
   readonly edge: [Vector3, Vector3]
   private readonly front = uniform(0)
   private readonly glow = uniform(0)
+  private readonly surge = uniform(0)
   private readonly meshes: Mesh[] = []
   private glowLevel = 0
   private formed = false
@@ -59,7 +62,7 @@ export class Weapon {
       if (!base) throw new Error(`${m.name}: no material for slot ${material}`)
       let mat = forged.get(base)
       if (!mat) {
-        mat = forge(base, this.front, this.glow, reach, style)
+        mat = forge(base, this.front, this.glow, this.surge, reach, style)
         forged.set(base, mat)
       }
       const mesh = new Mesh(geometry, mat)
@@ -100,6 +103,7 @@ export class Weapon {
     }
     const p = Math.max(0, Math.min(1, this.presence))
     this.front.value = p
+    this.surge.value = this.charge * p
     const visible = p > 0.001
     this.object.visible = visible
     if (!visible) {
@@ -129,10 +133,11 @@ export class Weapon {
 
 /**
  * A weapon copy of a character material: discarded beyond the forming front,
- * glowing at the front and cooling behind it. `reach` normalises the distance
- * from the grip along the haft.
+ * glowing at the front and cooling behind it, and overcharged by `surge`:
+ * the afterglow's light running out toward the head, churning. `reach`
+ * normalises the distance from the grip along the haft.
  */
-function forge(base: Material, front: Node<'float'>, glow: Node<'float'>, reach: number, style: ForgeStyle): Material {
+function forge(base: Material, front: Node<'float'>, glow: Node<'float'>, surge: Node<'float'>, reach: number, style: ForgeStyle): Material {
   const m = base.clone() as Material & { maskNode: unknown; emissiveNode: any; colorNode: any; isMeshBasicNodeMaterial?: boolean }
   const p = positionLocal
   const n = N(vec2(p.x.mul(3.1).add(p.z.mul(0.37)), p.y.mul(3.3).add(p.z.mul(1.7)))).r
@@ -143,7 +148,10 @@ function forge(base: Material, front: Node<'float'>, glow: Node<'float'>, reach:
   const behind = max(f.sub(s), 0)
   const band = smoothstep(f.sub(style.band), f, s)
   const heat = exp(behind.div(style.cool).negate())
+  const churn = N(vec2(p.x.mul(1.7).add(p.y).add(time.mul(2.3)), p.z.mul(0.9).sub(time.mul(3.1)))).g
+  const charged = smoothstep(0.3, 1.05, abs(p.z).div(reach)).mul(churn.mul(1.1).add(0.35)).mul(surge)
   const emission = vec3(...style.front).mul(band.mul(band)).add(vec3(...style.after).mul(heat)).mul(glow)
+    .add(vec3(...style.after).mul(charged.mul(5)))
   if (m.isMeshBasicNodeMaterial) m.colorNode = (m.colorNode ?? color(0xffffff)).add(emission)
   else m.emissiveNode = m.emissiveNode ? m.emissiveNode.add(emission) : emission
   return m

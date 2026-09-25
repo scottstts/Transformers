@@ -156,6 +156,42 @@ export class Dust {
 
 	}
 
+	/**
+	 * A blast's base surge: a wall of sand rolling out along the ground from a
+	 * ring of `radius` around `p`, and a column of it thrown up the middle
+	 * (`strength` 1: a full special's blast).
+	 */
+	surge( p: THREE.Vector3, radius: number, strength: number ) {
+
+		const ring = Math.round( 260 * strength );
+		for ( let i = 0; i < ring; i ++ ) {
+
+			const a = Math.random() * Math.PI * 2;
+			const r = radius * ( 0.3 + Math.random() * 0.7 );
+			const sp = ( 14 + Math.random() * 18 ) * strength;
+			this.emit(
+				p.x + Math.cos( a ) * r, 0.3 + Math.random() * 0.8, p.z + Math.sin( a ) * r,
+				Math.cos( a ) * sp, 0.6 + Math.random() * 3.2 * strength, Math.sin( a ) * sp,
+				{ size: 1.4, grow: 5.5 + 3 * strength, life: 4.5 + 2.5 * strength, alpha: 0.3 + 0.12 * strength }
+			);
+
+		}
+		const column = Math.round( 110 * strength );
+		for ( let i = 0; i < column; i ++ ) {
+
+			const a = Math.random() * Math.PI * 2;
+			const r = Math.random() * radius * 0.5;
+			const up = ( 6 + Math.random() * 22 ) * strength;
+			this.emit(
+				p.x + Math.cos( a ) * r, 0.5 + Math.random() * 1.5, p.z + Math.sin( a ) * r,
+				Math.cos( a ) * 2.5 * strength, up, Math.sin( a ) * 2.5 * strength,
+				{ size: 1.6, grow: 6 + 3 * strength, life: 5 + 3 * strength, alpha: 0.26 + 0.1 * strength }
+			);
+
+		}
+
+	}
+
 	/** jet blast: sand driven radially out along the ground from `p` (continuous, scaled by strength 0..1) */
 	blast( p, strength, dt ) {
 

@@ -8,6 +8,9 @@ import type { CombatCamera, CombatEffects, CombatFrame } from './effects'
 import type { MoveCue } from './moves'
 import type { Side } from './pose'
 import { Sparks } from './fx/sparks'
+import { Billows } from './fx/billows'
+import { BlastLight } from './fx/blast-light'
+import { HeatHaze } from './fx/haze'
 import { SwingTrail, type TrailStyle } from './fx/trail'
 import { SwingVoice, type SwingTuning } from './audio/swing'
 import { dissolve, forge, slam, type ForgeTuning } from './audio/shots'
@@ -55,6 +58,12 @@ export class Fighter implements CombatEffects {
   readonly weapon: Weapon | null
   protected readonly style: FighterStyle
   protected readonly sparks = new Sparks()
+  /** fire, smoke and blast dust, for the special */
+  protected readonly billows = new Billows()
+  /** the light of a blast, for the special */
+  protected readonly blast = new BlastLight()
+  /** heat shimmer over whatever the special makes hot */
+  protected readonly haze = new HeatHaze()
   protected readonly trail: SwingTrail
   protected readonly voice: SwingVoice
   protected readonly light: PointLight
@@ -70,6 +79,8 @@ export class Fighter implements CombatEffects {
   private readonly lastTip = new Vector3()
   /** fastest cutting edge this frame (m/s) */
   protected swingSpeed = 0
+  /** 0..1 the weapon's light held on while it is whole (an overcharged weapon lights its surroundings) */
+  protected charged = 0
 
   constructor(model: TransformerModel, character: CharacterEffects, contact: ContactEffects, mix: AudioMix, weapon: Weapon | null, style: FighterStyle) {
     this.model = model
@@ -82,13 +93,15 @@ export class Fighter implements CombatEffects {
     this.voice = new SwingVoice(mix, style.swing)
     // kept in the scene at zero: the light count, and so every shader, never changes
     this.light = new PointLight(style.light, 0, 14, 2)
-    this.object.add(this.sparks.mesh, this.trail.mesh, this.light)
+    this.object.add(this.sparks.mesh, this.trail.mesh, this.light, this.billows.mesh, this.blast.light, this.haze.mesh)
     this.tracked = ['hand.R', 'hand.L', 'foot.R', 'foot.L'].map((b) => model.node(`bone:${b}`))
     this.lastPos = this.tracked.map(() => new Vector3())
     if (weapon) weapon.attach(model.node('bone:hand.R'))
   }
 
   begin(): void {}
+
+  beginSpecial(): void {}
 
   moveStart(_move: number, camera: CombatCamera): void {
     this.camera = camera
@@ -121,6 +134,9 @@ export class Fighter implements CombatEffects {
 
   update(dt: number, frame: CombatFrame): void {
     this.sparks.update(dt)
+    this.billows.update(dt)
+    this.blast.update(dt)
+    this.haze.update(dt)
     this.trackSpeed(dt)
     const w = this.weapon
     if (w) {
@@ -144,9 +160,10 @@ export class Fighter implements CombatEffects {
       } else this.trail.reset()
       const forming = w.presence > 0 && w.presence < 1
       this.lightLevel = forming ? 1 : Math.max(0, this.lightLevel - dt * 4)
-      if (this.lightLevel > 0) {
+      const level = Math.max(this.lightLevel, w.presence > 0 ? this.charged : 0)
+      if (level > 0) {
         this.light.position.setFromMatrixPosition(w.object.matrixWorld)
-        this.light.intensity = LIGHT_INTENSITY * this.lightLevel * (0.85 + 0.15 * Math.random())
+        this.light.intensity = LIGHT_INTENSITY * level * (0.85 + 0.15 * Math.random())
       } else this.light.intensity = 0
     }
     this.voice.update(this.swingSpeed * Math.min(1, frame.weight * 1.5))
@@ -165,6 +182,7 @@ export class Fighter implements CombatEffects {
     this.trail.reset()
     this.light.intensity = 0
     this.lightLevel = 0
+    this.blast.reset()
     this.voice.update(0)
   }
 
@@ -172,6 +190,8 @@ export class Fighter implements CombatEffects {
     this.weapon?.warm(on)
     this.trail.mesh.visible = on
     this.sparks.mesh.visible = on
+    this.billows.warm(on)
+    this.haze.warm(on)
   }
 
   dispose(): void {

@@ -2,6 +2,7 @@ import type { Vector3 } from 'three/webgpu'
 import type { MotionState } from '../../../game/types'
 import type { CombatOverlay } from './overlay'
 import type { MoveCue, Moveset } from './moves'
+import type { SpecialMove } from './special'
 import type { Side } from './pose'
 import type { Weapon } from './weapon'
 
@@ -17,6 +18,12 @@ export interface CombatCamera {
   pull(metres: number): void
   /** slow the fight's clock to `scale` for `seconds` (the instant a heavy strike lands) */
   hitStop(seconds: number, scale: number): void
+  /** a blast wave leaving `at` (world): the air's refraction ripples out through the picture; `energy` 0..1+ */
+  shockwave(at: Vector3, energy: number): void
+  /** the exposure blown out by a blast of light, 0..1+, dying away over `seconds` */
+  flash(amount: number, seconds: number): void
+  /** the picture drained of colour, 0..1 (a moment held out of time); eased */
+  zone(amount: number): void
 }
 
 /** What the effects see of the fight every frame. */
@@ -39,6 +46,8 @@ export interface CombatEffects {
   readonly weapon: Weapon | null
   /** a combo begins (from the stance) */
   begin(): void
+  /** the special begins (from whatever the fight was doing) */
+  beginSpecial(): void
   /** a move starts */
   moveStart(move: number, camera: CombatCamera): void
   cue(cue: MoveCue, frame: CombatFrame): void
@@ -68,4 +77,6 @@ export interface CharacterCombat {
   readonly effects: CombatEffects
   /** lift of a fighting step (m) */
   readonly stepLift: number
+  /** the big move the full energy meter unlocks */
+  readonly special: SpecialMove
 }

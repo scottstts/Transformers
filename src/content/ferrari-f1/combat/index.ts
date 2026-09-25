@@ -13,6 +13,9 @@ import { N } from '../../../rendering/noise.ts'
 import { createF1Materials } from '../materials'
 import type { F1Effects } from '../effects'
 import { F1_MOVES } from './moves'
+import { F1_SPECIAL } from './special'
+import { RedLineFx } from './special-fx'
+import { SlashArcs } from './fx/slashes'
 
 /** ERS burst: the road speed the power unit is geared for at its peak (m/s), how fast it gets there and runs down (1/s). */
 const ERS = { speed: 46, rise: 3.2, fall: 1.4 }
@@ -38,6 +41,8 @@ const STYLE: FighterStyle = {
 
 class F1Fighter extends Fighter {
   private readonly racer: F1Effects
+  private readonly slashes = new SlashArcs()
+  private readonly redLine: RedLineFx
   private ersTarget = 0
   private ers = 0
   private tail = 0
@@ -46,19 +51,31 @@ class F1Fighter extends Fighter {
   constructor(model: TransformerModel, racer: F1Effects, contact: ContactEffects, mix: AudioMix, weapon: Weapon | null) {
     super(model, racer, contact, mix, weapon, STYLE)
     this.racer = racer
+    this.object.add(this.slashes.mesh)
+    this.redLine = new RedLineFx({
+      racer, weapon, contact, mix, sparks: this.sparks, billows: this.billows, blast: this.blast, slashes: this.slashes, haze: this.haze,
+      feet: [model.node('bone:foot.L'), model.node('bone:foot.R')], robotOffset: model.dims.robotF,
+    })
+  }
+
+  beginSpecial(): void {
+    this.redLine.reset()
   }
 
   cue(cue: MoveCue, frame: CombatFrame): void {
     if (cue.cue === 'ers') {
       this.ersTarget = cue.value ?? 1
       if (this.ersTarget > 0) this.tail = ERS_TAIL
-    } else super.cue(cue, frame)
+    } else if (!this.redLine.cue(cue, frame)) super.cue(cue, frame)
   }
 
   update(dt: number, frame: CombatFrame): void {
     super.update(dt, frame)
+    this.redLine.update(dt, frame, this.edgeBase, this.edgeTip)
     this.ers += (this.ersTarget - this.ers) * (1 - Math.exp(-dt * (this.ersTarget > this.ers ? ERS.rise : ERS.fall)))
     if (this.ersTarget === 0) this.tail -= dt
+    // the special drives the power unit itself while it plays
+    if (this.redLine.ownsEngine) return
     if (this.ersTarget > 0 || this.tail > 0) {
       this.rev.speed = this.ers * ERS.speed
       this.rev.throttle = this.ersTarget
@@ -72,7 +89,18 @@ class F1Fighter extends Fighter {
     this.ersTarget = 0
     this.ers = 0
     this.tail = 0
+    this.redLine.reset()
     this.racer.rev = null
+  }
+
+  warm(on: boolean): void {
+    super.warm(on)
+    this.slashes.warm(on)
+  }
+
+  dispose(): void {
+    super.dispose()
+    this.redLine.dispose()
   }
 }
 
@@ -106,5 +134,5 @@ export function createF1Combat(model: TransformerModel, weaponAsset: WeaponAsset
     : null
   const effects = new F1Fighter(model, racer, contact, mix, weapon)
   racer.object.add(effects.object)
-  return { moveset: F1_MOVES, overlay, effects, stepLift: 0.22 }
+  return { moveset: F1_MOVES, overlay, effects, stepLift: 0.22, special: F1_SPECIAL }
 }

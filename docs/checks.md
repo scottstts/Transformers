@@ -18,6 +18,8 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 
 `tests/desert-world.test.ts` checks tyre-track ribbon continuity and restarts.
 
+`tests/special.test.ts` checks, for both robots, that the special is well-formed (keys, cues, steps, shots and tempo inside it) and, played from the stance and cutting into a combo at 120 Hz, that it stays finite, keeps wrists, haft and edge out of the body cores, keeps the planted feet on the ground, flies and travels as far as it should, and hands back to the gait with the weapon gone. `tests/energy.test.ts` checks that three full combos fill the meter and two do not, and that it is spent whole. `tests/director.test.ts` checks the special frame's axes, hard cuts, the handback reaching the follow camera, the handback orbiting instead of passing through the robot, and the camera floor.
+
 `tests/combo.test.ts` checks the click combo (one click one move, chaining only inside the window, early clicks ignored, a late click restarting from move 1, nothing after move 4) and that keyed curves pass their keys without overshoot. `tests/combat.test.ts` checks, for both robots:
 - four well-formed moves;
 - that neutral channels reproduce the gait's stance (a seamless hand-back);
@@ -27,7 +29,7 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 - a single click playing move 1 only.
 - truck finisher arm-joint speed bounds at 30/60/120 Hz and the two unarmed recovery exits; the standalone move-3 recovery continuity case is an expected failure pending its own authored exit.
 
-`tools/fight-probe.mjs` prints a combo's pose numbers and `tools/fight-sheet.mjs` renders contact sheets of it (combat.md).
+`tools/fight-probe.mjs` prints a combo's pose numbers and `tools/fight-sheet.mjs` renders contact sheets of it (combat.md). A click token `F<t>` plays the special; the sheet's `director` view films it through the special's own camera and `top` looks straight down; `PROBE_CORES=1` makes the probe report every frame a wrist or the weapon enters a body core. `tools/fx-sample.mjs <out> billows,crater-hot,crater-cold,furrows,sun` renders effect samples on their own. Contact sheets of 16 cells (1920x1080) can come back colour-banded when viewed through some image pipelines; check a suspicious sky in a cropped cell before chasing it in the renderer.
 
 `tests/car-dynamics.test.ts` checks, for both cars:
 - grip cornering without Shift (no slide);

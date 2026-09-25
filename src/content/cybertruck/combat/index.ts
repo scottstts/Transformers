@@ -13,12 +13,23 @@ import { HEAVY_GAIT } from '../../transformer/animation/gait'
 import { createMaterials } from '../materials'
 import type { CybertruckEffects } from '../effects'
 import { CYBERTRUCK_MOVES } from './moves'
+import { CYBERTRUCK_SPECIAL } from './special'
+import { SkyfallFx } from './special-fx'
 
 /** The axe's light bar at rest and at a flare (emissive scale). */
 const LIGHTBAR = { rest: 5, flare: 16 }
 /** Thruster charge: throttle ramp (1/s) and the exhaust's share pointing down (the rest straight back). */
 const BOOST_RAMP = 7
 const BOOST_DOWN = 0.32
+/**
+ * The special's jets: the exhaust axis (share straight back of the robot; the
+ * rest straight down to lift, straight up to drive the dive).
+ */
+const LIFT_BACK = 0.2
+const DIVE_BACK = 0.62
+
+/** Which way the charge's jets point: back (the thruster charge), down (lift-off) or up (a dive). */
+type JetMode = 'back' | 'down' | 'up'
 
 /**
  * The truck robot fights like a brawler until it draws the axe: blows through
@@ -37,19 +48,34 @@ const STYLE: FighterStyle = {
 class CybertruckFighter extends Fighter {
   private readonly truck: CybertruckEffects
   private readonly lightbar: { value: number }
+  private readonly skyfall: SkyfallFx
   private boostTarget = 0
   private boostPower = 0
+  private jets: JetMode = 'back'
   private readonly exhaust = new Vector3()
 
   constructor(model: TransformerModel, truck: CybertruckEffects, contact: ContactEffects, mix: AudioMix, weapon: Weapon | null, lightbar: { value: number }) {
     super(model, truck, contact, mix, weapon, STYLE)
     this.truck = truck
     this.lightbar = lightbar
+    this.skyfall = new SkyfallFx({ truck, weapon, contact, mix, sparks: this.sparks, billows: this.billows, blast: this.blast, haze: this.haze, robotOffset: model.dims.robotF })
+  }
+
+  beginSpecial(): void {
+    this.skyfall.reset()
   }
 
   cue(cue: MoveCue, frame: CombatFrame): void {
-    if (cue.cue === 'boost') this.boostTarget = cue.value ?? 1
-    else super.cue(cue, frame)
+    const v = cue.value ?? 1
+    if (cue.cue === 'boost') this.jet('back', v)
+    else if (cue.cue === 'lift') this.jet('down', v)
+    else if (cue.cue === 'dive') this.jet('up', v)
+    else if (!this.skyfall.cue(cue, frame)) super.cue(cue, frame)
+  }
+
+  private jet(mode: JetMode, power: number): void {
+    if (power > 0) this.jets = mode
+    this.boostTarget = power
   }
 
   update(dt: number, frame: CombatFrame): void {
@@ -59,18 +85,25 @@ class CybertruckFighter extends Fighter {
     this.boostPower += (this.boostTarget - this.boostPower) * k
     if (this.boostTarget === 0 && this.boostPower < 0.01) this.boostPower = 0
     const yaw = frame.state.yaw
-    this.exhaust.set(-Math.sin(yaw) * (1 - BOOST_DOWN), -BOOST_DOWN, -Math.cos(yaw) * (1 - BOOST_DOWN))
+    const back = this.jets === 'back' ? 1 - BOOST_DOWN : this.jets === 'down' ? LIFT_BACK : DIVE_BACK
+    const vertical = this.jets === 'back' ? -BOOST_DOWN : this.jets === 'down' ? -1 : 1
+    this.exhaust.set(-Math.sin(yaw) * back, vertical * Math.sqrt(1 - back * back), -Math.cos(yaw) * back)
     this.truck.thrusters.boost(this.boostPower, this.exhaust)
-    // the light bar flares with the edge's speed
-    const flare = Math.min(1, this.swingSpeed / 24)
-    this.lightbar.value = LIGHTBAR.rest + (LIGHTBAR.flare - LIGHTBAR.rest) * flare * flare
+    this.skyfall.update(dt)
+    // the light bar flares with the edge's speed, and burns while the axe is overcharged
+    const flare = Math.max(Math.min(1, this.swingSpeed / 24) ** 2, this.skyfall.charge)
+    this.lightbar.value = LIGHTBAR.rest + (LIGHTBAR.flare - LIGHTBAR.rest) * flare
+    this.charged = this.skyfall.charge
   }
 
   reset(): void {
     super.reset()
     this.boostTarget = 0
     this.boostPower = 0
+    this.jets = 'back'
     this.truck.thrusters.boost(0, this.exhaust)
+    this.skyfall.reset()
+    this.charged = 0
   }
 }
 
@@ -100,5 +133,5 @@ export function createCybertruckCombat(model: TransformerModel, weaponAsset: Wea
     : null
   const effects = new CybertruckFighter(model, truck, contact, mix, weapon, lightbar)
   truck.object.add(effects.object)
-  return { moveset: CYBERTRUCK_MOVES, overlay, effects, stepLift: 0.3 }
+  return { moveset: CYBERTRUCK_MOVES, overlay, effects, stepLift: 0.3, special: CYBERTRUCK_SPECIAL }
 }

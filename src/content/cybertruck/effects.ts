@@ -37,6 +37,8 @@ export class CybertruckEffects implements CharacterEffects {
   private readonly pendingSteps: Array<[Side, number]> = []
   private readonly sole: Sole = { center: new Vector3(), forward: new Vector3(), length: 0, width: 0 }
   private shake = 0
+  /** 0..1 the visor flared past its running level (a special) */
+  visorBoost = 0
 
   constructor(bot: TransformerModel, contactEffects: ContactEffects, events: MechanismEvent[], duration: number, mix: AudioMix) {
     this.audio = new CybertruckAudio(mix)
@@ -102,7 +104,7 @@ export class CybertruckEffects implements CharacterEffects {
     U.rearLight.value = 1
     const h0 = this.head ? this.head.t0 : 0.8
     const h1 = this.head ? this.head.t1 : 0.95
-    U.visor.value = easedRange(t, h0 + (h1 - h0) * 0.4, h1) * (t > h0 && t < h1 ? (Math.random() > 0.35 ? 1 : 0.2) : 1)
+    U.visor.value = easedRange(t, h0 + (h1 - h0) * 0.4, h1) * (t > h0 && t < h1 ? (Math.random() > 0.35 ? 1 : 0.2) : 1) * (1 + 0.8 * this.visorBoost)
     U.core.value = easedRange(t, 0.4, 0.6) * (0.85 + 0.15 * Math.sin(performance.now() * 0.003))
 
     const contacts = this.bot.contacts()

@@ -44,9 +44,10 @@ export class Thrusters {
   private readonly jets = [new PlasmaJet(0.0), new PlasmaJet(0.53)]
   private readonly sheet = new ImpingementSheet()
   private readonly light = new PointLight(0xa8c4ff, 0, 16, 2)
-  private readonly ports = [new Vector3(), new Vector3()]
+  /** the two exhaust outlets (world) and the exhaust axis, as of the last update */
+  readonly ports = [new Vector3(), new Vector3()]
   private readonly strikes = [new Vector3(), new Vector3()]
-  private readonly axis = new Vector3()
+  readonly axis = new Vector3()
   private readonly back = new Vector3()
   private readonly spine = new Vector3()
   private readonly side = new Vector3()

@@ -27,7 +27,12 @@ import type { GaitLeg } from '../model/rig'
  *    `w.two` (0..1 the other hand on the off grip);
  *  - `R.heel` / `L.heel` (deg): heel raised, pivoting on the toe;
  *  - root motion in the move's ground frame: `advance` (m, forward), `strafe`
- *    (m, + left), `turn` (deg, + left) and `air` (m, the lowest foot's height).
+ *    (m, + left), `turn` (deg, + left) and `air` (m, the lowest foot's height);
+ *  - free legs, per side: `free` (0..1) hands the foot from the ground planner
+ *    to a target carried with the body, `lx` (m, + outward of its stance
+ *    station), `ly` (m, + forward), `lz` (m, up from the ground under the
+ *    lowest foot) and `lp` (deg, + toe down). A leap or a dash too fast to step
+ *    carries its feet this way; the planner re-plants them where they land.
  */
 export const CHANNEL_NAMES = [
   'hipX', 'hipDrop', 'hipPitch', 'hipRoll', 'hipYaw',
@@ -36,6 +41,7 @@ export const CHANNEL_NAMES = [
   'L.az', 'L.el', 'L.reach', 'L.elbow', 'L.wx', 'L.wy', 'L.wz', 'L.grip',
   'w.x', 'w.y', 'w.z', 'w.yaw', 'w.pitch', 'w.roll', 'w.wield', 'w.two',
   'R.heel', 'L.heel', 'advance', 'strafe', 'turn', 'air',
+  'R.free', 'R.lx', 'R.ly', 'R.lz', 'R.lp', 'L.free', 'L.lx', 'L.ly', 'L.lz', 'L.lp',
 ] as const
 
 export type Channel = typeof CHANNEL_NAMES[number]
@@ -45,6 +51,8 @@ export const CH = Object.fromEntries(CHANNEL_NAMES.map((name, i) => [name, i])) 
 /** Per-side offset of the eight arm channels: az, el, reach, elbow, wx, wy, wz, grip. */
 export const ARM = { R: CH['R.az'], L: CH['L.az'] } as const
 export const WEAPON = CH['w.x']
+/** Per-side offset of the five free-leg channels: free, lx, ly, lz, lp. */
+export const LEG = { R: CH['R.free'], L: CH['L.free'] } as const
 /** Channels a move carries across into the next one rather than easing to neutral. */
 export const ROOT_CHANNELS: ReadonlySet<number> = new Set([CH.advance, CH.strafe, CH.turn])
 

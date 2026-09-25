@@ -63,11 +63,33 @@ describe('click combo', () => {
     expect(play([0, 1.4], 3).moves).toEqual([0, 0])
   })
 
-  it('ends after the fourth move: no fifth move chains', () => {
+  it('ends after the fourth move: an early click there does nothing', () => {
     const { moves } = play([0, 0.6, 1.3, 2.5, 4.3], 7)
     expect(moves.slice(0, 4)).toEqual([0, 1, 2, 3])
-    // the click at 4.3 lands inside move 4 (2.5 .. 4.5): it is not a chain
+    // the click at 4.3 lands inside move 4 (2.5 .. 4.5), before its window: it is ignored
     expect(moves.length).toBe(4)
+  })
+
+  it('loops: a click in the finisher\'s window, or at once in its recovery, starts the next combo', () => {
+    const run = (clicks: number[]): { moves: number[]; events: string[] } => {
+      const moves: ComboMove[] = [...MOVES.slice(0, 3), { duration: 2.0, chain: [1.4, 2.0] }]
+      const combo = new ComboController(moves, RECOVER, RECOVER * 0.35)
+      const started: number[] = []
+      const events: string[] = []
+      const pending = [...clicks]
+      for (let t = 0; t <= 8; t += DT) {
+        while (pending.length && pending[0] <= t) { pending.shift(); combo.press() }
+        combo.update(DT, (e) => { events.push(e.type); if (e.type === 'start') started.push(e.move) })
+      }
+      return { moves: started, events }
+    }
+    // move 4 starts at 2.5: 3.6 is inside its window (1.1 in: no), 4.0 is (1.5 in)
+    expect(run([0, 0.6, 1.3, 2.5, 3.6]).moves).toEqual([0, 1, 2, 3])
+    expect(run([0, 0.6, 1.3, 2.5, 4.0]).moves).toEqual([0, 1, 2, 3, 0])
+    // 4.55 is just into the recovery after it: no waiting out the restart delay
+    const late = run([0, 0.6, 1.3, 2.5, 4.55])
+    expect(late.moves).toEqual([0, 1, 2, 3, 0])
+    expect(late.events.slice(4, 6)).toEqual(['recover', 'start'])
   })
 })
 
@@ -100,5 +122,19 @@ describe('keyed channel curves', () => {
       expect(Math.abs(v - last)).toBeLessThan(0.05)
       last = v
     }
+  })
+})
+
+describe('combo held by a special', () => {
+  it('goes straight into the recovery when the special ends, then back to idle', () => {
+    const combo = new ComboController(MOVES, RECOVER, RECOVER * 0.35)
+    const events: string[] = []
+    const emit = (e: ComboEvent): void => { events.push(e.type) }
+    combo.update(DT, emit)
+    combo.recover(emit)
+    expect(combo.phase).toBe('recover')
+    for (let t = 0; t <= RECOVER + DT; t += DT) combo.update(DT, emit)
+    expect(events).toEqual(['recover', 'end'])
+    expect(combo.active).toBe(false)
   })
 })

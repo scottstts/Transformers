@@ -11,6 +11,8 @@ export interface RosterEntry {
   label: string
   /** accent colour under its name in the vehicle menu (CSS) */
   accent: string
+  /** colour of its special's energy in the HUD (CSS): the light its special is made of */
+  special: string
   /** the robot's weapon asset (public/models/<weapon>.*), loaded with the car */
   weapon: string
   load(): Promise<PlayableTransformerAsset>
@@ -22,6 +24,7 @@ export const ROSTER: readonly RosterEntry[] = [
     id: 'cybertruck',
     label: CYBERTRUCK_LABEL,
     accent: '#b8bcc0',
+    special: '#8fbaff',
     weapon: CYBERTRUCK_WEAPON,
     load: loadCybertruckAsset,
     create: createCybertruck,
@@ -30,6 +33,7 @@ export const ROSTER: readonly RosterEntry[] = [
     id: 'ferrari-f1',
     label: F1_LABEL,
     accent: '#c8102e',
+    special: '#ff9d57',
     weapon: F1_WEAPON,
     load: loadF1Asset,
     create: createF1,

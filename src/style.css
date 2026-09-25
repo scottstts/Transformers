@@ -151,11 +151,56 @@ body.menu-open .touch-controls { opacity: 0; pointer-events: none; }
 .touch-jump svg, .touch-drift svg { width: 26px; height: 26px; }
 .touch-attack { right: calc(env(safe-area-inset-right) + 32px); bottom: calc(env(safe-area-inset-bottom) + 138px); width: 58px; height: 58px; }
 .touch-attack svg { width: 26px; height: 26px; }
-.touch-jump.away, .touch-drift.away, .touch-attack.away { opacity: 0; transform: scale(0.6); pointer-events: none; }
-.touch-jump, .touch-drift, .touch-attack { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
+.touch-special { --charge: #9cc4ff; right: calc(env(safe-area-inset-right) + 112px); bottom: calc(env(safe-area-inset-bottom) + 138px); width: 58px; height: 58px; color: rgba(243, 238, 231, 0.55); }
+.touch-special svg { position: relative; width: 24px; height: 24px; }
+/* the charge runs round the rim as a ring, filling clockwise from the top */
+.touch-special::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; background: conic-gradient(var(--charge) calc(var(--level, 0) * 360deg), rgba(255, 255, 255, 0.08) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.touch-special.ready { color: #fff; border-color: rgba(255, 255, 255, 0.7); background: color-mix(in srgb, var(--charge) 34%, rgba(20, 22, 25, 0.5)); box-shadow: 0 0 16px color-mix(in srgb, var(--charge) 65%, transparent); animation: touch-ready 1.3s ease-in-out infinite; }
+.touch-special.ready svg { filter: drop-shadow(0 0 4px var(--charge)); }
+@keyframes touch-ready { 50% { box-shadow: 0 0 26px var(--charge); } }
+.touch-jump.away, .touch-drift.away, .touch-attack.away, .touch-special.away { opacity: 0; transform: scale(0.6); pointer-events: none; animation: none; }
+.touch-jump, .touch-drift, .touch-attack, .touch-special { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
+.touch-special { transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease; }
+
+/* ── special energy: a shift-light strip in a small glass plate, top left ─────────────── */
+@property --level { syntax: "<number>"; inherits: true; initial-value: 0; }
+.energy { --charge: #9cc4ff; --cell-w: 13px; --cell-h: 9px; --gap: 3px; --cut: 7px; position: fixed; z-index: 14; left: max(18px, env(safe-area-inset-left)); top: max(18px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 11px; background: rgba(20, 22, 25, 0.5); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); pointer-events: none; transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.35s ease, transform 0.45s cubic-bezier(0.3, 0.8, 0.2, 1); }
+body:not(.ready) .energy, body.cinematic .energy, body.menu-open .energy { opacity: 0; transform: translateY(-6px); }
+.energy.idle { opacity: 0.42; }
+/* a hairline rule along the plate's foot, as on the entry gauge */
+.energy::after { content: ""; position: absolute; left: var(--cut); right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, color-mix(in srgb, var(--charge) 55%, transparent), rgba(255, 255, 255, 0.08) 60%, transparent); }
+.energy-core { position: relative; width: 11px; height: 11px; border: 1.5px solid rgba(243, 238, 231, 0.45); transform: rotate(45deg); transition: border-color 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease; }
+.energy-core::after { content: ""; position: absolute; inset: 2px; background: var(--charge); opacity: calc(var(--level) * 0.55); }
+.energy-cells { position: relative; display: flex; gap: var(--gap); overflow: hidden; padding: 1px 3px; }
+.energy-cells i { --fill: clamp(0, calc(var(--level) * var(--cells) - var(--i)), 1); position: relative; width: var(--cell-w); height: var(--cell-h); background: rgba(243, 238, 231, 0.1); transform: skewX(-24deg); }
+/* each cell lights from its left edge; later cells burn hotter, as shift lights climb toward the limiter */
+.energy-cells i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--charge) calc(70% + var(--i) * 2.5%), #2a2d33), var(--charge)); filter: brightness(calc(0.78 + var(--i) * 0.03)); transform: scaleX(var(--fill)); transform-origin: left; }
+.energy.gain .energy-cells i::after { animation: energy-gain 0.46s ease-out; }
+.energy.full .energy-core { border-color: #fff; background: var(--charge); box-shadow: 0 0 8px var(--charge), 0 0 18px color-mix(in srgb, var(--charge) 60%, transparent); animation: energy-core 1.3s ease-in-out infinite; }
+.energy.full .energy-core::after { background: #fff; opacity: 0.85; inset: 3px; }
+.energy.full .energy-cells i::after { background: linear-gradient(90deg, var(--charge), color-mix(in srgb, var(--charge) 45%, #fff)); filter: none; box-shadow: 0 0 7px color-mix(in srgb, var(--charge) 80%, transparent); }
+.energy.full .energy-cells::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 40%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.75) 50%, transparent); mix-blend-mode: overlay; animation: energy-shine 1.9s cubic-bezier(0.45, 0, 0.2, 1) infinite; }
+.energy.charged .energy-cells i::after { animation: energy-charged 0.46s ease-out calc(var(--i) * 18ms) both; }
+.energy.spent .energy-cells i::after { animation: energy-spent 0.7s ease-out; }
+.energy.spent .energy-core { animation: energy-spent 0.7s ease-out; }
+@keyframes energy-gain { 0% { filter: brightness(2.2); } 100% { filter: brightness(calc(0.78 + var(--i) * 0.03)); } }
+@keyframes energy-charged { 0% { filter: brightness(1); } 35% { filter: brightness(2.6); } 100% { filter: brightness(1); } }
+@keyframes energy-spent { 0% { filter: brightness(3); } 100% { filter: brightness(1); } }
+@keyframes energy-core { 50% { transform: rotate(45deg) scale(1.16); box-shadow: 0 0 12px var(--charge), 0 0 28px color-mix(in srgb, var(--charge) 70%, transparent); } }
+@keyframes energy-shine { from { transform: translateX(-110%); } to { transform: translateX(290%); } }
+@media (max-width: 720px), (max-height: 480px) { .energy { --cell-w: 10px; --cell-h: 7px; --gap: 2.5px; --cut: 6px; gap: 8px; padding: 7px 11px 7px 9px; left: max(12px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); } .energy-core { width: 9px; height: 9px; } }
+
+/* ── cutscene: letterbox bars slide in from the screen edges ─────────────────────────── */
+.cinema { position: fixed; inset: 0; z-index: 13; pointer-events: none; }
+.cinema i { position: absolute; left: 0; right: 0; height: clamp(0px, calc((100vh - 100vw / 2.39) / 2), 12vh); background: #050506; transition: transform 0.6s cubic-bezier(0.6, 0, 0.2, 1); }
+.cinema i:first-child { top: 0; transform: translateY(-101%); }
+.cinema i:last-child { bottom: 0; transform: translateY(101%); }
+body.cinematic .cinema i { transform: none; transition-duration: 0.45s; transition-timing-function: cubic-bezier(0.3, 0.8, 0.2, 1); }
+body.cinematic .garage, body.cinematic .touch-controls { opacity: 0; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .entry-mark span, .entry-line, .entry-gauge, .entry-stage, body.entry .entry-button { animation: none; }
   .veil-sun, .entry-gauge-fill, .entry-gauge-mark, .garage-panel, .garage-hint, .garage-track, .garage-name, .garage-panel.loading .garage-view::after, .touch-stick, .garage-cover { transition: none; animation: none; }
+  .energy.full .energy-cells::after, .energy.full .energy-core, .touch-special.ready { animation: none; }
   .garage-loader-rule i { animation-duration: 3s; }
 }

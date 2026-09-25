@@ -11,7 +11,7 @@ const STICK_DEAD = 0.15
  * sideways steers (proportionally), and a stick pushed to the rim runs only in
  * robot form. Car drift is a separate held Shift state. A left click under
  * pointer lock is an attack (the click that
- * takes the lock is not).
+ * takes the lock is not); F is the special.
  */
 export class GameInput {
   /** touch stick: x right, y forward, each -1..1 */
@@ -25,6 +25,7 @@ export class GameInput {
   private readonly keys = new Set<string>()
   private jumpPressed = false
   private attackPressed = false
+  private specialPressed = false
   private readonly forward = new Vector3()
   private readonly right = new Vector3()
   private readonly direction = new Vector3()
@@ -37,6 +38,7 @@ export class GameInput {
     this.keys.add(event.code)
     if (event.code === 'KeyR') this.onTransform()
     if (event.code === 'Space') this.jumpPressed = true
+    if (event.code === 'KeyF') this.specialPressed = true
   }
   private readonly onKeyUp = (event: KeyboardEvent): void => { this.keys.delete(event.code) }
   private readonly onBlur = (): void => {
@@ -79,6 +81,16 @@ export class GameInput {
 
   /** An attack from the touch controls (same as a click). */
   pressAttack(): void { this.attackPressed = true }
+
+  /** F (or the touch special button) since the last call. */
+  consumeSpecial(): boolean {
+    const pressed = this.specialPressed
+    this.specialPressed = false
+    return pressed
+  }
+
+  /** The special from the touch controls (same as F). */
+  pressSpecial(): void { this.specialPressed = true }
 
   /** Touch stick deflection (clamped to the unit disc by the caller); `run` when pushed to the rim. */
   setStick(x: number, y: number, run: boolean): void {

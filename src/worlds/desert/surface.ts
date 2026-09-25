@@ -4,24 +4,34 @@ import { Dust } from './dust.ts'
 import { Grit } from './grit.ts'
 import { TyreTracks } from './tyre-tracks.ts'
 import { Footprints } from './footprints.ts'
+import { ScorchMarks } from './scorch.ts'
+import { Debris } from './debris.ts'
 
 /** Tread slide (m/s) at which a track reads as fully scraped. */
 const FULL_SCRAPE = 5
 /** Length of a tyre's footprint in the sand (m): a sideways tyre sweeps this, not its tread width. */
 const PATCH = 0.36
 
-/** How the desert answers contact: kicked-up dust and grit, tyre tracks and footprints in the sand. */
+/**
+ * How the desert answers contact: kicked-up dust and grit, tyre tracks and
+ * footprints in the sand; and a blast: fused-glass craters and furrows, a
+ * base surge of sand and crust thrown out.
+ */
 export class DesertSurface implements ContactEffects {
   readonly dust: Dust
   readonly grit: Grit
   readonly tracks: TyreTracks
   readonly footprints: Footprints
+  readonly scorch: ScorchMarks
+  readonly debris: Debris
 
   constructor(scene: Scene) {
     this.dust = new Dust(scene)
     this.grit = new Grit(scene)
     this.tracks = new TyreTracks(scene)
     this.footprints = new Footprints(scene)
+    this.scorch = new ScorchMarks(scene)
+    this.debris = new Debris(scene)
   }
 
   tyre(wheel: number, c: TyreContact, dt: number): void {
@@ -50,9 +60,36 @@ export class DesertSurface implements ContactEffects {
     this.dust.blast(point, strength, dt)
   }
 
+  crater(center: Vector3, radius: number, heat: number): void {
+    this.scorch.addCrater(center, radius, heat)
+  }
+
+  furrow(from: Vector3, to: Vector3, width: number, heat: number): number {
+    return this.scorch.addFurrow(from, to, width, heat)
+  }
+
+  reignite(handle: number, delay: number, at: number, speed: number): void {
+    this.scorch.reignite(handle, delay, at, speed)
+  }
+
+  surge(center: Vector3, radius: number, strength: number): void {
+    this.dust.surge(center, radius, strength)
+  }
+
+  eject(center: Vector3, speed: number, count: number, dir: Vector3, spread: number, size: number): void {
+    this.debris.burst(center, speed, count, dir, spread, size)
+    this.grit.burst(center, speed * 0.8, count * 4, dir, spread)
+  }
+
+  warm(on: boolean): void {
+    this.debris.warm(on)
+  }
+
   update(dt: number): void {
     this.tracks.update(dt)
     this.footprints.update(dt)
+    this.scorch.update(dt)
+    this.debris.update(dt)
     this.dust.update(dt)
     this.grit.update(dt)
   }

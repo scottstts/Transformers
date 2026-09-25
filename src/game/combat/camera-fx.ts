@@ -1,5 +1,6 @@
 import { Vector3, type PerspectiveCamera } from 'three/webgpu'
 import type { CombatCamera } from '../../content/transformer/combat/effects'
+import type { Lens } from '../../rendering/lens'
 
 /** Kick: a damped spring along the view (rad/s, damping ratio) and its size at full strength (m). */
 const KICK_SPRING = 26
@@ -11,6 +12,17 @@ const SHAKE_MOVE = 0.14
 const SHAKE_ROLL = 0.012
 /** Pull-back easing (1/s). */
 const PULL_RATE = 3.2
+/**
+ * Blast wave: radius R = SEDOV (E t^2)^(1/5) (m, s; Sedov-Taylor, E the
+ * blast's energy in units of a full special), refraction strength at the
+ * front, how long (s) it takes to die away, and the front's thickness (m).
+ */
+const SEDOV = 24
+const SHOCK_STRENGTH = 0.9
+const SHOCK_LIFE = 0.9
+const SHOCK_THICKNESS = 0.9
+/** Zone (drained palette) easing (1/s). */
+const ZONE_RATE = 5
 
 /**
  * What a fight does to the camera on top of the follow rig, as an operator
@@ -36,6 +48,18 @@ export class CameraFx implements CombatCamera {
   private stopScale = 1
   private time = 0
   private readonly back = new Vector3()
+  private readonly lens: Lens | null
+  private readonly shockAt = new Vector3()
+  private shockAge = -1
+  private shockEnergy = 0
+  private flashLevel = 0
+  private flashDecay = 1
+  private zoneTarget = 0
+  private zoneNow = 0
+
+  constructor(lens: Lens | null = null) {
+    this.lens = lens
+  }
 
   kick(strength: number): void {
     this.kickV -= KICK_SPRING * KICK_DISTANCE * Math.min(1, strength)
@@ -57,6 +81,29 @@ export class CameraFx implements CombatCamera {
   hitStop(seconds: number, scale: number): void {
     this.stopScale = this.stopLeft > 0 ? Math.min(this.stopScale, scale) : scale
     this.stopLeft = Math.max(this.stopLeft, seconds)
+  }
+
+  shockwave(at: Vector3, energy: number): void {
+    this.shockAt.copy(at)
+    this.shockAge = 0
+    this.shockEnergy = energy
+  }
+
+  flash(amount: number, seconds: number): void {
+    this.flashLevel = Math.max(this.flashLevel, amount)
+    this.flashDecay = 3 / Math.max(0.02, seconds)
+  }
+
+  zone(amount: number): void {
+    this.zoneTarget = amount
+  }
+
+  /** Advance what lives in the world's time (the blast wave) by the world's dt: slow motion slows it too. */
+  updateWorld(dt: number): void {
+    if (this.shockAge >= 0) {
+      this.shockAge += dt
+      if (this.shockAge > SHOCK_LIFE) this.shockAge = -1
+    }
   }
 
   /** Advance by the real frame time; sets `timeScale` for this frame. */
@@ -82,6 +129,11 @@ export class CameraFx implements CombatCamera {
       this.fovAdd += (this.fovPeak - this.fovAdd) * (1 - Math.exp(-dt * 14))
     } else this.fovAdd += (0 - this.fovAdd) * (1 - Math.exp(-dt * 3))
     this.pullNow += (this.pullTarget - this.pullNow) * (1 - Math.exp(-dt * PULL_RATE))
+    // the flash is the lens's: it dies in real time, however slow the world runs
+    this.flashLevel *= Math.exp(-dt * this.flashDecay)
+    if (this.flashLevel < 1e-3) this.flashLevel = 0
+    this.zoneNow += (this.zoneTarget - this.zoneNow) * (1 - Math.exp(-dt * ZONE_RATE))
+    if (this.zoneTarget === 0 && this.zoneNow < 1e-3) this.zoneNow = 0
   }
 
   /** Offset the placed camera. */
@@ -104,6 +156,32 @@ export class CameraFx implements CombatCamera {
       camera.fov += this.fovAdd
       camera.updateProjectionMatrix()
     }
+    if (this.lens) this.applyLens(camera, this.lens)
+  }
+
+  /** The blast wave's ring as the camera now sees it, the flash and the zone. */
+  private applyLens(camera: PerspectiveCamera, lens: Lens): void {
+    lens.flash.value = this.flashLevel
+    lens.zone.value = this.zoneNow
+    let strength = 0
+    if (this.shockAge >= 0) {
+      const t = this.shockAge
+      const radius = SEDOV * Math.pow(this.shockEnergy * t * t, 0.2)
+      // the front is a hemisphere on the ground: aim at its middle height
+      _c.copy(this.shockAt).setY(this.shockAt.y + radius * 0.35)
+      camera.updateMatrixWorld()
+      const distance = _c.distanceTo(camera.position)
+      _c.project(camera)
+      if (_c.z < 1 && distance > radius * 0.6) {
+        const halfHeight = distance * Math.tan(camera.fov * Math.PI / 360)
+        lens.shockCenter.value.set(_c.x * 0.5 + 0.5, 0.5 - _c.y * 0.5)
+        lens.shockRadius.value = radius / halfHeight * 0.5
+        lens.shockWidth.value = (SHOCK_THICKNESS + radius * 0.06) / halfHeight * 0.5
+        const u = t / SHOCK_LIFE
+        strength = SHOCK_STRENGTH * Math.min(1.5, this.shockEnergy) * (1 - u) * (1 - u) * Math.min(1, t / 0.03)
+      }
+    }
+    lens.shockStrength.value = strength
   }
 
   /** Clear every effect (a fight cancelled, a character swapped). */
@@ -111,5 +189,10 @@ export class CameraFx implements CombatCamera {
     this.kickX = this.kickV = this.shakeAmount = this.fovAdd = this.fovHold = this.pullTarget = 0
     this.stopLeft = 0
     this.timeScale = 1
+    this.shockAge = -1
+    this.flashLevel = 0
+    this.zoneTarget = this.zoneNow = 0
   }
 }
+
+const _c = new Vector3()

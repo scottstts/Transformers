@@ -55,7 +55,7 @@ export class Grit {
 
 	}
 
-	/** A tyre whose tread slides at \`slide\` (world, m/s) over contact \`p\` moving at \`velocity\`: flings clods along the slide. */
+	/** A tyre whose tread slides at `slide` (world, m/s) over contact `p` moving at `velocity`: flings clods along the slide. */
 	spray( p: THREE.Vector3, velocity: THREE.Vector3, slide: THREE.Vector3, dt: number ): void {
 
 		const s = Math.hypot( slide.x, slide.z );
@@ -81,6 +81,40 @@ export class Grit {
 			this.vel[ j + 2 ] = ( sz + sx * spread ) * speed + velocity.z * 0.3;
 			const size = this.aSize.array as Float32Array;
 			size[ i * 2 ] = 0.025 + Math.pow( Math.random(), 3 ) * 0.07;
+			size[ i * 2 + 1 ] = Math.random();
+
+		}
+
+	}
+
+	/**
+	 * A blast's grit: `count` clods thrown from `center` at up to `speed` m/s,
+	 * in a cone about `dir` (`spread` 0 a jet along it, 1 every way above the ground).
+	 */
+	burst( center: THREE.Vector3, speed: number, count: number, dir: THREE.Vector3, spread: number ): void {
+
+		const size = this.aSize.array as Float32Array;
+		for ( let n = 0; n < count; n ++ ) {
+
+			const i = this.cursor;
+			this.cursor = ( this.cursor + 1 ) % MAX;
+			if ( ! this.alive[ i ] ) this.count ++;
+			this.alive[ i ] = 1;
+			// a direction in the cone, kept above the horizon
+			let x = dir.x * ( 1 - spread ) + ( Math.random() * 2 - 1 ) * spread;
+			let y = dir.y * ( 1 - spread ) + Math.random() * spread;
+			let z = dir.z * ( 1 - spread ) + ( Math.random() * 2 - 1 ) * spread;
+			const l = Math.hypot( x, y, z ) || 1;
+			x /= l; y /= l; z /= l;
+			const v = speed * ( 0.3 + 0.7 * Math.random() );
+			const j = i * 3;
+			this.pos[ j ] = center.x + ( Math.random() - 0.5 ) * 0.8;
+			this.pos[ j + 1 ] = 0.1 + Math.random() * 0.2;
+			this.pos[ j + 2 ] = center.z + ( Math.random() - 0.5 ) * 0.8;
+			this.vel[ j ] = x * v;
+			this.vel[ j + 1 ] = Math.abs( y ) * v + 1;
+			this.vel[ j + 2 ] = z * v;
+			size[ i * 2 ] = 0.03 + Math.pow( Math.random(), 3 ) * 0.1;
 			size[ i * 2 + 1 ] = Math.random();
 
 		}

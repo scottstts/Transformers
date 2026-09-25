@@ -25,6 +25,8 @@ export interface CombatMove {
   keys: Partial<Record<Channel, readonly Key[]>>
   steps?: readonly Footstep[]
   cues?: readonly MoveCue[]
+  /** the moment the blow lands (s): a combo move charges the special's energy here */
+  strike?: number
 }
 
 /** A foot lifting at t0 and landing at t1 on a place in the move's ground frame. */
@@ -69,4 +71,4 @@ export interface Moveset {
 export const UNKEYED_SETTLE = 0.35
 
 /** Largest number of keys a channel may carry (plus the captured start). */
-export const MAX_KEYS = 24
+export const MAX_KEYS = 48

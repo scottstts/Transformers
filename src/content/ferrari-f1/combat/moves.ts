@@ -15,6 +15,7 @@ import type { CombatMove, Moveset } from '../../transformer/combat/moves'
 /** 1. Snap jab: the lead hand fires straight out and back over a short step. */
 const JAB: CombatMove = {
   name: 'jab',
+  strike: 0.2,
   duration: 0.55,
   chain: [0.32, 0.75],
   keys: {
@@ -44,6 +45,7 @@ const JAB: CombatMove = {
 /** 2. Roundhouse: pivot on the lead foot, the right leg whips round at chest height. */
 const ROUNDHOUSE: CombatMove = {
   name: 'roundhouse',
+  strike: 0.4,
   duration: 0.95,
   chain: [0.66, 1.1],
   keys: {
@@ -84,6 +86,7 @@ const ROUNDHOUSE: CombatMove = {
  */
 const DRAW_CUT: CombatMove = {
   name: 'draw-cut',
+  strike: 0.42,
   duration: 1.05,
   chain: [0.74, 1.3],
   keys: {
@@ -135,6 +138,7 @@ const DRAW_CUT: CombatMove = {
  */
 const DASH: CombatMove = {
   name: 'dash',
+  strike: 0.58,
   duration: 1.95,
   chain: [1.95, 1.95],
   keys: {

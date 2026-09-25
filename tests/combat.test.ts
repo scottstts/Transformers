@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { Box3, Matrix4, PerspectiveCamera, Quaternion, Vector3, type Mesh } from 'three/webgpu'
+import { Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
-import { createMotionState } from '../src/game/types.ts'
-import { RobotCombat } from '../src/game/combat/robot-combat.ts'
-import { CameraFx } from '../src/game/combat/camera-fx.ts'
 import { CH, CHANNEL_NAMES } from '../src/content/transformer/combat/pose.ts'
 import type { Character } from '../src/content/transformer/character.ts'
 import { NO_CONTACT, readAsset, readWeapon } from './support/assets.ts'
-
-const DT = 1 / 60
+import { DT, bodyCore, runFight } from './support/fight.ts'
 
 interface Fighter {
   name: string
@@ -31,49 +27,6 @@ const FIGHTERS: Fighter[] = [
     clicks: [0, 0.45, 1.3, 2.4],
   },
 ]
-
-/** A fight run headlessly in the session's order; `each` sees every frame. */
-function fight(c: Character, clicks: number[], until: number, each: (t: number, combat: RobotCombat) => void, dt = DT): RobotCombat {
-  const state = createMotionState()
-  state.mode = 'robot'
-  state.target = 1
-  state.progress = 1
-  state.yaw = 0.3
-  const combat = new RobotCombat(c.combat, c.model, c.robotOffset, state, new CameraFx())
-  const aim = new PerspectiveCamera()
-  const pending = [...clicks]
-  for (let t = -0.5; t <= until; t += dt) {
-    while (pending.length && pending[0] <= t) {
-      pending.shift()
-      combat.press()
-    }
-    aim.position.set(state.pos.x, 3, state.pos.z)
-    aim.lookAt(state.pos.x + Math.sin(state.yaw), 3, state.pos.z + Math.cos(state.yaw))
-    aim.updateMatrixWorld()
-    combat.update(dt, state, aim)
-    const pose = c.gait.update(dt, state.speed, state.yawRate, false, true, null)
-    if (combat.poseWeight > 0) pose.air = (pose.air ?? 0) + (combat.air - (pose.air ?? 0)) * combat.poseWeight
-    c.model.root.position.copy(state.pos)
-    c.model.root.rotation.set(0, state.yaw, 0)
-    c.model.pose(1, pose)
-    c.effects.update(dt, state)
-    if (t >= 0) each(t, combat)
-  }
-  return combat
-}
-
-/** A node's own geometry bounds, shrunk toward their centre (a conservative solid to keep out of). */
-function core(c: Character, node: string, shrink: number): Box3 {
-  const box = new Box3()
-  for (const child of c.model.node(node).children) {
-    const g = (child as Mesh).geometry
-    if (!g) continue
-    g.computeBoundingBox()
-    box.union(g.boundingBox!)
-  }
-  const size = box.getSize(new Vector3()).multiplyScalar(shrink / 2)
-  return box.expandByVector(size.negate())
-}
 
 describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
   const character = make()
@@ -126,11 +79,11 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
     c.model.overlay = null
   })
 
-  it.each(['normal', 'early', 'late', 'stop-after-weapon'] as const)('keeps feet grounded and weapons clear of the body: %s', (timing) => {
+  it.each(['normal', 'early', 'late', 'stop-after-weapon', 'loop'] as const)('keeps feet grounded and weapons clear of the body: %s', (timing) => {
     const c = make()
-    const chest = core(c, 'bone:chest', 0.15)
-    const pelvis = core(c, 'bone:pelvis', 0.15)
-    const head = core(c, 'bone:head', 0.1)
+    const chest = bodyCore(c, 'bone:chest', 0.15)
+    const pelvis = bodyCore(c, 'bone:pelvis', 0.15)
+    const head = bodyCore(c, 'bone:head', 0.1)
     const inv = new Matrix4()
     const p = new Vector3()
     const weapon = c.model.node('bone:hand.R').children.find((o) => o.name.startsWith('weapon:'))!
@@ -139,11 +92,13 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
     let frames = 0
     let armed = 0
     const inside = (box: Box3, node: string, world: Vector3): boolean => box.containsPoint(p.copy(world).applyMatrix4(inv.copy(c.model.node(node).matrixWorld).invert()))
-    const schedule = timing === 'normal' ? clicks : timing === 'stop-after-weapon' ? clicks.slice(0, 3) : [0]
+    const schedule = timing === 'normal' ? clicks : timing === 'stop-after-weapon' ? clicks.slice(0, 3)
+      // the next combo cut into the finisher's settle, as soon as its window opens
+      : timing === 'loop' ? [...clicks, clicks[3] + moveset.moves[3].chain[0] + DT] : [0]
     if (timing === 'early' || timing === 'late') for (const move of moveset.moves.slice(0, 3)) {
       schedule.push(schedule.at(-1)! + (timing === 'early' ? move.chain[0] + DT : move.chain[1] - DT))
     }
-    const combat = fight(c, schedule, 9, (t, fight) => {
+    const combat = runFight(c, schedule, 9, (t, fight) => {
       frames++
       for (const node of c.model.root.children[0].children) expect(Number.isFinite(node.matrixWorld.elements[12])).toBe(true)
       // a planted foot stays on the ground (the lowest foot defines the ground; the other must not hang)
@@ -198,7 +153,7 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
     const c = make()
     let seenWeapon = false
     const weapon = c.model.node('bone:hand.R').children.find((o) => o.name.startsWith('weapon:'))!
-    const combat = fight(c, [0], 3, () => { seenWeapon ||= weapon.visible })
+    const combat = runFight(c, [0], 3, () => { seenWeapon ||= weapon.visible })
     expect(seenWeapon).toBe(false)
     expect(combat.active).toBe(false)
   })
@@ -236,7 +191,7 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
     let previous = 0
     let began = false
     const advances = [0, 0, 0, 0]
-    fight(c, clicks, 7, (t) => {
+    runFight(c, clicks, 7, (t) => {
       const position = c.model.root.position.dot(forward)
       if (!began) { previous = position; began = true }
       const delta = position - previous
@@ -263,7 +218,7 @@ describe('truck finisher continuity', () => {
       const q = new Quaternion()
       let peak = 0
       let where = ''
-      fight(c, clicks, 7, (t) => {
+      runFight(c, clicks, 7, (t) => {
         bones.forEach((bone, i) => {
           c.model.node(`bone:${bone}`).getWorldQuaternion(q)
           const speed = previous[i].angleTo(q) / DT * 180 / Math.PI
@@ -284,7 +239,7 @@ describe('truck finisher continuity', () => {
     let where = ''
     let settledPeak = 0
     let settledWhere = ''
-    fight(c, FIGHTERS[0].clicks, 9, (t) => {
+    runFight(c, FIGHTERS[0].clicks, 9, (t) => {
       bones.forEach((bone, i) => {
         c.model.node(`bone:${bone}`).getWorldQuaternion(q)
         const speed = previous[i].angleTo(q) / dt * 180 / Math.PI

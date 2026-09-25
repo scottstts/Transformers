@@ -18,6 +18,12 @@ export const NO_CONTACT: ContactEffects = {
   footprint: () => undefined,
   burst: () => undefined,
   blast: () => undefined,
+  crater: () => undefined,
+  furrow: () => 0,
+  reignite: () => undefined,
+  surge: () => undefined,
+  eject: () => undefined,
+  warm: () => undefined,
   update: () => undefined,
 }
 

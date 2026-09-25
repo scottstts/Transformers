@@ -1,17 +1,19 @@
 # Robot combat
 
-In robot form a left click (or the touch attack button) fights. Each robot has a four-move combo that climbs in intensity; its own powers take part in it (the truck's lift jets, the racer's power unit). The game side is `src/game/combat/`; the shared runtime is `src/content/transformer/combat/`; each character's moves and effects are `src/content/<character>/combat/`.
+In robot form a left click (or the touch attack button) fights. Each robot has a four-move combo that climbs in intensity; its own powers take part in it (the truck's lift jets, the racer's power unit). Each landed blow (a move's `strike` time) charges the energy for the robot's special, a cinematic move on the same machinery (specials.md). The game side is `src/game/combat/`; the shared runtime is `src/content/transformer/combat/`; each character's moves and effects are `src/content/<character>/combat/`.
 
 ## The combo (`game/combat/combo.ts`)
 
 - One click, one move: 1, 1-2, 1-2-3, 1-2-3-4.
 - A move takes the next click only inside its chain window, which opens as the strike settles. An earlier click is ignored: that is the throttle, and it does not queue. The window may run past the move's end while the last pose holds.
-- Once the window closes, the combo recovers into the stance. A click during the recovery restarts from move 1, but only after 35 % of it (so a mash right after the window doesn't restart at once). After move 4 no click chains.
+- Once the window closes, the combo recovers into the stance. A click during the recovery restarts from move 1, but only after 35 % of it (so a mash right after the window doesn't restart at once).
+- The finisher (move 4) loops instead: a click in its window, which opens as soon as its weapon is gone and its blow has settled, or anywhere in the recovery after it, starts move 1 at once from the pose it is settling through. Chaining combos toward a full energy meter never waits for the stance.
 - While fighting, the robot doesn't walk, jump or transform, and the car can't be switched.
+- The special can cut into any move; when it ends the combo goes straight into its recovery (`ComboController.recover`).
 
 ## Pose (`pose.ts`, `overlay.ts`)
 
-The fight is one flat vector of named channels (pelvis, torso, arms, weapon, heels, root motion). A move starts every channel from its current value and passes through its keys. Channels it doesn't key ease back to neutral. That is how chained moves and the recovery stay continuous. Keys run through monotone cubics (`curves.ts`): no overshoot, so an arc authored through a few poses can't bulge through the body.
+The fight is one flat vector of named channels (pelvis, torso, arms, weapon, heels, root motion, and the free legs the specials carry through the air, specials.md). A move starts every channel from its current value and passes through its keys. Channels it doesn't key ease back to neutral. That is how chained moves and the recovery stay continuous. Keys run through monotone cubics (`curves.ts`): no overshoot, so an arc authored through a few poses can't bulge through the body.
 
 - **Fists:**
   - Each fist is authored as a direction, reach and elbow roll from its shoulder, in the chest frame: a torso twist carries the punch.
@@ -36,7 +38,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 - **Aim:** each move turns toward the camera's heading, by at most 40° at the first move and 26° when chained. Feet that stay planted limit how far the hips can turn.
 - **Forward travel:** every move gains ground, including the jab and roundhouse. Completed move distances are 0.85 / 1.0 / 1.4 / 8.7 m for the truck and 0.6 / 0.75 / 1.05 / 10.3 m for the F1. Chaining early keeps the distance already travelled; recovery keeps that world position. Wind-ups load the pose without reversing root travel. Foot placements must be tuned alongside root distances.
 - **Timing:** hips lead, spine follows, and chest follows through the strike. Punches keep a small elbow bend and rebound into guard instead of locking at full extension. The F1 dash cuts farther forward and lower, keeping the pommel clear of its chest.
-- **Truck finisher:** the charge takes 3.4 s, with the slam at 1.58 s. The descent, knee compression, supporting-hand brace, release and two regathering steps are separate phases. The axe stays low and dissolves before its main-hand IK releases into a matching empty-hand guard; recovery then lowers the arm. Wrist channels retain the holding orientation during release and unwind afterwards.
+- **Truck finisher:** the charge takes 3.25 s, with the slam at 1.58 s; the axe is gone and the main hand released by 2.4 s, when its window opens (the next combo can start 0.8 s after the blow, where it used to wait 2.2 s). The descent, knee compression, supporting-hand brace, release and two regathering steps are separate phases. The axe stays low and dissolves before its main-hand IK releases into a matching empty-hand guard; recovery then lowers the arm. Wrist channels retain the holding orientation during release and unwind afterwards. Compressing the off hand's grab, release and unwind below about 0.35 s each trips the arm-speed tests; the time was taken from the body's settle and the weapon's release instead, and the window lets a new combo take over the unwind.
 - **Rig continuity:** elbow planes follow the actual blended wrist target, including weapons. Partial wrist grips unwrap the relative quaternion through 180° instead of switching interpolation branches. This state resets when a hand releases; fully held wrists may rebase without changing orientation.
 - **Known remaining tuning:** stopping after the truck's cleave (move 3) still produces a fast upper-arm recovery. Its continuity test records this as an expected failure; the finisher and the two unarmed exits have passing speed bounds.
 - **Hand-over:** the overlay blends with the gait by one weight: in over 0.12 s, out over the last 0.22 s of the recovery. Neutral arm channels are measured from the rig at rest, so the recovery ends in the gait's exact stance (a test checks this).
@@ -46,6 +48,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 - The weapon hangs off the main hand's node at the grip. It exists only while a move wants it.
 - **Forming:** a front runs out from the grip toward both ends, with a noise-ragged edge. The metal glows at the front and cools behind it, and the materials discard beyond it, so nothing is blended or sorted. Dissolving runs the same front back into the hand, tip first.
 - **Timing:** a weapon forms only once the hand is where the weapon should be. Forming earlier swept the half-formed weapon through the shoulder.
+- **Overcharge:** `Weapon.charge` (0..1) runs the forging afterglow back out along the metal toward the head, churning with noise (a special, specials.md).
 - **Looks:**
   - The truck's axe forms from blue plasma (its jets' plasma). Its light-bar strip flares with swing speed.
   - The racer's sword forms from white-hot metal as it is drawn from the left hip, the draw becoming the slash. Sword draws are horizontal yaw sweeps: going through upright whipped the blade over the shoulder and through the torso.

@@ -39,7 +39,7 @@ function rng( seed ) {
  * displacement, so shared vertices stay welded) broken by a few fracture
  * planes that flatten it into the broad facets of split rock.
  */
-function rockGeometry( r, seed, detail = 1 ) {
+export function rockGeometry( r, seed, detail = 1 ) {
 
 	const g = new THREE.IcosahedronGeometry( 1, detail );
 	const rand = rng( seed );
@@ -77,6 +77,9 @@ function rockGeometry( r, seed, detail = 1 ) {
 	return toCreasedNormals( g, THREE.MathUtils.degToRad( 38 ) );
 
 }
+
+/** Focus height (m) above which the shadow camera rises with it; a standing robot's focus is below it. */
+const SHADOW_LIFT_FROM = 6;
 
 export class DesertWorld {
 	scene: THREE.Scene;
@@ -266,12 +269,14 @@ export class DesertWorld {
 
 		}
 
-		// shadow camera follows the focus, snapped to texels to avoid shimmer
+		// shadow camera follows the focus, snapped to texels to avoid shimmer; a subject high in
+		// the air (a special's leap) takes it up with it, or it would leave the shadow frustum
 		const sc = this.sun.shadow.camera;
 		const texel = ( sc.right - sc.left ) / this.sun.shadow.mapSize.x;
 		const fx = Math.round( focus.x / texel ) * texel, fz = Math.round( focus.z / texel ) * texel;
-		this.sun.target.position.set( fx, 0, fz );
-		this.sun.position.set( fx, 0, fz ).addScaledVector( SKY.sunDir, 80 );
+		const fy = Math.round( Math.max( 0, focus.y - SHADOW_LIFT_FROM ) / texel ) * texel;
+		this.sun.target.position.set( fx, fy, fz );
+		this.sun.position.set( fx, fy, fz ).addScaledVector( SKY.sunDir, 80 );
 
 	}
 
