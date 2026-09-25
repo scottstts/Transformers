@@ -1,0 +1,26 @@
+// Headless contact sheet of a fighting combo (Dawn WebGPU in Node, no browser).
+// Usage: node tools/fight-sheet.mjs <out> [car] [clicks] [from:to:count] [views] [zoom]   (writes <out>-<view>.png)
+//   clicks: comma-separated click times (s), e.g. 0,0.6,1.3,2.5
+//   frames: from:to:count evenly spaced frame times, or a comma-separated list
+//   views:  comma-separated: side | right | front | back | quarter | low
+import { createServer } from 'vite'
+
+globalThis.self = globalThis
+globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16)
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id)
+
+const [out = 'fight', car = 'cybertruck', clicks = '0', span = '0:1:8', views = 'side', zoom = '1'] = process.argv.slice(2)
+const frames = span.includes(':')
+  ? (() => {
+      const [a, b, n] = span.split(':').map(Number)
+      return Array.from({ length: n }, (_, i) => a + (b - a) * (n > 1 ? i / (n - 1) : 0))
+    })()
+  : span.split(',').map(Number)
+const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
+try {
+  const { renderFightSheet } = await server.ssrLoadModule('/tools/preview/fight.ts')
+  await renderFightSheet(out, { car, clicks: clicks.split(',').filter(Boolean).map(Number), frames, views: views.split(','), zoom: Number(zoom) })
+} finally {
+  await server.close()
+}
+process.exit(0)

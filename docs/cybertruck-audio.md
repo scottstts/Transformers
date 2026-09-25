@@ -44,6 +44,8 @@ The lift thrusters (see cybertruck.md) have a rocket voice driven every frame by
 
 Crackle is what makes it a rocket rather than wind: steep positive shocks with a slower recovery and heavy-tailed amplitudes.
 
+The fighting charge burns the same jets, so it is the same voice. The fighting sounds themselves (swing, forming, slam) are in combat.md.
+
 ## Driving and walking
 
 Driving plays only a plain electric drive motor: a soft hum following the driven wheels' speed (wheelspin winds it up) with a faint, heavily lowpassed whine, silent at rest. Rolling tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill).

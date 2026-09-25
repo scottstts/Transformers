@@ -8,8 +8,12 @@ import { RobotGait, type GaitStyle } from '../transformer/animation/gait'
 import type { Character, CharacterProfile } from '../transformer/character'
 import { createF1Materials } from './materials'
 import { F1Effects } from './effects'
+import { loadWeaponAsset } from '../transformer/asset/weapon'
+import { createF1Combat } from './combat'
 
 export const F1_LABEL = 'Ferrari F1'
+/** The robot's sword (public/models/ferrari-f1-sword.*). */
+export const F1_WEAPON = 'ferrari-f1-sword'
 
 /**
  * Handling and framing of the F1 car (3.6 m wheelbase, 720 mm wheels, a stiff,
@@ -73,8 +77,9 @@ const RACER_GAIT: GaitStyle = {
   jumpTuck: 0.34,
 }
 
-export function loadF1Asset(): Promise<TransformerAsset> {
-  return loadTransformerAsset('ferrari-f1', F1_LABEL)
+export async function loadF1Asset(): Promise<TransformerAsset> {
+  const [asset, weapon] = await Promise.all([loadTransformerAsset('ferrari-f1', F1_LABEL), loadWeaponAsset(F1_WEAPON, F1_LABEL)])
+  return { ...asset, weapon }
 }
 
 /**
@@ -101,11 +106,14 @@ export function f1FootNodes(manifest: TransformerManifest): string[] {
 /** The Ferrari F1's authored parts and simulation settings. */
 export function createF1(asset: TransformerAsset, contactEffects: ContactEffects, mix: AudioMix): Character & { effects: F1Effects } {
   const model = new TransformerModel(asset, createF1Materials(), { label: F1_LABEL, footNodes: f1FootNodes(asset.manifest) })
+  const effects = new F1Effects(model, contactEffects, asset.manifest.events, model.duration, mix)
+  const sole = { heel: RACER_GAIT.heel, toe: RACER_GAIT.toe, ankle: RACER_GAIT.ankle }
   return {
     id: 'ferrari-f1',
     model,
     gait: new RobotGait(RACER_GAIT),
-    effects: new F1Effects(model, contactEffects, asset.manifest.events, model.duration, mix),
+    effects,
+    combat: createF1Combat(model, asset.weapon, effects, contactEffects, mix, sole),
     profile: F1_PROFILE,
     transformationDuration: model.duration,
     robotOffset: model.dims.robotF,

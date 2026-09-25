@@ -50,6 +50,11 @@ export class F1Effects implements CharacterEffects {
   private readonly planted: Record<Side, boolean> = { L: true, R: true }
   private shake = 0
   private time = 0
+  /**
+   * A fight's ERS burst driving the power unit in robot form (road speed it is
+   * geared for, m/s, and throttle), or null: the power unit follows the car.
+   */
+  rev: { speed: number; throttle: number } | null = null
 
   constructor(bot: TransformerModel, contactEffects: ContactEffects, events: MechanismEvent[], duration: number, mix: AudioMix) {
     this.bot = bot
@@ -106,7 +111,8 @@ export class F1Effects implements CharacterEffects {
     this.time += dt
     const t = state.progress
     const car = t === 0
-    const harvesting = car && Math.abs(state.speed) > 5 && state.throttle <= 0
+    // the rain light flashes while the car harvests energy, and while a fight deploys it
+    const harvesting = (car && Math.abs(state.speed) > 5 && state.throttle <= 0) || this.rev !== null
     F1_LIGHTS.rain.value = harvesting ? (Math.sin(this.time * Math.PI * 2 * HARVEST_FLASH_HZ) > 0 ? 1 : 0.08) : 1
     F1_LIGHTS.eyes.value = easedRange(t, this.eyes[0], this.eyes[1])
     F1_LIGHTS.core.value = easedRange(t, 0.4, 0.6)
@@ -127,7 +133,9 @@ export class F1Effects implements CharacterEffects {
       this.contactEffects.footprint(sole.center, sole.forward, sole.length, sole.width, 0.7 + 0.25 * strength)
     }
     this.contactEffects.update(dt)
-    this.audio.drive(dt, state.speed - state.spinRear, state.throttle, state.boost, car, slide)
+    const rev = this.rev
+    if (rev) this.audio.drive(dt, rev.speed, rev.throttle, true, true, 0)
+    else this.audio.drive(dt, state.speed - state.spinRear, state.throttle, state.boost, car, slide)
     this.audio.transforming(t > 0 && t < 1)
   }
 

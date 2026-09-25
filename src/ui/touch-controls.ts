@@ -6,6 +6,7 @@ export interface TouchHost {
   look(dx: number, dy: number): void
   transform(): void
   jump(): void
+  attack(): void
 }
 
 /** Stick travel (px) from the centre to the rim. */
@@ -19,11 +20,12 @@ const STICK_ZONE = 0.45
 
 const TRANSFORM_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 14.5a9.2 9.2 0 0 1 16-5.3"/><path d="M23.6 4.6v5h-5"/><path d="M25 17.5a9.2 9.2 0 0 1-16 5.3"/><path d="M8.4 27.4v-5h5"/><path d="m13 16 3-3 3 3-3 3z"/></svg>'
 const JUMP_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="m9 15 7-7 7 7"/><path d="m9 23 7-7 7 7"/></svg>'
+const ATTACK_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8.5 23.5 23 9"/><path d="M15 8.5h8.5V17"/><path d="m7 17 3.5 3.5"/></svg>'
 
 /**
  * Touch controls: a floating stick on the left (it jumps to where the thumb
  * lands and rests, faint, in the corner), a drag anywhere else to look, and
- * transform and jump buttons on the right. Each finger is tracked by its own
+ * transform, jump and attack buttons on the right. Each finger is tracked by its own
  * pointer id, so steering, looking and a button can be held together. All
  * feedback is a CSS transform on a small element; nothing runs per frame.
  */
@@ -33,6 +35,7 @@ export class TouchControls {
   private readonly base: HTMLDivElement
   private readonly knob: HTMLDivElement
   private readonly jumpButton: HTMLButtonElement
+  private readonly attackButton: HTMLButtonElement
   private stickPointer: number | null = null
   private readonly stickOrigin = { x: 0, y: 0 }
   private lookPointer: number | null = null
@@ -86,11 +89,13 @@ export class TouchControls {
     this.knob.className = 'touch-knob'
     this.base.append(this.knob)
     this.jumpButton = this.button('touch-jump', 'Jump', JUMP_ICON, () => host.jump())
-    this.setJumpAvailable(false)
+    this.attackButton = this.button('touch-attack', 'Attack', ATTACK_ICON, () => host.attack())
+    this.setRobotActions(false)
     this.root.append(
       this.base,
       this.button('touch-transform', 'Transform', TRANSFORM_ICON, () => host.transform()),
       this.jumpButton,
+      this.attackButton,
     )
     this.root.addEventListener('pointerdown', this.onDown)
     this.root.addEventListener('pointermove', this.onMove)
@@ -101,10 +106,12 @@ export class TouchControls {
     document.body.append(this.root)
   }
 
-  /** Show the jump button only while the robot stands: a car cannot jump. */
-  setJumpAvailable(available: boolean): void {
-    this.jumpButton.classList.toggle('away', !available)
-    this.jumpButton.inert = !available
+  /** Show the jump and attack buttons only while the robot stands: a car can do neither. */
+  setRobotActions(available: boolean): void {
+    for (const button of [this.jumpButton, this.attackButton]) {
+      button.classList.toggle('away', !available)
+      button.inert = !available
+    }
   }
 
   /** Let go of everything (an overlay opened, or the page lost focus). */

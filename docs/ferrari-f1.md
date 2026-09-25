@@ -55,6 +55,7 @@ The export rebuilds the scene from the scripts (they reproduce the working `.ble
 - **Rain light:** flashes at 4 Hz while the car harvests energy (lift-off or braking above 5 m/s), as on the real car.
 - **Eyes:** come on as the helmet settles onto the neck (the `stow:R.head.helmet` window).
 - **Tyres:** dust, grit and tracks use the real tread widths, 305 mm front and 405 mm rear.
+- **ERS dash:** the fourth fighting move sets `F1Effects.rev`, which drives the power unit in robot form (its start, a run through the gears, its run-down) and strobes the rain light as in a real ERS deployment (combat.md).
 
 ## Audio (`audio/`)
 

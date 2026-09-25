@@ -6,7 +6,7 @@ The browser entry handles one observed startup chain. `GameSession` owns the act
 
 `src/content/transformer/` is the shared transformer runtime every character is built on: asset decoding (`asset/`), track playback and the live rig (`model/`), the procedural gait (`animation/`), transformation and footfall audio (`audio/`), cue merging (`cues.ts`) and the `Character` contract (`character.ts`). Geometry and choreography are authored in each character's Blender build, not in TypeScript.
 
-Each character package (`src/content/cybertruck/`, `src/content/ferrari-f1/`) supplies only what is its own: materials for its slot names, its effects and sounds, its gait style and a `CharacterProfile` (drive limits, robot speeds, camera framing, collision radii). The game modules (`game/movement.ts`, `game/follow-camera.ts`) take these values from the profile. Tuning a car means editing its profile, not the game code.
+Each character package (`src/content/cybertruck/`, `src/content/ferrari-f1/`) supplies only what is its own: materials for its slot names, its effects and sounds, its gait style, its fighting (`combat/`: four moves, its weapon and effects; combat.md) and a `CharacterProfile` (drive limits, robot speeds, camera framing, collision radii). A character's weapon is a separate asset loaded with it (weapons.md). The game modules (`game/movement.ts`, `game/follow-camera.ts`) take these values from the profile. Tuning a car means editing its profile, not the game code.
 
 `src/content/roster.ts` lists the playable cars: label, menu tagline and accent, loader and factory. Adding a car means adding a package and a roster entry. Assets download once per session (the promise is shared; a failed download can be retried). The last choice is remembered in local storage and used at boot.
 
@@ -30,7 +30,7 @@ The vehicle menu (`src/ui/vehicle-menu.ts`) is the only in-game UI besides the t
 - a floating stick on the left 45 % of the screen, which centres under the thumb;
 - a drag anywhere else to look (`FollowCamera.look`, the same path as mouse movement);
 - a transform button;
-- a jump button, shown only while the robot stands (`GameSession.onStandingChange`), since a car cannot jump.
+- jump and attack buttons, shown only while the robot stands (`GameSession.onStandingChange`), since a car can do neither.
 
 The stick maps onto the keyboard controls rather than adding an analog mode. Forward and back switch the throttle on and off, as W and S do. Sideways steers the car proportionally. For the robot, the stick gives a camera-relative walking direction. Pushing the stick to the rim is Shift (run, or drift in the car). The menu pill moves to the top on touch screens, clear of the thumbs, and a tap opens it. The touch controls hide and release every finger while the menu is open.
 
@@ -44,6 +44,6 @@ Baked noise and the shared image setup (`rendering/look.ts`: tone mapping, shado
 
 `src/worlds/desert/` owns scenery, lighting, ground materials, dust, tyre tracks, and collision circles. Its entry point supplies the world, environment lighting scene, and contact effects. Characters receive contact effects through a small interface, so another environment can provide different tyre and footfall feedback without changing character code.
 
-Gameplay motion uses an explicit state for position, heading, forward and lateral velocity, tyre slide, form target, suspension, and transform progress. Car handling is `game/car-dynamics.ts` (car-handling.md); robot gait and jumps are robot-locomotion.md. The two locomotion paths share that state. Future racing, combat, and flight should add systems around the session and character boundary as their mechanics become defined, rather than extending the current loop with mode-specific branches.
+Gameplay motion uses an explicit state for position, heading, forward and lateral velocity, tyre slide, form target, suspension, and transform progress. Car handling is `game/car-dynamics.ts` (car-handling.md); robot gait and jumps are robot-locomotion.md. The two locomotion paths share that state. Combat (combat.md) is a system around the session: `RobotCombat` owns the combo, writes the fight's root motion into the same state and lays its pose over the gait through the model's rig overlay, and the camera reactions and hit-stop (`CameraFx`) sit after the follow camera. Future racing and flight should be added the same way, rather than extending the loop with mode-specific branches.
 
 All source modules under `src/` are TypeScript. The asset tests cover pose and handover invariants alongside the compiler checks; the Blender audits cover geometry and mechanism clearance.

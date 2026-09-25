@@ -95,7 +95,16 @@ const drift = (frames: number, after: number, from: [number, number, number], at
   s.look(place(from), place(at), true)
 }
 
+/** The robot standing (T = 1), seen from `from` at `at`, both relative to the robot's standing point. */
+const stand = (from: [number, number, number], at: [number, number, number]): Shot => (s) => {
+  s.step(1)
+  const f = s.player.robotOffset
+  s.look([from[0], from[1], from[2] + f], [at[0], at[1], at[2] + f])
+}
+
 const SHOTS: Record<string, Shot> = {
+  'robot-front': stand([2, 3.2, 11], [0, 2.8, 0]),
+  'robot-hand': stand([2.6, 2.6, 2.4], [0.9, 2.2, 0]),
   'rise-33': rise(0.33, [-7, 3.2, -8], [0, 1.2, -0.5]),
   'rise-40': rise(0.4, [-8, 3.5, -7], [0, 1.8, -0.5]),
   'rise-50': rise(0.5, [-8.5, 3.8, -6], [0, 2.4, 0]),

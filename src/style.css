@@ -133,7 +133,7 @@ body:not(.ready) .garage { opacity: 0; visibility: hidden; }
 @keyframes garage-nudge-prev { 40% { translate: 14px 0; } }
 @keyframes garage-nudge-next { 40% { translate: -14px 0; } }
 
-/* ── touch controls: floating stick on the left, transform and jump on the right ──── */
+/* ── touch controls: floating stick on the left, transform, jump and attack on the right ──── */
 .touch-controls { position: fixed; inset: 0; z-index: 12; display: none; touch-action: none; transition: opacity 0.25s ease; }
 body.touch.ready .touch-controls { display: block; }
 body.menu-open .touch-controls { opacity: 0; pointer-events: none; }
@@ -149,8 +149,10 @@ body.menu-open .touch-controls { opacity: 0; pointer-events: none; }
 .touch-transform svg { width: 36px; height: 36px; }
 .touch-jump { right: calc(env(safe-area-inset-right) + 116px); bottom: calc(env(safe-area-inset-bottom) + 24px); width: 58px; height: 58px; }
 .touch-jump svg { width: 26px; height: 26px; }
-.touch-jump.away { opacity: 0; transform: scale(0.6); pointer-events: none; }
-.touch-jump { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
+.touch-attack { right: calc(env(safe-area-inset-right) + 32px); bottom: calc(env(safe-area-inset-bottom) + 138px); width: 58px; height: 58px; }
+.touch-attack svg { width: 26px; height: 26px; }
+.touch-jump.away, .touch-attack.away { opacity: 0; transform: scale(0.6); pointer-events: none; }
+.touch-jump, .touch-attack { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
 
 @media (prefers-reduced-motion: reduce) {
   .entry-mark span, .entry-line, .entry-gauge, .entry-stage, body.entry .entry-button { animation: none; }

@@ -3,6 +3,7 @@ import type { MotionState } from '../../game/types'
 import type { MechanismEvent } from './asset/format'
 import type { TransformerModel } from './model/transformer'
 import type { RobotGait } from './animation/gait'
+import type { CharacterCombat } from './combat/effects'
 
 /** Car handling: the game's single-track model (game/car-dynamics.ts) takes its limits from here. */
 export interface DriveProfile {
@@ -108,4 +109,6 @@ export interface Character {
   readonly transformationDuration: number
   /** robot standing station ahead of the car origin (m) */
   readonly robotOffset: number
+  /** the robot's fighting: its four-move combo, weapon and effects */
+  readonly combat: CharacterCombat
 }

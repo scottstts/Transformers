@@ -13,6 +13,9 @@ import { ImpingementSheet, PlasmaJet, jetLength } from './plasma'
  * Throttle follows the load: the torque gravity puts on the body about the
  * feet goes with the cosine of its elevation, so the jets burn hardest at
  * lift-off and die away as the robot comes upright.
+ *
+ * In a fight the same jets drive a charge (`boost`): throttle and exhaust
+ * axis come from the move instead of the lift schedule.
  */
 
 /** Exhaust ports on the chest back plate (chest frame: x left, +y back, z up the spine; 15 mm off the plate). */
@@ -48,6 +51,9 @@ export class Thrusters {
   private readonly spine = new Vector3()
   private readonly side = new Vector3()
   private time = 0
+  /** combat charge: throttle 0..1 and exhaust axis (world, unit) */
+  private boostPower = 0
+  private readonly boostAxis = new Vector3(0, -1, 0)
 
   constructor(model: TransformerModel) {
     this.chest = model.node('bone:chest')
@@ -62,11 +68,18 @@ export class Thrusters {
     return smooth(IGNITION[0], IGNITION[1], T) * (1 - smooth(CUTOFF[0], CUTOFF[1], T)) * (0.25 + 0.75 * cosE)
   }
 
+  /** Drive the jets for a charge: throttle 0..1 (0 hands them back to the lift schedule) and the exhaust axis (world). */
+  boost(power: number, axis: Vector3): void {
+    this.boostPower = power
+    this.boostAxis.copy(axis).normalize()
+  }
+
   update(T: number, dt: number): void {
     this.time += dt
     const W = this.chest.matrixWorld
     this.spine.set(0, 0, 1).transformDirection(W)
-    const base = Thrusters.throttle(T, this.spine.y)
+    const charging = this.boostPower > 0
+    const base = charging ? this.boostPower : Thrusters.throttle(T, this.spine.y)
     // combustion roughness: a few percent of fast, uncorrelated flutter
     const t = this.time
     const power = base * (1 + 0.035 * Math.sin(t * 71.0) + 0.025 * Math.sin(t * 123.7 + 1.3))
@@ -82,7 +95,8 @@ export class Thrusters {
 
     this.back.set(0, 1, 0).transformDirection(W)
     this.side.set(1, 0, 0).transformDirection(W)
-    this.axis.copy(this.back).multiplyScalar(1 - GIMBAL).addScaledVector(DOWN, GIMBAL).normalize()
+    if (charging) this.axis.copy(this.boostAxis)
+    else this.axis.copy(this.back).multiplyScalar(1 - GIMBAL).addScaledVector(DOWN, GIMBAL).normalize()
     const length = jetLength(power)
     let strike = 0
     for (let k = 0; k < 2; k++) {
