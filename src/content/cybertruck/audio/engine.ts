@@ -113,7 +113,7 @@ export class CybertruckAudio implements CharacterAudio {
   /** Per frame: `wheelSpeed` the driven wheels' surface speed (m/s), `slide` the fastest tread slide under the car (m/s). */
   drive(wheelSpeed: number, throttle: number, isCar: boolean, slide: number): void {
     if (!this.live || !this.motor) return
-    this.tyres.update(isCar ? slide : 0, wheelSpeed)
+    this.tyres.update(isCar ? slide : 0)
     const m = this.motor
     const t = (this.mix.ctx as AudioContext).currentTime
     const v = Math.abs(wheelSpeed)
