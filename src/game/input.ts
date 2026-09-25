@@ -8,7 +8,7 @@ const STICK_DEAD = 0.15
 /**
  * Keyboard input, plus an analog stick from the touch controls. The stick maps
  * onto the same controls as the keys: forward/back is the throttle, sideways
- * steers (proportionally), and a stick pushed to the rim runs or boosts (Shift).
+ * steers (proportionally), and a stick pushed to the rim runs or drifts (Shift).
  */
 export class GameInput {
   /** touch stick: x right, y forward, each -1..1 */

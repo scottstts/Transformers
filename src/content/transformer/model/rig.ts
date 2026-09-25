@@ -9,7 +9,8 @@ import type { RigBone, RigDims } from '../asset/format'
  * the legs with the same two-bone IK the transformation was audited with.
  */
 
-export interface GaitLeg { step: number; up: number; pitch: number; toe?: number }
+/** A foot target: ankle forward of its station and up (m), foot pitch (rad, + toe down). */
+export interface GaitLeg { step: number; up: number; pitch: number }
 
 export interface GaitPose {
   legs: Record<'R' | 'L', GaitLeg>
@@ -18,11 +19,16 @@ export interface GaitPose {
   arms: Record<'R' | 'L', number>
   elbow: Record<'R' | 'L', number>
   lean: number
+  /** pelvis roll (deg, + drops the left hip) and yaw (deg, + brings the right hip forward) */
   roll: number
+  yaw?: number
+  /** spine and chest roll against the pelvis (deg): keeps the shoulders level */
+  torsoRoll?: number
   twist: number
   breath: number
   headYaw: number
   headPitch: number
+  headRoll?: number
   curl: number
   /** height of the lowest foot above the ground (m): run flight and jumps */
   air?: number
@@ -83,16 +89,18 @@ export class RobotRig {
     const onStand = (name: string, q: Quaternion): void => { const i = this.index[name]; this.local[i].q.copy(S[i].q).multiply(q) }
     const tmp = _q0
 
-    // pelvis: the stance crouch plus the gait's bob, sway, lean and roll
+    // pelvis: the stance crouch plus the gait's bob, sway, lean, roll and yaw
     const crouch = d.crouch + (g.crouch - GAIT_REST_CROUCH)
     const root = this.root.makeTranslation(g.sway, -d.robotF, d.hipZ - crouch)
       .multiply(_m0.makeRotationX(deg(g.lean * 0.5)))
       .multiply(_m0.makeRotationY(deg(g.roll)))
+      .multiply(_m0.makeRotationZ(deg(g.yaw ?? 0)))
 
-    onStand('spine', eulerXYZ(g.lean * 0.4 + g.breath, 0, g.twist, tmp))
-    onStand('chest', eulerXYZ(g.lean * 0.3 - g.breath, 0, g.twist * 0.6, tmp))
+    const torsoRoll = g.torsoRoll ?? 0
+    onStand('spine', eulerXYZ(g.lean * 0.4 + g.breath, torsoRoll * 0.6, g.twist, tmp))
+    onStand('chest', eulerXYZ(g.lean * 0.3 - g.breath, torsoRoll * 0.4, g.twist * 0.6, tmp))
     onStand('neck', eulerXYZ(-g.lean * 0.4, 0, g.headYaw * 0.4, tmp))
-    onStand('head', eulerXYZ(g.headPitch, 0, g.headYaw * 0.6, tmp))
+    onStand('head', eulerXYZ(g.headPitch, g.headRoll ?? 0, g.headYaw * 0.6, tmp))
     const curl = g.curl / GAIT_REST_CURL
     for (const [side, s] of [['L', 1], ['R', -1]] as const) {
       set(`upperarm.${side}`, eulerXYZ(g.arms[side], -s * d.armAbduct, 0, tmp))

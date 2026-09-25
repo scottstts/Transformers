@@ -19,6 +19,12 @@ const FRAMING_GLIDE = 1.2
 const SIDE_PITCH = 0.07
 /** Half the span (m) the opening broadside keeps in frame: half a car length plus a margin. */
 const SIDE_HALF_SPAN = 3.4
+/**
+ * Share of the car's slip angle the drive follow swings toward its travel: a
+ * drifting car is seen at its angle, sliding across the frame, rather than
+ * the view swinging round with its nose.
+ */
+const TRAVEL_FOLLOW = 0.65
 
 export class FollowCamera {
   private readonly camera: PerspectiveCamera
@@ -141,7 +147,8 @@ export class FollowCamera {
     const now = performance.now() / 1000
     if (this.framingGlide < 1) this.glideFraming(dt)
     if (state.progress < 0.5 && driving && now - this.lastLook > 0.3) {
-      this.yaw += wrap(state.yaw + Math.PI - this.yaw) * (1 - Math.exp(-dt * 2.4))
+      const slip = state.speed > 1 ? Math.atan2(state.lateral, state.speed) : 0
+      this.yaw += wrap(state.yaw + slip * TRAVEL_FOLLOW + Math.PI - this.yaw) * (1 - Math.exp(-dt * 2.4))
       this.pitch = damp(this.pitch, 0.16, 1.6, dt)
     }
     const k = easedRange(state.progress, 0.1, 0.6)
@@ -167,7 +174,7 @@ export class FollowCamera {
     )
     this.camera.position.copy(this.position)
     this.camera.lookAt(this.target)
-    const fov = lerp(42, 48, clamp(Math.abs(state.speed) / 40, 0, 1) * (1 - k))
+    const fov = lerp(42, 48, clamp(Math.hypot(state.speed, state.lateral) / 40, 0, 1) * (1 - k))
     if (this.camera.fov !== fov) {
       this.camera.fov = fov
       this.camera.updateProjectionMatrix()

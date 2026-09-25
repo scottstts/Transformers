@@ -1,4 +1,5 @@
 import { Group, Vector3, type PerspectiveCamera } from 'three/webgpu'
+import { Tyres } from '../transformer/tyres'
 import { Thrusters } from './fx/thrusters'
 import { U } from './materials.ts'
 import { CybertruckAudio } from './audio/engine.ts'
@@ -13,8 +14,14 @@ import type { ContactEffects } from '../../game/contact-effects'
 
 type Side = 'R' | 'L'
 
+/** Camera shake of a running leap landing on one foot. */
+const LEAP_SHAKE = 0.3
+
 /** Tread width of the tyres (m). */
 const TYRE_WIDTH = 0.32
+/** Camera rumble per m/s of tread slide, and its ceiling. */
+const SLIDE_SHAKE = 0.006
+const SLIDE_SHAKE_MAX = 0.06
 
 export class CybertruckEffects implements CharacterEffects {
   private readonly bot: TransformerModel
@@ -26,7 +33,7 @@ export class CybertruckEffects implements CharacterEffects {
   private readonly rise: MechanismEvent | undefined
   private readonly head: MechanismEvent | undefined
   private readonly duration: number
-  private readonly forward = new Vector3()
+  private readonly tyres: Tyres
   private readonly pendingSteps: Array<[Side, number]> = []
   private readonly sole: Sole = { center: new Vector3(), forward: new Vector3(), length: 0, width: 0 }
   private shake = 0
@@ -40,6 +47,7 @@ export class CybertruckEffects implements CharacterEffects {
     this.head = events.find((e) => e.name === 'rig:neck')
     this.duration = duration
     this.thrusters = new Thrusters(bot)
+    this.tyres = new Tyres(bot, { front: TYRE_WIDTH, rear: TYRE_WIDTH })
     this.object.add(this.thrusters.object)
   }
 
@@ -57,8 +65,14 @@ export class CybertruckEffects implements CharacterEffects {
     this.dustBurst('feet', 0.9, 16)
   }
 
-  /** Robot jump lands: both feet strike together, hard. */
-  land(): void {
+  /** Robot jump lands: both feet strike together, hard; a leap lands on its lead foot. */
+  land(lead: Side | null): void {
+    if (lead) {
+      this.addFootstep(lead, 1)
+      this.audio.footstep(1.3)
+      this.shake = Math.max(this.shake, LEAP_SHAKE)
+      return
+    }
     this.addFootstep('L', 1)
     this.addFootstep('R', 1)
     this.audio.footstep(1.6)
@@ -92,12 +106,12 @@ export class CybertruckEffects implements CharacterEffects {
     U.core.value = easedRange(t, 0.4, 0.6) * (0.85 + 0.15 * Math.sin(performance.now() * 0.003))
 
     const contacts = this.bot.contacts()
-    if (t === 0) {
-      this.forward.set(Math.sin(state.yaw), 0, Math.cos(state.yaw))
-      contacts.wheels.forEach((wheel, k) => {
-        this.contactEffects.wheel(wheel.p, this.forward, state.speed * (wheel.front ? 0.7 : 1), state.slip * (wheel.front ? 0.5 : 1), dt)
-        this.contactEffects.tread(k, wheel.p, TYRE_WIDTH, state.slip * (wheel.front ? 0.5 : 1))
-      })
+    const car = t === 0
+    let slide = 0
+    if (car) {
+      this.tyres.update(state, this.contactEffects, dt)
+      slide = Math.max(this.tyres.slideRear, this.tyres.slideFront)
+      this.shake = Math.max(this.shake, Math.min(SLIDE_SHAKE_MAX, slide * SLIDE_SHAKE))
     }
 
     const jets = this.thrusters
@@ -111,7 +125,7 @@ export class CybertruckEffects implements CharacterEffects {
       this.contactEffects.footprint(sole.center, sole.forward, sole.length, sole.width, 0.8 + 0.25 * strength)
     }
     this.contactEffects.update(dt)
-    this.audio.drive(state.speed, state.throttle, t === 0)
+    this.audio.drive(state.speed - state.spinRear, state.throttle, car, slide)
     this.audio.transforming(t > 0 && t < 1)
     this.audio.rocket(jets.power, jets.impingement)
   }

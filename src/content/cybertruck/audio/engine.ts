@@ -3,6 +3,7 @@ import type { MechanismEvent } from '../../transformer/asset/format'
 import { HEAVY_MACHINE } from '../../transformer/audio/machine'
 import { TransformationSound } from '../../transformer/audio/transformation'
 import { HEAVY_FOOT, footfall } from '../../transformer/audio/footfall'
+import { HEAVY_TYRES, TyreVoice } from '../../transformer/audio/tyres'
 import type { CharacterAudio } from '../../transformer/character'
 import { RocketVoice } from './rocket'
 
@@ -17,7 +18,10 @@ import { RocketVoice } from './rocket'
  *   thrusters       the rocket burn of the lift jets (see rocket.ts)
  *   footfall        a multi-tonne foot: ground thump, sub pressure, gravel
  *                   crunch and damper exhale
- *   drive           a soft electric drive-motor hum
+ *   drive           a soft electric drive-motor hum, following the wheels
+ *                   (wheelspin winds it up)
+ *   tyres           sliding tyres tearing through the desert crust (shared
+ *                   voice, transformer/audio/tyres.ts)
  */
 interface DriveMotor {
   gain: GainNode
@@ -35,10 +39,12 @@ export class CybertruckAudio implements CharacterAudio {
   private readonly machine: TransformationSound
   private rocketVoice: RocketVoice | null = null
   private motor: DriveMotor | null = null
+  private readonly tyres: TyreVoice
 
   constructor(mix: AudioMix) {
     this.mix = mix
     this.machine = new TransformationSound(mix, HEAVY_MACHINE)
+    this.tyres = new TyreVoice(mix, HEAVY_TYRES)
   }
 
   /** Continuous voices, built once the shared context exists. */
@@ -104,11 +110,13 @@ export class CybertruckAudio implements CharacterAudio {
     return { gain, hum, whine }
   }
 
-  drive(speed: number, throttle: number, isCar: boolean): void {
+  /** Per frame: `wheelSpeed` the driven wheels' surface speed (m/s), `slide` the fastest tread slide under the car (m/s). */
+  drive(wheelSpeed: number, throttle: number, isCar: boolean, slide: number): void {
     if (!this.live || !this.motor) return
+    this.tyres.update(isCar ? slide : 0, wheelSpeed)
     const m = this.motor
     const t = (this.mix.ctx as AudioContext).currentTime
-    const v = Math.abs(speed)
+    const v = Math.abs(wheelSpeed)
     const on = isCar && this.mix.enabled ? 1 : 0
     m.hum.frequency.setTargetAtTime(DRIVE_HUM_HZ + v * 2.4, t, 0.15)
     m.whine.frequency.setTargetAtTime(DRIVE_WHINE_HZ + v * 11, t, 0.15)
@@ -118,6 +126,7 @@ export class CybertruckAudio implements CharacterAudio {
 
   dispose(): void {
     this.machine.dispose()
+    this.tyres.dispose()
     this.rocketVoice?.dispose()
     this.rocketVoice = null
     if (this.motor) {

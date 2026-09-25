@@ -1,4 +1,5 @@
 import { Group, Vector3, type PerspectiveCamera } from 'three/webgpu'
+import { Tyres } from '../transformer/tyres'
 import type { TransformerModel, Sole } from '../transformer/model/transformer'
 import type { MechanismEvent } from '../transformer/asset/format'
 import { buildCues, crossedCues, type Cue } from '../transformer/cues'
@@ -12,6 +13,9 @@ import { F1Audio } from './audio/engine'
 
 type Side = 'R' | 'L'
 
+/** Camera shake of a running leap landing on one foot. */
+const LEAP_SHAKE = 0.2
+
 /** Tread widths (m): 305 mm front, 405 mm rear. */
 const TYRE_WIDTH = { front: 0.305, rear: 0.405 }
 /** A foot is down below this clearance and has lifted above the second (m). */
@@ -21,6 +25,9 @@ const LIFTED = 0.1
 const HARVEST_FLASH_HZ = 4
 /** The robot is lighter than the truck: its footfalls shake the camera less. */
 const STEP_SHAKE = 0.7
+/** Camera rumble per m/s of tread slide, and its ceiling: a stiff, light car. */
+const SLIDE_SHAKE = 0.004
+const SLIDE_SHAKE_MAX = 0.04
 
 /**
  * Effects of the Ferrari F1: transformation cues from the exported mechanism
@@ -37,7 +44,7 @@ export class F1Effects implements CharacterEffects {
   private readonly rise: MechanismEvent | undefined
   private readonly eyes: [number, number]
   private readonly duration: number
-  private readonly forward = new Vector3()
+  private readonly tyres: Tyres
   private readonly pendingSteps: Array<[Side, number]> = []
   private readonly sole: Sole = { center: new Vector3(), forward: new Vector3(), length: 0, width: 0 }
   private readonly planted: Record<Side, boolean> = { L: true, R: true }
@@ -54,6 +61,7 @@ export class F1Effects implements CharacterEffects {
     const helmet = events.find((e) => e.name === 'stow:R.head.helmet')
     this.eyes = helmet ? [helmet.t0 + (helmet.t1 - helmet.t0) * 0.3, helmet.t1] : [0.9, 0.98]
     this.duration = duration
+    this.tyres = new Tyres(bot, TYRE_WIDTH)
   }
 
   addFootstep(side: Side, running: number): void {
@@ -69,7 +77,14 @@ export class F1Effects implements CharacterEffects {
     this.dustBurst('feet', 0.7, 14)
   }
 
-  land(): void {
+  /** Lands on both feet together, hard; a leap lands on its lead foot. */
+  land(lead: Side | null): void {
+    if (lead) {
+      this.addFootstep(lead, 1)
+      this.audio.footstep(1.2)
+      this.shake = Math.max(this.shake, LEAP_SHAKE)
+      return
+    }
     this.addFootstep('L', 1)
     this.addFootstep('R', 1)
     this.audio.footstep(1.4)
@@ -97,12 +112,11 @@ export class F1Effects implements CharacterEffects {
     F1_LIGHTS.core.value = easedRange(t, 0.4, 0.6)
 
     const contacts = this.bot.contacts()
+    let slide = 0
     if (car) {
-      this.forward.set(Math.sin(state.yaw), 0, Math.cos(state.yaw))
-      contacts.wheels.forEach((wheel, k) => {
-        this.contactEffects.wheel(wheel.p, this.forward, state.speed * (wheel.front ? 0.7 : 1), state.slip * (wheel.front ? 0.5 : 1), dt)
-        this.contactEffects.tread(k, wheel.p, wheel.front ? TYRE_WIDTH.front : TYRE_WIDTH.rear, state.slip * (wheel.front ? 0.5 : 1))
-      })
+      this.tyres.update(state, this.contactEffects, dt)
+      slide = Math.max(this.tyres.slideRear, this.tyres.slideFront)
+      this.shake = Math.max(this.shake, Math.min(SLIDE_SHAKE_MAX, slide * SLIDE_SHAKE))
     }
     if (t > 0 && t < 1) this.touchdowns()
 
@@ -113,7 +127,7 @@ export class F1Effects implements CharacterEffects {
       this.contactEffects.footprint(sole.center, sole.forward, sole.length, sole.width, 0.7 + 0.25 * strength)
     }
     this.contactEffects.update(dt)
-    this.audio.drive(dt, state.speed, state.throttle, state.boost, car)
+    this.audio.drive(dt, state.speed - state.spinRear, state.throttle, state.boost, car, slide)
     this.audio.transforming(t > 0 && t < 1)
   }
 

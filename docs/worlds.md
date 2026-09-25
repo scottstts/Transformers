@@ -16,11 +16,13 @@ Rocks start as displaced icosahedra and are cut by five random fracture planes. 
 
 ## Surface response
 
-The world answers contact through `DesertSurface` (the `ContactEffects` interface): dust for tyres, footfalls and jet blasts, tyre tracks and footprints. Tracks and footprints share one imprint shader (`sand-imprint.ts`).
+The world answers contact through `DesertSurface` (the `ContactEffects` interface): dust for tyres, footfalls and jet blasts, grit, tyre tracks and footprints. A tyre reports one `TyreContact` per frame: its point, heading, ground velocity and the tread's sliding velocity over the ground. Tracks and footprints share one imprint shader (`sand-imprint.ts`).
 
 - **Ribbons:** one per wheel, written into a shared ring of 4096 quads (0.3 m each). Only newly written quads are uploaded. A frame without contact ends a ribbon.
 - **Shading:** the ribbon has no texture. Its shader rebuilds the floor from the ground's own albedo and relief (`groundSurface`, shared with the ground material), then adds the rut, the displaced-sand lip and the chevron tread imprint as a height field lit through the normal. Outside the tyre it equals the bare ground, so its edges blend without a seam.
 - **Natural variation:** noise varies the rut depth, crumbles the walls and collapses part of the tread. Tread detail fades by screen-space derivative so it doesn't shimmer at a distance.
 - **Depth:** the ribbon sits 8 mm up with a depth bias against z-fighting.
 - **Fading:** tracks fade over 150 s, or as the ring overwrites them.
+- **Sliding:** a sliding tread scrapes instead of pressing, scaled by slide speed (full at 5 m/s). The rut is up to a third shallower, the tread imprint is wiped into fine striations along the travel (faded once under a pixel), and the berm triples on the side the tyre slides toward and shrinks on the other (a per-vertex `plow` side). A tyre at an angle to its travel sweeps its tread width and its 0.36 m footprint length, so drift ribbons widen. In a drift the rears run wide of the fronts, so the four ribbons separate.
+- **Roost:** a sliding tread throws a roost of dust along its slide (7 puffs/s per m/s of slide per tyre, bigger, longer-lived and taller than rolling dust) and ballistic grit (`grit.ts`): up to 1200 tiny alpha-tested clods, CPU-simulated in a ring and drawn in one call, uploaded only while something is in the air.
 - **Footprints:** one decal per footfall in a ring of 240. Each is a rounded, sole-shaped depression with a displaced-sand lip and transverse tread bars, fading over 90 s. The character measures its planted sole (the foot's and toe cap's lowest support points, boxed along the foot's heading), so prints match the foot.

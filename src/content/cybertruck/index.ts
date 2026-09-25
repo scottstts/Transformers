@@ -14,6 +14,14 @@ export const CYBERTRUCK_LABEL = 'Cybertruck'
 export const CYBERTRUCK_PROFILE: CharacterProfile = {
   drive: {
     wheelbase: 3.81,
+    frontAxle: 1.95,
+    cgHeight: 0.75,
+    yawInertia: 3.8,
+    grip: 1.2,
+    peakSlip: 0.14,
+    downforce: 0,
+    driveRear: 0.62,
+    driftGrip: 0.7,
     wheelRadius: 0.445,
     maxSpeed: 36,
     boostSpeed: 52,

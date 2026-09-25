@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMotionState } from '../src/game/types'
-import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions, updateCar } from '../src/game/movement'
+import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions } from '../src/game/movement'
+import { updateCar } from '../src/game/car-dynamics'
 import { RobotJump } from '../src/game/jump'
 import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck'
 

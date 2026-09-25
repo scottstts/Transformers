@@ -32,7 +32,7 @@ The vehicle menu (`src/ui/vehicle-menu.ts`) is the only in-game UI besides the t
 - a transform button;
 - a jump button, shown only while the robot stands (`GameSession.onStandingChange`), since a car cannot jump.
 
-The stick maps onto the keyboard controls rather than adding an analog mode. Forward and back switch the throttle on and off, as W and S do. Sideways steers the car proportionally. For the robot, the stick gives a camera-relative walking direction. Pushing the stick to the rim is Shift (run or boost). The menu pill moves to the top on touch screens, clear of the thumbs, and a tap opens it. The touch controls hide and release every finger while the menu is open.
+The stick maps onto the keyboard controls rather than adding an analog mode. Forward and back switch the throttle on and off, as W and S do. Sideways steers the car proportionally. For the robot, the stick gives a camera-relative walking direction. Pushing the stick to the rim is Shift (run, or drift in the car). The menu pill moves to the top on touch screens, clear of the thumbs, and a tap opens it. The touch controls hide and release every finger while the menu is open.
 
 ## Audio
 
@@ -44,6 +44,6 @@ Baked noise and the shared image setup (`rendering/look.ts`: tone mapping, shado
 
 `src/worlds/desert/` owns scenery, lighting, ground materials, dust, tyre tracks, and collision circles. Its entry point supplies the world, environment lighting scene, and contact effects. Characters receive contact effects through a small interface, so another environment can provide different tyre and footfall feedback without changing character code.
 
-Gameplay motion uses an explicit state for position, heading, speed, boost, form target, suspension, and transform progress. The two locomotion paths share that state. Future racing, combat, and flight should add systems around the session and character boundary as their mechanics become defined, rather than extending the current loop with mode-specific branches.
+Gameplay motion uses an explicit state for position, heading, forward and lateral velocity, tyre slide, form target, suspension, and transform progress. Car handling is `game/car-dynamics.ts` (car-handling.md); robot gait and jumps are robot-locomotion.md. The two locomotion paths share that state. Future racing, combat, and flight should add systems around the session and character boundary as their mechanics become defined, rather than extending the current loop with mode-specific branches.
 
 All source modules under `src/` are TypeScript. The asset tests cover pose and handover invariants alongside the compiler checks; the Blender audits cover geometry and mechanism clearance.

@@ -13,8 +13,7 @@ export function readAsset(name: string): TransformerAsset {
 
 /** A surface that ignores every contact. */
 export const NO_CONTACT: ContactEffects = {
-  wheel: () => undefined,
-  tread: () => undefined,
+  tyre: () => undefined,
   footprint: () => undefined,
   burst: () => undefined,
   blast: () => undefined,

@@ -7,7 +7,7 @@ import { createF1Materials } from '../src/content/ferrari-f1/materials.ts'
 import { Gearbox, GEAR_TOP, IDLE, REDLINE } from '../src/content/ferrari-f1/audio/power-unit.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { createMotionState } from '../src/game/types.ts'
-import { updateCar } from '../src/game/movement.ts'
+import { updateCar } from '../src/game/car-dynamics.ts'
 import { RobotJump } from '../src/game/jump.ts'
 import { NO_CONTACT, REST_GAIT, readAsset } from './support/assets.ts'
 

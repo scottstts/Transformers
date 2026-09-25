@@ -30,9 +30,10 @@ describe('tyre tracks', () => {
     const position = geometry.getAttribute('position')
     const track = geometry.getAttribute('track')
     const p = new Vector3()
+    const still = new Vector3()
     const roll = (frames: number, from: number) => {
       for (let i = 0; i < frames; i++) {
-        tracks.mark(0, p.set(0, 0, from + i * 0.2), 0.32, 0)
+        tracks.mark(0, p.set(0, 0, from + i * 0.2), 0.32, 0, still)
         tracks.update(1 / 60)
       }
     }

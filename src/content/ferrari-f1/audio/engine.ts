@@ -3,6 +3,7 @@ import type { MechanismEvent } from '../../transformer/asset/format'
 import type { MachineTuning } from '../../transformer/audio/machine'
 import { TransformationSound } from '../../transformer/audio/transformation'
 import { footfall, type FootfallTuning } from '../../transformer/audio/footfall'
+import { TyreVoice, type TyreTuning } from '../../transformer/audio/tyres'
 import type { CharacterAudio } from '../../transformer/character'
 import { PowerUnit } from './power-unit'
 
@@ -18,6 +19,8 @@ import { PowerUnit } from './power-unit'
  *                   monocoque (higher, short-lived panel modes) rather than
  *                   the truck's ringing steel
  *   footfall        a lighter, quicker foot than the truck robot's
+ *   tyres           sliding tyres tearing through the desert crust (shared
+ *                   voice): a lighter car on wide slicks
  */
 
 /** Compact high-speed drives and pump in a carbon monocoque. */
@@ -43,15 +46,20 @@ const RACER_FOOT: FootfallTuning = {
   level: 0.3,
 }
 
+/** Wide slicks under a light car: a tighter, slightly higher tear than the truck's. */
+const RACER_TYRES: TyreTuning = { scrubHz: [330, 30], rumbleHz: 140, distanceHz: 2800, level: 0.16 }
+
 export class F1Audio implements CharacterAudio {
   private readonly mix: AudioMix
   private readonly machine: TransformationSound
   readonly engine: PowerUnit
+  private readonly tyres: TyreVoice
 
   constructor(mix: AudioMix) {
     this.mix = mix
     this.machine = new TransformationSound(mix, RACER_MACHINE)
     this.engine = new PowerUnit(mix)
+    this.tyres = new TyreVoice(mix, RACER_TYRES)
   }
 
   power(): void {
@@ -70,13 +78,19 @@ export class F1Audio implements CharacterAudio {
     footfall(this.mix, RACER_FOOT, strength)
   }
 
-  /** Per frame: the power unit follows the car (off outside car form). */
-  drive(dt: number, speed: number, throttle: number, boost: boolean, isCar: boolean): void {
-    this.engine.update(dt, speed, throttle, boost, isCar)
+  /**
+   * Per frame: the power unit follows the driven wheels (`wheelSpeed`, m/s:
+   * wheelspin revs it up), off outside car form; `slide` is the fastest tread
+   * slide under the car (m/s).
+   */
+  drive(dt: number, wheelSpeed: number, throttle: number, boost: boolean, isCar: boolean, slide: number): void {
+    this.engine.update(dt, wheelSpeed, throttle, boost, isCar)
+    this.tyres.update(isCar ? slide : 0, wheelSpeed)
   }
 
   dispose(): void {
     this.machine.dispose()
     this.engine.dispose()
+    this.tyres.dispose()
   }
 }
