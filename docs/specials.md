@@ -13,7 +13,7 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 - Top left, a strip of 12 skewed cells in a small glass plate (the entry button's chamfer), lit from the left like shift lights. There is no text. The cells read one registered custom property (`--level`), so a change is one style write and CSS animates it.
 - A gain flashes the strip. Full lights the diamond core, glows and runs a shine along the strip. Spending discharges it.
 - It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange). It dims when the robot is not standing, and hides during the cutscene and the menu.
-- Touch: the special button sits left of attack in the same row. Its rim is a conic ring of the same level, and it glows while ready. The desktop hint pill adds "F special" only while the meter is full.
+- Touch: the corner meter is hidden, and the energy shows only on the special button, which sits left of attack in the same row. Its rim is a conic ring of the same level, and it glows while ready. The desktop hint pill adds "F special" only while the meter is full.
 - Letterbox bars (`CinemaBars`) slide in on `body.cinematic`, sized toward 2.39:1 and capped at 12 % of the height. The garage pill and touch controls hide under the same class.
 
 ## Playback (`RobotCombat.startSpecial`)
