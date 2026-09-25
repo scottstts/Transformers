@@ -13,6 +13,9 @@ import { createMotionState, type Form } from './types'
 import { RobotJump } from './jump'
 import { RobotCombat } from './combat/robot-combat'
 import { CameraFx } from './combat/camera-fx'
+import { Director, type DirectorSubject } from './combat/director'
+import { Energy } from './combat/energy'
+import { Lens } from '../rendering/lens'
 
 /** Frames rendered behind the switch cover before the new car is revealed. */
 const SWITCH_SETTLE_FRAMES = 3
@@ -45,10 +48,21 @@ export class GameSession {
   get carActionsAvailable(): boolean { return this.carActions }
   /** called when car-only touch actions become available or unavailable */
   onCarActionsChange: ((available: boolean) => void) | null = null
+  /** the special's energy, charged by combo blows (it stays with the player across cars) */
+  readonly energy = new Energy()
+  /** called when a special's cutscene starts or ends (UI hides and shows the HUD) */
+  onCinematicChange: ((on: boolean) => void) | null = null
   private readonly timer = new Timer()
   private readonly jump = new RobotJump()
+  /** the lens reactions the post pipeline reads (blast waves, flashes, the drained zone) */
+  private readonly lens = new Lens()
   /** camera reactions and the fight's clock rate (hit-stop) */
-  private readonly cameraFx = new CameraFx()
+  private readonly cameraFx = new CameraFx(this.lens)
+  /** films the special; the follow camera takes back over at its end */
+  private readonly director = new Director()
+  private readonly subjects = new Map<string, DirectorSubject>()
+  private cinematic = false
+  private handback = false
   /** each built character's fight (kept with the character) */
   private readonly fights = new Map<string, RobotCombat>()
   private fight: RobotCombat
@@ -74,7 +88,7 @@ export class GameSession {
     this.cameraRig = new FollowCamera(this.camera, renderer.domElement, this.state.yaw, this.character.robotOffset, this.character.profile.camera)
     this.cameraRig.showSide(this.state.yaw)
     this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.audio.resume())
-    this.pipeline = createPostPipeline(renderer, this.scene, this.camera)
+    this.pipeline = createPostPipeline(renderer, this.scene, this.camera, this.lens)
     this.cameraRig.update(1 / 60, this.state, this.character.model.root)
     this.world.update(this.camera, this.cameraRig.focusPoint(this.state, this.character.model.root))
   }
@@ -86,6 +100,16 @@ export class GameSession {
 
   toggleForm(): void {
     this.selectForm(this.state.mode === 'car' ? 'robot' : 'car')
+  }
+
+  /** A special's cutscene is playing: the game takes no input. */
+  get inCutscene(): boolean {
+    return this.cinematic
+  }
+
+  /** The special can be played now: the meter is full (the robot must also stand). */
+  get specialReady(): boolean {
+    return this.energy.full
   }
 
   /** A car can be swapped in whenever no transformation, jump or fight is running (either form). */
@@ -148,6 +172,7 @@ export class GameSession {
   async compile(): Promise<void> {
     const effects = this.character.combat.effects
     effects.warm(true)
+    this.environment.contactEffects.warm(true)
     try {
       await this.renderer.compileAsync(this.scene, this.camera)
       // compileAsync prepares pipelines, but a real hidden draw also forces
@@ -156,6 +181,7 @@ export class GameSession {
       await this.waitForGpu()
     } finally {
       effects.warm(false)
+      this.environment.contactEffects.warm(false)
     }
   }
 
@@ -182,9 +208,39 @@ export class GameSession {
     let fight = this.fights.get(character.id)
     if (!fight) {
       fight = new RobotCombat(character.combat, character.model, character.robotOffset, this.state, this.cameraFx)
+      fight.onStrike = (move) => this.energy.strike(move)
       this.fights.set(character.id, fight)
     }
     return fight
+  }
+
+  /** What the director frames of a character: its pelvis, its head and its weapon's head end. */
+  private subjectFor(character: Character): DirectorSubject {
+    let subject = this.subjects.get(character.id)
+    if (!subject) {
+      const weapon = character.combat.effects.weapon
+      const tip = new Vector3(0, 0, weapon ? weapon.asset.manifest.extent[1] * 0.8 : 0)
+      subject = {
+        body: character.model.node('bone:pelvis'),
+        head: character.model.node('bone:head'),
+        weapon: (out) => {
+          if (!weapon || weapon.presence < 0.5) return false
+          out.copy(tip).applyMatrix4(weapon.object.matrixWorld)
+          return true
+        },
+      }
+      this.subjects.set(character.id, subject)
+    }
+    return subject
+  }
+
+  private setCinematic(on: boolean): void {
+    if (on === this.cinematic) return
+    this.cinematic = on
+    this.handback = false
+    this.cameraRig.cinematic = on
+    if (!on) this.director.stop()
+    this.onCinematicChange?.(on)
   }
 
   /** Place a character's model where the current one stands (at the current pose). */
@@ -201,6 +257,7 @@ export class GameSession {
     this.scene.remove(previous.model.root, previous.effects.object)
     previous.effects.audio.dispose()
     this.fight.cancel()
+    this.setCinematic(false)
     previous.combat.effects.dispose()
     this.cameraFx.reset()
     // a standing robot stays where it stands: the car origin moves by the difference in stations
@@ -224,19 +281,28 @@ export class GameSession {
     const frameDt = Math.max(1 / 240, Math.min(this.timer.getDelta(), 1 / 30))
     // the fight's hit-stop slows the world's clock for a moment; the camera keeps real time
     this.cameraFx.update(frameDt)
-    const dt = frameDt * this.cameraFx.timeScale
     const state = this.state
     const { model, gait, effects, profile } = this.character
     const fight = this.fight
+    // hit-stop and the special's slow motion slow the world's clock; the camera keeps real time
+    const dt = frameDt * this.cameraFx.timeScale * fight.tempo
+    this.cameraFx.updateWorld(dt)
     const previous = advanceTransformation(state, dt, this.character.transformationDuration)
-    // a car switch in progress locks the controls, as a transformation does
-    const busy = isTransforming(state) || this.switching !== null
+    // a car switch in progress locks the controls, as a transformation does; so does a special's cutscene
+    const busy = isTransforming(state) || this.switching !== null || fight.cinematic
     const stance = !busy && state.mode === 'robot' && state.progress >= 1
-    const attack = this.input.consumeAttack() && stance && !this.jump.active
+    const special = this.input.consumeSpecial() && stance && !this.jump.active && this.energy.spend()
+    if (special) {
+      fight.startSpecial(state, this.camera)
+      this.director.start(this.character.combat.special, fight.groundOrigin, fight.groundHeading)
+      this.setCinematic(true)
+    }
+    const attack = this.input.consumeAttack() && stance && !this.jump.active && !special
     if (attack) fight.press()
     if (this.input.consumeJump() && stance && !attack && !fight.active) this.jump.start(Math.abs(state.speed) / profile.robot.runSpeed)
     const jump = this.jump.update(dt)
     fight.update(dt, state, this.camera)
+    if (this.cinematic && !fight.cinematic) this.setCinematic(false)
     const standing = state.mode === 'robot' && state.progress >= 1
     if (standing !== this.standing) {
       this.standing = standing
@@ -276,6 +342,16 @@ export class GameSession {
     effects.update(dt, state)
 
     this.cameraRig.update(frameDt, state, model.root, this.input.driving && !busy && state.mode === 'car')
+    if (this.cinematic) {
+      const t = fight.specialTime
+      // the follow camera swings in behind the robot underneath the last shot, which eases into it
+      if (!this.handback && this.director.handingBack(t)) {
+        this.handback = true
+        const view = this.character.combat.special.handbackView
+        this.cameraRig.orbitTo(state.yaw + view.yaw, view.pitch)
+      }
+      this.director.apply(this.camera, t, frameDt, this.subjectFor(this.character))
+    }
     this.cameraFx.apply(this.camera)
     this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root))
     effects.shakeCamera(this.camera, dt)

@@ -5,7 +5,7 @@ const [car = 'cybertruck', clicks = '0', until = '1', every = '0.1'] = process.a
 const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { probeFight } = await server.ssrLoadModule('/tools/preview/fight-probe.ts')
-  probeFight(car, clicks.split(',').filter(Boolean).map(Number), Number(until), Number(every))
+  probeFight(car, clicks.split(',').filter(Boolean), Number(until), Number(every))
 } finally {
   await server.close()
 }

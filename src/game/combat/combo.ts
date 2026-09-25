@@ -15,8 +15,11 @@ export type ComboEvent =
  * next click only in its chain window, as the strike settles: clicking
  * earlier does nothing (the throttle), and letting the window close ends the
  * combo, which recovers into the stance and starts again from the first move.
- * After the last move no click chains; once the recovery is far enough along
- * (`restartAt`) a click starts a new combo from its current pose.
+ * A click in the last move's window, or in the recovery after it, starts a
+ * new combo at once from the pose the finisher is settling through, so
+ * combos loop without waiting for the stance. After an earlier move the
+ * recovery takes a click only once it is far enough along (`restartAt`), so
+ * a mash just after a missed window doesn't restart at once.
  */
 export class ComboController {
   phase: 'idle' | 'move' | 'recover' = 'idle'
@@ -52,6 +55,15 @@ export class ComboController {
     this.pressed = false
   }
 
+  /** Go straight into the recovery (the special that held the fight has ended). */
+  recover(emit: (event: ComboEvent) => void): void {
+    this.phase = 'recover'
+    this.move = -1
+    this.time = 0
+    this.pressed = false
+    emit({ type: 'recover' })
+  }
+
   update(dt: number, emit: (event: ComboEvent) => void): void {
     const click = this.pressed
     this.pressed = false
@@ -63,8 +75,8 @@ export class ComboController {
     if (this.phase === 'move') {
       const m = this.moves[this.move]
       const last = this.move === this.moves.length - 1
-      if (click && !last && this.time >= m.chain[0] && this.time <= m.chain[1]) {
-        this.begin(this.move + 1, emit)
+      if (click && this.time >= m.chain[0] && this.time <= m.chain[1]) {
+        this.begin(last ? 0 : this.move + 1, emit)
         return
       }
       if (this.time >= (last ? m.duration : Math.max(m.duration, m.chain[1]))) {
@@ -74,7 +86,7 @@ export class ComboController {
       }
       return
     }
-    if (click && this.time >= this.restartAt) {
+    if (click && (this.move === this.moves.length - 1 || this.time >= this.restartAt)) {
       this.begin(0, emit)
       return
     }

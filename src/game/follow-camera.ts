@@ -49,6 +49,8 @@ export class FollowCamera {
   private freshLock = false
   /** mouse look held by an overlay (the vehicle menu) while the pointer stays locked */
   private held = false
+  /** a cutscene owns the view: look input is ignored */
+  cinematic = false
   /** the opening broadside holds until the first look or the car first moves */
   private broadside = false
   /** false on touch devices: the on-screen controls drive the look and nothing locks the pointer */
@@ -110,6 +112,17 @@ export class FollowCamera {
     this.framingGlide = 0
   }
 
+  /**
+   * Swing the orbit to `yaw` (the direction from the focus to the camera) and
+   * `pitch`: where a cutscene hands the view back. The orbit's distance and
+   * focus smoothing carry on as they were.
+   */
+  orbitTo(yaw: number, pitch: number): void {
+    this.broadside = false
+    this.yaw = yaw
+    this.pitch = clamp(pitch, -0.05, 1.1)
+  }
+
   /** Ignore mouse look while an overlay is open over the locked pointer. */
   holdLook(held: boolean): void {
     this.held = held
@@ -119,7 +132,7 @@ export class FollowCamera {
 
   /** Orbit by a pointer movement in CSS pixels (mouse under pointer lock, or a touch drag). */
   look(dx: number, dy: number): void {
-    if (this.held) return
+    if (this.held || this.cinematic) return
     this.broadside = false
     this.yaw -= dx * 0.005
     this.pitch = clamp(this.pitch + dy * 0.004, -0.05, 1.1)

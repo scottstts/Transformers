@@ -13,6 +13,10 @@ export interface VehicleHost {
   readonly playing: boolean
   /** the robot stands (it can fight) */
   readonly standing: boolean
+  /** the special's meter is full */
+  readonly specialReady: boolean
+  /** a special's cutscene is playing: the menu stays shut */
+  readonly cinematic: boolean
   /** on-screen touch controls instead of mouse and keyboard */
   readonly touch: boolean
   /** the menu opened or closed */
@@ -22,11 +26,12 @@ export interface VehicleHost {
 /** Horizontal drag (px) that counts as a swipe. */
 const SWIPE_PX = 40
 
-type HintMode = 'play' | 'fight' | 'paused' | 'touch'
+type HintMode = 'play' | 'fight' | 'special' | 'paused' | 'touch'
 
 const HINTS: Record<HintMode, string> = {
   play: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span>',
   fight: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span><i></i><kbd>Click</kbd><span>to fight</span>',
+  special: '<kbd>Click</kbd><span>to fight</span><i></i><kbd>F</kbd><span>special</span>',
   paused: '<span>Click to play</span><i></i><kbd>Tab</kbd><span>to switch</span>',
   touch: '<span>Switch vehicle</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg>',
 }
@@ -71,6 +76,7 @@ export class VehicleMenu {
     if (!document.body.classList.contains('ready')) return
     if (event.code === 'Tab') {
       event.preventDefault()
+      if (this.host.cinematic) return
       // the menu stays until the car it is loading is ready
       if (this.loading) return
       if (this.open) this.close(true)
@@ -212,7 +218,8 @@ export class VehicleMenu {
 
   /** Refresh the pill after the game starts or stops playing, or the robot comes to or leaves its stance. */
   refreshHint(): void {
-    const mode: HintMode = this.host.touch ? 'touch' : !this.host.playing ? 'paused' : this.host.standing ? 'fight' : 'play'
+    const mode: HintMode = this.host.touch ? 'touch' : !this.host.playing ? 'paused'
+      : this.host.standing ? (this.host.specialReady ? 'special' : 'fight') : 'play'
     if (mode === this.hintMode) return
     this.hintMode = mode
     this.hintLabels.forEach((label, key) => { label.classList.toggle('shown', key === mode) })

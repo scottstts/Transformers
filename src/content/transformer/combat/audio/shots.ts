@@ -73,7 +73,7 @@ export function dissolve(mix: AudioMix, tuning: ForgeTuning, seconds: number): v
 }
 
 /** A voice bus into the mix (dry and reverb) that disconnects itself after `seconds`. */
-function voice(mix: AudioMix, level: number, send: number, seconds: number): GainNode {
+export function voice(mix: AudioMix, level: number, send: number, seconds: number): GainNode {
   const ctx = mix.ctx as AudioContext
   const bus = ctx.createGain()
   bus.gain.value = level
@@ -90,7 +90,7 @@ function voice(mix: AudioMix, level: number, send: number, seconds: number): Gai
  * attack of `attack` s up to `gain` and an exponential fall to the end
  * (`hold` 0..1 keeps it up for that share first).
  */
-function noise(ctx: AudioContext, buffer: AudioBuffer, dest: AudioNode, t: number, dur: number, type: BiquadFilterType, f0: number, f1: number, attack: number, gain: number, hold = 0): void {
+export function noise(ctx: AudioContext, buffer: AudioBuffer, dest: AudioNode, t: number, dur: number, type: BiquadFilterType, f0: number, f1: number, attack: number, gain: number, hold = 0): void {
   const src = ctx.createBufferSource()
   src.buffer = buffer
   const fl = ctx.createBiquadFilter()

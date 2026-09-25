@@ -11,6 +11,8 @@ import { AudioMix } from '../../src/audio/mix'
 import { createMotionState } from '../../src/game/types'
 import { RobotCombat } from '../../src/game/combat/robot-combat'
 import { CameraFx } from '../../src/game/combat/camera-fx'
+import { Director, type DirectorSubject } from '../../src/game/combat/director'
+import { Lens } from '../../src/rendering/lens'
 
 const CELL_W = 480
 const CELL_H = 270
@@ -25,12 +27,13 @@ const VIEWS: Record<string, { from: [number, number, number]; at: [number, numbe
   back: { from: [-4, 5, -11], at: [0, 2.8, 1] },
   quarter: { from: [8, 4.5, 10], at: [0, 3.2, 1] },
   low: { from: [6, 1.2, 7], at: [0, 2.4, 1] },
+  top: { from: [0, 34, -2], at: [0, 0, 6] },
 }
 
 export interface FightSheet {
   car: string | null
-  /** click times (s) */
-  clicks: number[]
+  /** click times (s); `F<t>` plays the special at t */
+  clicks: string[]
   /** frame times (s) */
   frames: number[]
   /** one sheet per view: `<out>-<view>.png` */
@@ -65,30 +68,51 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
   configureRenderer(renderer)
   scene.add(player.model.root, player.effects.object)
   bakeEnvironment(renderer, scene, world.environmentScene())
-  const pipeline = createPostPipeline(renderer, scene, camera)
+  const lens = new Lens()
+  // FX_LENS=0 renders without the lens reactions, to tell their artefacts from the scene's
+  const pipeline = createPostPipeline(renderer, scene, camera, process.env.FX_LENS === '0' ? undefined : lens)
 
   const state = createMotionState()
   state.mode = 'robot'
   state.target = 1
   state.progress = 1
   state.yaw = 0
-  const fx = new CameraFx()
+  const fx = new CameraFx(lens)
   const fight = new RobotCombat(player.combat, player.model, player.robotOffset, state, fx)
+  const director = new Director()
+  const weapon = player.combat.effects.weapon
+  const subject: DirectorSubject = {
+    body: player.model.node('bone:pelvis'),
+    head: player.model.node('bone:head'),
+    weapon: (out) => {
+      if (!weapon || weapon.presence < 0.5) return false
+      out.set(0, 0, weapon.asset.manifest.extent[1] * 0.8).applyMatrix4(weapon.object.matrixWorld)
+      return true
+    },
+  }
+  const specials = sheet.clicks.filter((c) => c.startsWith('F')).map((c) => Number(c.slice(1)))
   const views = sheet.views.map((name) => ({ name, ...(VIEWS[name] ?? VIEWS.side) }))
   const zoom = sheet.zoom ?? 1
   const frames = [...sheet.frames].sort((a, b) => a - b)
-  const clicks = [...sheet.clicks].sort((a, b) => a - b)
+  const clicks = sheet.clicks.filter((c) => !c.startsWith('F')).map(Number).sort((a, b) => a - b)
   const rows = Math.ceil(frames.length / COLUMNS)
   const images = views.map(() => new Uint8Array(CELL_W * COLUMNS * CELL_H * rows * 4))
   const point = new Vector3()
 
-  const step = (t: number): void => {
+  /** One frame; returns the world time it advanced (hit-stop and the special's slow motion slow it). */
+  const step = (t: number): number => {
     while (clicks.length && clicks[0] <= t) {
       clicks.shift()
       fight.press()
     }
+    while (specials.length && specials[0] <= t) {
+      specials.shift()
+      fight.startSpecial(state, aim)
+      director.start(player.combat.special, fight.groundOrigin, fight.groundHeading)
+    }
     fx.update(DT)
-    const dt = DT * fx.timeScale
+    const dt = DT * fx.timeScale * fight.tempo
+    fx.updateWorld(dt)
     aim.position.set(state.pos.x, 3, state.pos.z)
     aim.lookAt(state.pos.x + Math.sin(state.yaw), 3, state.pos.z + Math.cos(state.yaw))
     aim.updateMatrixWorld()
@@ -101,22 +125,41 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
     player.model.pose(1, pose)
     player.effects.timeline(1, 1)
     player.effects.update(dt, state)
+    if (director.active && !fight.cinematic) director.stop()
+    return dt
   }
 
   // settle the stance first
   for (let i = 0; i < 90; i++) step(-1)
   let t = 0
   for (let k = 0; k < frames.length; k++) {
-    while (t < frames[k] - 1e-6) {
-      step(t)
-      t += DT
-    }
+    while (t < frames[k] - 1e-6) t += step(t)
     point.set(state.pos.x + Math.sin(state.yaw) * player.robotOffset, 0, state.pos.z + Math.cos(state.yaw) * player.robotOffset)
     for (let v = 0; v < views.length; v++) {
       const view = views[v]
+      if (view.name === 'director') {
+        // the follow camera stand-in behind the robot, then the special's own shot over it
+        camera.position.set(point.x - Math.sin(state.yaw) * 12.75, 6, point.z - Math.cos(state.yaw) * 12.75)
+        camera.lookAt(point.x, 3.9 * Math.min(1, zoom + 0.2), point.z)
+        camera.fov = 42
+        camera.updateProjectionMatrix()
+        if (director.active) director.apply(camera, fight.specialTime, DT, subject)
+        camera.updateMatrixWorld()
+        fx.apply(camera)
+        camera.updateMatrixWorld()
+        world.world.update(camera, subject.body.getWorldPosition(new Vector3()))
+        await renderer.compileAsync(scene, camera)
+        pipeline.render()
+        const cell = await grab()
+        const cx = (k % COLUMNS) * CELL_W
+        const cy = Math.floor(k / COLUMNS) * CELL_H
+        for (let y = 0; y < CELL_H; y++) images[v].set(cell.subarray(y * CELL_W * 4, (y + 1) * CELL_W * 4), ((cy + y) * CELL_W * COLUMNS + cx) * 4)
+        continue
+      }
       // zoom moves the camera toward its target (the F1 robot is smaller: its views also look lower)
-      const at = [view.at[0], view.at[1] * Math.min(1, zoom + 0.2), view.at[2]]
-      camera.position.set(point.x + at[0] + (view.from[0] - at[0]) * zoom, at[1] + (view.from[1] - at[1]) * zoom, point.z + at[2] + (view.from[2] - at[2]) * zoom)
+      // the views ride up with a robot in the air
+      const at = [view.at[0], view.at[1] * Math.min(1, zoom + 0.2) + fight.air, view.at[2]]
+      camera.position.set(point.x + at[0] + (view.from[0] - view.at[0]) * zoom, at[1] + (view.from[1] - view.at[1]) * zoom, point.z + at[2] + (view.from[2] - at[2]) * zoom)
       camera.lookAt(point.x + at[0], at[1], point.z + at[2])
       // the follow camera sets the lens every frame; the camera reactions add to it
       camera.fov = 42

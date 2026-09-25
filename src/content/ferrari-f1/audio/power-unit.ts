@@ -22,6 +22,9 @@ import type { AudioMix } from '../../../audio/mix'
  * engine onto the next ratio with a few milliseconds of torque interruption
  * (no clunk), downshifts are rev-matched. It idles at ~4 800 rpm with the
  * slightly uneven note of a race engine and starts with a rev flare.
+ *
+ * Free-revved in neutral against its limiter (a special's gather), the
+ * ignition cuts in and out: level and pitch stutter at the limiter's rate.
  */
 
 /** Road speed (m/s) at 12 000 rpm in each gear. */
@@ -37,6 +40,8 @@ const LAUNCH_SPEED = 9
 const LEVEL = 0.075
 const OVERRUN = 0.4
 const IDLE_LEVEL = 0.28
+/** The rev limiter: its cut-in rpm, how fast it bounces (Hz), how far it cuts the level and pulls the pitch (cents). */
+const LIMITER = { rpm: REDLINE - 150, hz: 13, cut: 0.32, cents: 30 }
 /** Engine orders (harmonic of the cycle frequency) and their amplitudes. */
 const ORDERS: Array<[number, number]> = [
   [1, 0.1], [2, 0.16], [3, 0.5], [4, 0.14], [5, 0.1], [6, 1], [7, 0.09], [8, 0.1], [9, 0.34],
@@ -88,6 +93,10 @@ interface Graph {
   mguk: OscillatorNode
   mgukGain: GainNode
   level: GainNode
+  /** the limiter's ignition cut: its level gain, the LFO depth into it and into the pitch */
+  cut: GainNode
+  cutDepth: GainNode
+  pitchDepth: GainNode
   sources: AudioScheduledSourceNode[]
 }
 
@@ -107,9 +116,10 @@ export class PowerUnit {
 
   /**
    * Per frame. `speed` road speed (m/s), `throttle` -1..1 (negative: braking
-   * or reverse), `boost` Shift held, `on` the car is in car form.
+   * or reverse), `boost` Shift held, `on` the car is in car form; `neutral`
+   * (rpm) free-revs it out of gear instead of following the wheels.
    */
-  update(dt: number, speed: number, throttle: number, boost: boolean, on: boolean): void {
+  update(dt: number, speed: number, throttle: number, boost: boolean, on: boolean, neutral?: number): void {
     const ctx = this.mix.ctx
     if (!ctx) return
     const g = this.graph ?? (this.graph = this.build(ctx))
@@ -121,11 +131,16 @@ export class PowerUnit {
 
     const v = Math.abs(speed)
     const load = Math.max(0, throttle) * (boost ? 1 : 0.85)
-    const shift = this.gearbox.update(v, load)
-    let rpm = this.gearbox.rpm
+    const shift = neutral === undefined ? this.gearbox.update(v, load) : null
+    let rpm = neutral === undefined ? this.gearbox.rpm : Math.min(REDLINE, Math.max(IDLE, neutral))
+    // on the limiter the ignition cuts in and out
+    const limiting = rpm >= LIMITER.rpm && load > 0.5
+    g.cutDepth.gain.setTargetAtTime(limiting ? LIMITER.cut / 2 : 0, t, 0.02)
+    g.cut.gain.setTargetAtTime(limiting ? 1 - LIMITER.cut / 2 : 1, t, 0.02)
+    g.pitchDepth.gain.setTargetAtTime(limiting ? LIMITER.cents : 0, t, 0.02)
     // a race engine's idle hunts a little
     this.jitter += ((Math.random() * 2 - 1) * 90 - this.jitter) * Math.min(1, dt * 6)
-    const idling = v < 0.5 && load === 0
+    const idling = v < 0.5 && load === 0 && neutral === undefined
     if (idling) rpm += this.jitter
 
     const cycle = rpm / 120
@@ -220,7 +235,8 @@ export class PowerUnit {
     body.frequency.value = 260
     body.Q.value = 0.8
     body.gain.value = 3
-    level.connect(body).connect(distance).connect(out.dry)
+    const cut = ctx.createGain()
+    level.connect(cut).connect(body).connect(distance).connect(out.dry)
     const send = ctx.createGain()
     send.gain.value = 0.3
     distance.connect(send).connect(out.send)
@@ -284,8 +300,20 @@ export class PowerUnit {
     mgukGain.gain.value = 0
     mguk.connect(mgukGain).connect(level)
 
-    const sources: AudioScheduledSourceNode[] = [tone, tone2, noise, pulse, turbo, mguk]
+    // the limiter: a square wave cutting the level and pulling the pitch, silent until it is hit
+    const limiter = ctx.createOscillator()
+    limiter.type = 'square'
+    limiter.frequency.value = LIMITER.hz
+    const cutDepth = ctx.createGain()
+    cutDepth.gain.value = 0
+    limiter.connect(cutDepth).connect(cut.gain)
+    const pitchDepth = ctx.createGain()
+    pitchDepth.gain.value = 0
+    limiter.connect(pitchDepth)
+    for (const osc of [tone, tone2, pulse]) pitchDepth.connect(osc.detune)
+
+    const sources: AudioScheduledSourceNode[] = [tone, tone2, noise, pulse, turbo, mguk, limiter]
     for (const s of sources) s.start()
-    return { tone, tone2, pulse, toneFilter, rasp, raspFilter, turbo, turboGain, mguk, mgukGain, level, sources }
+    return { tone, tone2, pulse, toneFilter, rasp, raspFilter, turbo, turboGain, mguk, mgukGain, level, cut, cutDepth, pitchDepth, sources }
   }
 }

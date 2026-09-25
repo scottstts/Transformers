@@ -81,10 +81,10 @@ export class F1Audio implements CharacterAudio {
   /**
    * Per frame: the power unit follows the driven wheels (`wheelSpeed`, m/s:
    * wheelspin revs it up), off outside car form; `slide` is the fastest tread
-   * slide under the car (m/s).
+   * slide under the car (m/s); `neutral` (rpm) free-revs it out of gear.
    */
-  drive(dt: number, wheelSpeed: number, throttle: number, boost: boolean, isCar: boolean, slide: number): void {
-    this.engine.update(dt, wheelSpeed, throttle, boost, isCar)
+  drive(dt: number, wheelSpeed: number, throttle: number, boost: boolean, isCar: boolean, slide: number, neutral?: number): void {
+    this.engine.update(dt, wheelSpeed, throttle, boost, isCar, neutral)
     this.tyres.update(isCar ? slide : 0)
   }
 

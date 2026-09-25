@@ -9,6 +9,7 @@ export interface TouchHost {
   /** hold/release Shift while driving */
   drift(held: boolean): void
   attack(): void
+  special(): void
 }
 
 /** Stick travel (px) from the centre to the rim. */
@@ -23,12 +24,15 @@ const STICK_ZONE = 0.45
 const TRANSFORM_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 14.5a9.2 9.2 0 0 1 16-5.3"/><path d="M23.6 4.6v5h-5"/><path d="M25 17.5a9.2 9.2 0 0 1-16 5.3"/><path d="M8.4 27.4v-5h5"/><path d="m13 16 3-3 3 3-3 3z"/></svg>'
 const JUMP_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="m9 15 7-7 7 7"/><path d="m9 23 7-7 7 7"/></svg>'
 const DRIFT_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 22c5.5-1 7.5-9.5 15-12"/><path d="m18.5 8.5 4.5 1.5-1.5 4.5"/><path d="M7.5 26h.01M12.5 25h.01"/></svg>'
+/** A four-pointed flare: the special. */
+const SPECIAL_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4.5 18.3 13.7 27.5 16 18.3 18.3 16 27.5 13.7 18.3 4.5 16 13.7 13.7z"/></svg>'
 const ATTACK_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8.5 23.5 23 9"/><path d="M15 8.5h8.5V17"/><path d="m7 17 3.5 3.5"/></svg>'
 
 /**
  * Touch controls: a floating stick on the left (it jumps to where the thumb
  * lands and rests, faint, in the corner), a drag anywhere else to look, and
- * transform, jump and attack buttons on the right. Each finger is tracked by its own
+ * transform, jump, attack and special buttons on the right (the special's
+ * rim fills with its energy and it glows once the meter is full). Each finger is tracked by its own
  * pointer id, so steering, looking and a button can be held together. All
  * feedback is a CSS transform on a small element; nothing runs per frame.
  */
@@ -40,6 +44,7 @@ export class TouchControls {
   private readonly jumpButton: HTMLButtonElement
   private readonly driftButton: HTMLButtonElement
   private readonly attackButton: HTMLButtonElement
+  private readonly specialButton: HTMLButtonElement
   private driftPointer: number | null = null
   private stickPointer: number | null = null
   private readonly stickOrigin = { x: 0, y: 0 }
@@ -96,6 +101,7 @@ export class TouchControls {
     this.jumpButton = this.button('touch-jump', 'Jump', JUMP_ICON, () => host.jump())
     this.driftButton = this.holdButton('touch-drift', 'Drift', DRIFT_ICON, (held) => host.drift(held))
     this.attackButton = this.button('touch-attack', 'Attack', ATTACK_ICON, () => host.attack())
+    this.specialButton = this.button('touch-special', 'Special', SPECIAL_ICON, () => host.special())
     this.setRobotActions(false)
     this.setCarAction(false)
     this.root.append(
@@ -104,6 +110,7 @@ export class TouchControls {
       this.jumpButton,
       this.driftButton,
       this.attackButton,
+      this.specialButton,
     )
     this.root.addEventListener('pointerdown', this.onDown)
     this.root.addEventListener('pointermove', this.onMove)
@@ -114,12 +121,19 @@ export class TouchControls {
     document.body.append(this.root)
   }
 
-  /** Show the jump and attack buttons only while the robot stands. */
+  /** Show the jump, attack and special buttons only while the robot stands. */
   setRobotActions(available: boolean): void {
-    for (const button of [this.jumpButton, this.attackButton]) {
+    for (const button of [this.jumpButton, this.attackButton, this.specialButton]) {
       button.classList.toggle('away', !available)
       button.inert = !available
     }
+  }
+
+  /** The special's energy (0..1) on the button's rim, its colour, and whether it can be played. */
+  setSpecial(level: number, color: string): void {
+    this.specialButton.style.setProperty('--level', level.toFixed(4))
+    this.specialButton.style.setProperty('--charge', color)
+    this.specialButton.classList.toggle('ready', level >= 1)
   }
 
   /** The car reuses the jump button's slot for a held Shift/drift control. */

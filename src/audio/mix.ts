@@ -7,6 +7,9 @@ export interface VoiceOutput {
 }
 
 const OUT_LEVEL = 0.9
+/** The air lowpass at rest, and fully muffled (Hz). */
+const AIR_OPEN = 11000
+const AIR_MUFFLED = 520
 
 /**
  * The game's one audio context and mix, shared by every character's voices.
@@ -27,6 +30,7 @@ export class AudioMix {
   private out!: GainNode
   private dryBus!: GainNode
   private verbSend!: GainNode
+  private air!: BiquadFilterNode
   private textures!: Textures
 
   get output(): VoiceOutput {
@@ -61,6 +65,17 @@ export class AudioMix {
     this.level(held ? 0.03 : 0.12)
   }
 
+  /**
+   * Close the whole mix down toward a dull, distant thud (0 open, 1 fully
+   * muffled) over `seconds`: a moment held out of time, as films play slow
+   * motion, and back.
+   */
+  muffle(amount: number, seconds: number): void {
+    if (!this.ctx) return
+    const f = AIR_OPEN * Math.pow(AIR_MUFFLED / AIR_OPEN, Math.min(1, Math.max(0, amount)))
+    this.air.frequency.setTargetAtTime(f, this.ctx.currentTime, Math.max(0.01, seconds / 3))
+  }
+
   private level(fade: number): void {
     if (this.ctx) this.out.gain.setTargetAtTime(this.muted || this.held ? 0 : OUT_LEVEL, this.ctx.currentTime, fade)
   }
@@ -81,7 +96,9 @@ export class AudioMix {
     // distance and air: the listener stands several metres off a large machine
     const air = ctx.createBiquadFilter()
     air.type = 'lowpass'
-    air.frequency.value = 11000
+    air.frequency.value = AIR_OPEN
+    air.Q.value = 0.5
+    this.air = air
     this.dryBus = ctx.createGain()
     this.dryBus.connect(air).connect(comp).connect(this.out).connect(ctx.destination)
     const verb = ctx.createConvolver()

@@ -20,13 +20,19 @@ export const GRADE = {
   grain: 0.022,
 }
 
-export function filmicGrade(display: Node<'vec4'>): Node<'vec3'> {
+/**
+ * `zone` (0..1, optional) drains the picture for a moment held out of time:
+ * saturation falls to a quarter, the curve steepens and the shadows cool.
+ */
+export function filmicGrade(display: Node<'vec4'>, zone?: Node<'float'>): Node<'vec3'> {
   const c = display.rgb.clamp(0, 1)
+  const z = zone ?? float(0)
   // S-curve: deeper toe and brighter shoulder around mid grey
-  const curved = mix(c, smoothstep(0, 1, c), GRADE.contrast)
+  const curved = mix(c, smoothstep(0, 1, c), z.mul(0.25).add(GRADE.contrast))
   const y = luminance(curved)
-  const graded = mix(vec3(y), curved, GRADE.saturation)
+  const graded = mix(vec3(y), curved, z.mul(-0.7).add(GRADE.saturation))
     .mul(mix(GRADE.shadowTint, GRADE.highlightTint, smoothstep(0.1, 0.75, y)))
+    .mul(mix(vec3(1), vec3(0.94, 0.98, 1.05), z))
 
   // elliptical falloff, measured on the frame's short side so wide screens darken their flanks too
   const aspect = screenSize.x.div(screenSize.y)

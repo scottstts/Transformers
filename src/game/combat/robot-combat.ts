@@ -2,10 +2,12 @@ import { Vector3, type PerspectiveCamera } from 'three/webgpu'
 import type { TransformerModel } from '../../content/transformer/model/transformer'
 import type { CharacterCombat, CombatCamera, CombatFrame } from '../../content/transformer/combat/effects'
 import type { CombatMove, MoveCue } from '../../content/transformer/combat/moves'
+import type { SpecialMove } from '../../content/transformer/combat/special'
 import { MovePlayer } from '../../content/transformer/combat/player'
 import { FootPlanner } from '../../content/transformer/combat/feet'
+import { Curve } from '../../content/transformer/combat/curves'
 import { toePivot } from '../../content/transformer/combat/overlay'
-import { CH, SIDES, type Side } from '../../content/transformer/combat/pose'
+import { CH, LEG, SIDES, type Side } from '../../content/transformer/combat/pose'
 import type { MotionState } from '../types'
 import { ComboController, type ComboEvent } from './combo'
 import { wrap } from '../math'
@@ -34,6 +36,12 @@ const RESTART_SHARE = 0.35
  * The pose reaches the rig through the character's overlay, blended with the
  * gait by a weight that eases in at the first move and out as the recovery
  * settles into the stance.
+ *
+ * The special plays on the same machinery: it takes over from whatever the
+ * fight (or the stance) left, as one long move, and hands back to the usual
+ * recovery. While it plays it is a cutscene (`cinematic`): the combo is held,
+ * its `tempo` slows the world's clock and the director films it in its ground
+ * frame (`groundOrigin`, `groundHeading`).
  */
 export class RobotCombat {
   readonly combat: CharacterCombat
@@ -47,6 +55,13 @@ export class RobotCombat {
   /** move ground frame: origin (the robot's standing point) and heading */
   private readonly origin = new Vector3()
   private heading = 0
+  /** the special playing, or null */
+  private special: SpecialMove | null = null
+  private readonly tempoCurve = new Curve(33)
+  /** the current combo move's blow has landed */
+  private struck = false
+  /** a combo move's blow lands (it charges the special) */
+  onStrike: ((move: number) => void) | null = null
   private nextStep = 0
   private weight = 0
   private exiting = false
@@ -73,7 +88,31 @@ export class RobotCombat {
 
   /** The fight owns the robot (movement, jumps and transforming wait). */
   get active(): boolean {
-    return this.combo.active || this.weight > 0
+    return this.combo.active || this.special !== null || this.weight > 0
+  }
+
+  /** The special is playing: a cutscene, no input. */
+  get cinematic(): boolean {
+    return this.special !== null
+  }
+
+  /** The world's clock rate the special asks for (1 outside it). */
+  get tempo(): number {
+    return this.special ? Math.max(0.01, this.tempoCurve.at(this.player.time)) : 1
+  }
+
+  /** Time into the special (s), or -1. */
+  get specialTime(): number {
+    return this.special ? this.player.time : -1
+  }
+
+  /** The current move's ground frame: its origin on the sand and its heading. */
+  get groundOrigin(): Vector3 {
+    return this.origin
+  }
+
+  get groundHeading(): number {
+    return this.heading
   }
 
   /** The fight's share of the pose. */
@@ -90,8 +129,32 @@ export class RobotCombat {
     this.combo.press()
   }
 
+  /**
+   * Play the special now, from whatever the fight is doing (or from the
+   * stance), aimed toward the camera's heading as a first move is.
+   */
+  startSpecial(state: MotionState, camera: PerspectiveCamera): SpecialMove {
+    const special = this.combat.special
+    this.frameState = state
+    this.frameCamera = camera
+    if (this.weight === 0) {
+      this.player.reset(this.combat.overlay.neutral)
+      this.plantFeet()
+      this.combat.effects.begin()
+    }
+    this.combo.cancel()
+    this.queued.length = 0
+    this.exiting = false
+    this.special = special
+    this.tempoCurve.set(1, special.tempo)
+    this.beginMove(special.move, state, camera, REAIM.first)
+    this.combat.effects.beginSpecial()
+    return special
+  }
+
   /** Drop the fight at once and hand the pose back (the robot leaves the stance, or the character is swapped out). */
   cancel(): void {
+    this.special = null
     this.combo.cancel()
     this.weight = 0
     this.exiting = false
@@ -103,17 +166,29 @@ export class RobotCombat {
   update(dt: number, state: MotionState, camera: PerspectiveCamera): void {
     this.frameState = state
     this.frameCamera = camera
-    this.combo.update(dt, this.onComboEvent)
-    if (!this.combo.active && this.weight === 0) return
+    if (!this.special) this.combo.update(dt, this.onComboEvent)
+    if (!this.combo.active && !this.special && this.weight === 0) return
 
     this.player.update(dt, this.onMoveCue)
+    if (!this.special && this.combo.phase === 'move' && !this.struck) {
+      const strike = this.moves[this.combo.move].strike
+      if (strike !== undefined && this.player.time >= strike) {
+        this.struck = true
+        this.onStrike?.(this.combo.move)
+      }
+    }
     this.spawnSteps()
     this.feet.update(dt, this.onLand)
+    if (this.special && this.player.time >= this.special.move.duration) {
+      this.special = null
+      this.combo.recover(this.onComboEvent)
+    }
+    const owning = this.combo.active || this.special !== null
 
     // weight: in over the first moments, out as the recovery settles
     if (this.combo.phase === 'recover' && this.combo.time > this.combat.moveset.recover - EXIT) this.exiting = true
-    if (this.combo.phase === 'move') this.exiting = false
-    this.weight = this.exiting || !this.combo.active ? Math.max(0, this.weight - dt / EXIT) : Math.min(1, this.weight + dt / ENTRY)
+    if (this.combo.phase === 'move' || this.special) this.exiting = false
+    this.weight = this.exiting || !owning ? Math.max(0, this.weight - dt / EXIT) : Math.min(1, this.weight + dt / ENTRY)
     this.combat.overlay.weight = smooth(this.weight)
     this.model.overlay = this.weight > 0 ? this.combat.overlay : null
 
@@ -123,10 +198,10 @@ export class RobotCombat {
 
     const f = this.frame
     f.weight = this.combat.overlay.weight
-    f.move = this.combo.phase === 'move' ? this.combo.move : -1
-    f.time = this.combo.time
+    f.move = this.special ? this.moves.length : this.combo.phase === 'move' ? this.combo.move : -1
+    f.time = this.special ? this.player.time : this.combo.time
     this.combat.effects.update(dt, f)
-    if (this.weight === 0 && !this.combo.active) this.combat.effects.end()
+    if (this.weight === 0 && !owning) this.combat.effects.end()
   }
 
   /** After the scenery pushed the robot: the ground frame moves with it (the feet keep their offsets). */
@@ -148,7 +223,7 @@ export class RobotCombat {
         this.plantFeet()
         effects.begin()
       }
-      this.beginMove(this.moves[event.move], state, camera, first)
+      this.beginMove(this.moves[event.move], state, camera, first ? REAIM.first : REAIM.chained)
       effects.moveStart(event.move, this.frame.camera)
     } else if (event.type === 'recover') {
       this.setGround(state, state.yaw)
@@ -157,10 +232,9 @@ export class RobotCombat {
     }
   }
 
-  private beginMove(move: CombatMove, state: MotionState, camera: PerspectiveCamera, first: boolean): void {
+  private beginMove(move: CombatMove, state: MotionState, camera: PerspectiveCamera, limit: number): void {
     camera.getWorldDirection(this.forward)
     const aim = Math.hypot(this.forward.x, this.forward.z) > 1e-3 ? Math.atan2(this.forward.x, this.forward.z) : state.yaw
-    const limit = first ? REAIM.first : REAIM.chained
     const heading = state.yaw + Math.max(-limit, Math.min(limit, wrap(aim - state.yaw)))
     this.setGround(state, heading)
     const v = this.player.values
@@ -169,6 +243,7 @@ export class RobotCombat {
     v[CH.turn] = (state.yaw - heading) * 180 / Math.PI
     this.player.start(move, this.combat.overlay.neutral)
     this.nextStep = 0
+    this.struck = false
   }
 
   /** The move's ground frame starts at the robot's standing point, facing `heading`. */
@@ -270,24 +345,44 @@ export class RobotCombat {
     state.yawRate = 0
   }
 
-  /** The planner's feet in the model frame, heels raised by their channels. */
+  /**
+   * The planner's feet in the model frame, heels raised by their channels, and
+   * blended toward the free-leg targets carried with the body. A fully free
+   * foot keeps its planner place under it, so it lands and plants where it is.
+   */
   private poseFeet(state: MotionState, _dt: number): void {
     const d = this.model.dims
     const footF = d.footF ?? d.robotF
+    const stanceX = d.stanceX ?? d.hipX
     const px = this.desired.x, pz = this.desired.z
     const fx = Math.sin(state.yaw), fz = Math.cos(state.yaw)
     const sole = this.combat.overlay.build.sole
+    const v = this.player.values
     for (const side of SIDES) {
       const s = this.feet.sample(side)
       const dx = s.x - px, dz = s.z - pz
       const fwd = dx * fx + dz * fz
       const lat = dx * fz - dz * fx
       const leg = this.combat.overlay.pose.legs[side]
-      const heel = Math.max(0, this.player.values[side === 'R' ? CH['R.heel'] : CH['L.heel']]) * Math.PI / 180
+      const heel = Math.max(0, v[side === 'R' ? CH['R.heel'] : CH['L.heel']]) * Math.PI / 180
       toePivot(d.robotF + fwd - footF, s.up, s.pitch, heel, sole, leg)
       leg.x = lat
       leg.yaw = wrap(s.yaw - state.yaw)
       if (s.skid > 0) this.combat.effects.skid(side, _p.set(s.x, 0, s.z), s.skid, _dt)
+      const o = LEG[side]
+      const free = Math.min(1, Math.max(0, v[o]))
+      if (free <= 0) continue
+      const x = (side === 'L' ? 1 : -1) * (stanceX + v[o + 1])
+      const step = v[o + 2]
+      leg.x += (x - leg.x) * free
+      leg.step += (step - leg.step) * free
+      leg.up += (Math.max(0, v[o + 3]) - leg.up) * free
+      leg.pitch += (v[o + 4] * Math.PI / 180 - leg.pitch) * free
+      leg.yaw *= 1 - free
+      if (free > 0.999) {
+        const f = step + footF - d.robotF
+        this.feet.plant(side, { x: px + f * fx + x * fz, z: pz + f * fz - x * fx, yaw: state.yaw })
+      }
     }
   }
 }

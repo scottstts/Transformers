@@ -15,6 +15,7 @@ import type { CombatMove, Moveset } from '../../transformer/combat/moves'
 /** 1. Stepping right cross: the lead foot steps in, hips and torso drive the fist through. */
 const CROSS: CombatMove = {
   name: 'cross',
+  strike: 0.33,
   duration: 0.8,
   chain: [0.5, 1.0],
   keys: {
@@ -47,6 +48,7 @@ const CROSS: CombatMove = {
 /** 2. Pivoting left hook: the rear foot comes through, the torso whips the bent arm across. */
 const HOOK: CombatMove = {
   name: 'hook',
+  strike: 0.41,
   duration: 0.9,
   chain: [0.6, 1.1],
   keys: {
@@ -86,6 +88,7 @@ const HOOK: CombatMove = {
  */
 const CLEAVE: CombatMove = {
   name: 'cleave',
+  strike: 0.72,
   duration: 1.35,
   chain: [0.98, 1.6],
   keys: {
@@ -141,55 +144,59 @@ const CLEAVE: CombatMove = {
  * jets fire and it skids across the sand, leaps and brings the axe down
  * overhead into the ground in front of it. The off hand braces after impact
  * and releases while the axe dissolves low, before the empty hand recovers.
+ * The axe is gone and the hand released within a second of the blow; from
+ * then a click starts the next combo straight from this pose (its chain
+ * window) while the off hand's wrist is still unwinding.
  */
 const CHARGE: CombatMove = {
   name: 'charge',
-  duration: 3.4,
-  chain: [3.4, 3.4],
+  strike: 1.58,
+  duration: 3.25,
+  chain: [2.4, 3.25],
   keys: {
     // Land, absorb the blow through the knees, then stand up before lowering
     // the arm. The chest and head settle behind the pelvis rather than in unison.
-    hipDrop: [[0.3, 0.55], [0.85, 0.5], [1.16, 0.3], [1.66, 0.78], [1.86, 0.7], [2.2, 0.5], [2.8, 0.18], [3.35, 0.04]],
-    hipPitch: [[0.3, 16], [0.5, 26], [0.85, 24], [1.16, 4], [1.56, 8], [2.05, 6], [2.8, 4], [3.35, 0]],
-    hipYaw: [[0.3, -8], [0.85, -4], [1.65, 2], [2.8, 4], [3.35, 0]],
-    spineX: [[0.3, 6], [0.85, 10], [1.16, -6], [1.65, 4], [2.85, 2], [3.35, 0]],
-    chestX: [[0.3, 4], [0.85, 8], [1.16, -12], [1.7, 6], [2.1, 4], [2.9, 3], [3.35, 0]],
-    chestZ: [[0.3, -10], [0.85, -6], [1.65, 2], [2.85, 6], [3.35, 0]],
-    headX: [[0.3, -12], [0.85, -18], [1.16, 0], [1.65, -14], [2.85, -6], [3.35, 0]],
-    headZ: [[0.3, 8], [1.65, 0]],
-    'R.elbow': [[0.3, 20], [1.02, 30], [1.22, 60], [1.65, 10], [2.85, 30]],
-    'L.elbow': [[0.3, 24], [1.16, 30], [1.3, 60], [1.65, 10], [2.8, 20]],
-    'R.grip': [[0.1, 1], [2.95, 1], [3.35, 0]],
+    hipDrop: [[0.3, 0.55], [0.85, 0.5], [1.16, 0.3], [1.62, 0.78], [1.74, 0.7], [1.93, 0.5], [2.26, 0.18], [2.57, 0.04]],
+    hipPitch: [[0.3, 16], [0.5, 26], [0.85, 24], [1.16, 4], [1.56, 8], [1.84, 6], [2.26, 4], [2.57, 0]],
+    hipYaw: [[0.3, -8], [0.85, -4], [1.62, 2], [2.26, 4], [2.57, 0]],
+    spineX: [[0.3, 6], [0.85, 10], [1.16, -6], [1.62, 4], [2.29, 2], [2.57, 0]],
+    chestX: [[0.3, 4], [0.85, 8], [1.16, -12], [1.65, 6], [1.87, 4], [2.32, 3], [2.57, 0]],
+    chestZ: [[0.3, -10], [0.85, -6], [1.62, 2], [2.29, 6], [2.57, 0]],
+    headX: [[0.3, -12], [0.85, -18], [1.16, 0], [1.62, -14], [2.29, -6], [2.57, 0]],
+    headZ: [[0.3, 8], [1.62, 0]],
+    'R.elbow': [[0.3, 20], [1.02, 30], [1.22, 60], [1.62, 10], [2.29, 30]],
+    'L.elbow': [[0.3, 24], [1.16, 30], [1.3, 60], [1.62, 10], [2.26, 20]],
+    'R.grip': [[0.1, 1], [2.35, 1], [2.57, 0]],
     // Receive the empty hand in the same low guard as the last weapon pose.
     // Recovery then lowers the whole arm, instead of blending straight to hang.
     'R.az': [[0.3, -3]],
     'R.el': [[0.3, -22]],
     'R.reach': [[0.3, 0.5]],
-    'R.wx': [[1.58, 0], [2.85, 172]],
-    'R.wy': [[1.58, 0], [2.85, -63]],
-    'R.wz': [[1.58, 0], [2.85, 27]],
+    'R.wx': [[1.58, 0], [2.29, 172]],
+    'R.wy': [[1.58, 0], [2.29, -63]],
+    'R.wz': [[1.58, 0], [2.29, 27]],
     // Lift -> apex -> accelerating descent -> low follow-through -> carry.
     // Keep the weapon frame under control until the metal has dissolved.
-    'w.x': [[0.3, 0.25], [0.85, 0.25], [1.02, -0.1], [1.22, -0.2], [1.4, -0.2], [1.58, -0.4], [2.5, -0.4], [2.85, -0.2]],
-    'w.y': [[0.3, 0.25], [0.85, 0.3], [1.02, 0.42], [1.22, 0.6], [1.4, 0.9], [1.58, 0.75], [1.8, 1.0], [2.5, 0.95], [2.85, 0.7]],
-    'w.z': [[0.3, -0.45], [0.85, -0.4], [1.02, 0.35], [1.22, 0.8], [1.4, 0.4], [1.58, -0.3], [2.5, -0.3], [2.85, -0.35]],
-    'w.yaw': [[0.3, 15], [0.85, 15], [1.22, 0], [2.85, -10]],
-    'w.pitch': [[0.3, 115], [0.85, 110], [1.02, 30], [1.22, -25], [1.4, 65], [1.58, 170], [1.8, 180], [2.5, 178], [2.85, 160]],
-    'w.roll': [[0.3, 0], [1.58, 0], [2.85, -20]],
-    'w.wield': [[0.1, 1], [2.95, 1], [3.35, 0]],
-    'w.two': [[0.24, 0], [1.58, 0], [2.0, 1], [2.05, 1], [2.5, 0]],
-    'L.az': [[0.3, -6], [0.85, -2], [2.15, 6], [3.25, 10]],
-    'L.el': [[0.3, -8], [0.85, 0], [2.15, -20], [3.25, -60]],
-    'L.reach': [[0.3, 0.55], [0.85, 0.6], [2.15, 0.55], [3.25, 0.8]],
+    'w.x': [[0.3, 0.25], [0.85, 0.25], [1.02, -0.1], [1.22, -0.2], [1.4, -0.2], [1.58, -0.4], [2.1, -0.4], [2.29, -0.2]],
+    'w.y': [[0.3, 0.25], [0.85, 0.3], [1.02, 0.42], [1.22, 0.6], [1.4, 0.9], [1.58, 0.75], [1.7, 1.0], [2.1, 0.95], [2.29, 0.7]],
+    'w.z': [[0.3, -0.45], [0.85, -0.4], [1.02, 0.35], [1.22, 0.8], [1.4, 0.4], [1.58, -0.3], [2.1, -0.3], [2.29, -0.35]],
+    'w.yaw': [[0.3, 15], [0.85, 15], [1.22, 0], [2.29, -10]],
+    'w.pitch': [[0.3, 115], [0.85, 110], [1.02, 30], [1.22, -25], [1.4, 65], [1.58, 170], [1.7, 180], [2.1, 178], [2.29, 160]],
+    'w.roll': [[0.3, 0], [1.58, 0], [2.29, -20]],
+    'w.wield': [[0.1, 1], [2.35, 1], [2.57, 0]],
+    'w.two': [[0.24, 0], [1.58, 0], [1.95, 1], [1.98, 1], [2.4, 0]],
+    'L.az': [[0.3, -6], [0.85, -2], [1.9, 6], [3.15, 10]],
+    'L.el': [[0.3, -8], [0.85, 0], [1.9, -20], [3.15, -60]],
+    'L.reach': [[0.3, 0.55], [0.85, 0.6], [1.9, 0.55], [3.15, 0.8]],
     // Unwind the wrist after the supporting hand has left the haft, not
     // during the short grip release itself.
-    'L.wx': [[1.5, 110], [1.85, 140], [2.5, 130], [3.0, 50], [3.4, 0]],
-    'L.wy': [[1.5, -30], [1.85, -40], [2.5, -36], [3.0, -15], [3.4, 0]],
-    'L.wz': [[1.5, 10], [1.85, 13], [2.5, 12], [3.4, 0]],
-    'L.grip': [[0.1, 1], [2.15, 1], [3.25, 0]],
-    'R.heel': [[0.3, 20], [0.85, 30], [1.16, 0], [1.65, 0]],
+    'L.wx': [[1.5, 110], [1.82, 140], [2.4, 130], [2.9, 50], [3.25, 0]],
+    'L.wy': [[1.5, -30], [1.82, -40], [2.4, -36], [2.9, -15], [3.25, 0]],
+    'L.wz': [[1.5, 10], [1.82, 13], [2.4, 12], [3.25, 0]],
+    'L.grip': [[0.1, 1], [2.4, 1], [3.15, 0]],
+    'R.heel': [[0.3, 20], [0.85, 30], [1.16, 0], [1.62, 0]],
     'L.heel': [[0.3, 6], [0.85, 12], [1.16, 0]],
-    advance: [[0.3, 0.08], [0.4, 0.3], [0.85, 6.6], [1.22, 8.0], [1.65, 8.6], [1.95, 8.7]],
+    advance: [[0.3, 0.08], [0.4, 0.3], [0.85, 6.6], [1.22, 8.0], [1.62, 8.6], [1.79, 8.7]],
     air: [[0.88, 0], [1.22, 0.85], [1.4, 0.7], [1.58, 0]],
   },
   steps: [
@@ -199,10 +206,10 @@ const CHARGE: CombatMove = {
     { side: 'R', t0: 0.36, t1: 0.86, to: [-0.66, 5.9], yaw: -8, lift: 0 },
     // the leap: both feet land around the blow
     { side: 'L', t0: 0.88, t1: 1.58, to: [0.66, 9.3], yaw: 10, lift: 0.5 },
-    { side: 'R', t0: 0.94, t1: 1.65, to: [-0.66, 8.1], yaw: -10, lift: 0.4 },
+    { side: 'R', t0: 0.94, t1: 1.62, to: [-0.66, 8.1], yaw: -10, lift: 0.4 },
     // Regather the stance with the weight on the other foot, before hand-back.
-    { side: 'R', t0: 2.18, t1: 2.58, to: [-0.59, 8.7], yaw: 0, lift: 0.18 },
-    { side: 'L', t0: 2.66, t1: 3.06, to: [0.59, 8.7], yaw: 0, lift: 0.14 },
+    { side: 'R', t0: 1.92, t1: 2.14, to: [-0.59, 8.7], yaw: 0, lift: 0.18 },
+    { side: 'L', t0: 2.18, t1: 2.41, to: [0.59, 8.7], yaw: 0, lift: 0.14 },
   ],
   cues: [
     { t: 0.04, cue: 'servo', value: 0.5 },
@@ -213,9 +220,9 @@ const CHARGE: CombatMove = {
     { t: 0.86, cue: 'boost', value: 0 },
     { t: 0.9, cue: 'servo', value: 0.35 },
     { t: 1.58, cue: 'slam', value: 1 },
-    { t: 2.05, cue: 'servo', value: 0.55 },
-    { t: 2.25, cue: 'pull', value: 0 },
-    { t: 2.4, cue: 'weapon-out', value: 0.5 },
+    { t: 1.84, cue: 'servo', value: 0.55 },
+    { t: 1.96, cue: 'pull', value: 0 },
+    { t: 2.04, cue: 'weapon-out', value: 0.3 },
   ],
 }
 
