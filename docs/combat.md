@@ -49,7 +49,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 - **Looks:**
   - The truck's axe forms from blue plasma (its jets' plasma). Its light-bar strip flares with swing speed.
   - The racer's sword forms from white-hot metal as it is drawn from the left hip, the draw becoming the slash. Sword draws are horizontal yaw sweeps: going through upright whipped the blade over the shoulder and through the torso.
-- **Materials:** each weapon has forged copies of its character's materials. Compiling skips invisible objects, so the session shows the weapon, trail and sparks for the boot and car-switch compiles (`warm`). A first use mid-fight would otherwise build their pipelines then.
+- **Materials:** each weapon has forged copies of its character's materials. Compiling skips invisible objects, so the session warms the weapon, trail and sparks during boot and first-time car switches. Warmup forces the complete weapon and its cast-shadow path visible under the loading cover and submits real hidden frames, so shader pipelines and geometry uploads are complete before play resumes.
 
 ## Effects (`fighter.ts`, `fx/`, `audio/`)
 

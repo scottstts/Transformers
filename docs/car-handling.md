@@ -9,6 +9,8 @@
 
 Shift used to be boost only. Keeping the boost power inside the drift key means a player holding Shift on a straight still gets it; turning with it held breaks the rear loose.
 
+On touch devices, car Shift is driven only by the held Drift button. Joystick deflection never enables the drift regime; the stick remains throttle/steering input, while its rim-run state applies only to robot locomotion.
+
 ## The drift driver's hands
 
 Keyboard steering is on/off, so raw countersteer is unplayable. Once the rear slides, the front wheels are steered as a drift driver's hands would: along the front axle's travel (caster self-alignment), plus a PD correction holding a body slip angle. The player's steering picks the angle, as a fraction of the car's steering lock (the hands need about that much countersteer, and the F1's small lock is why its drifts are shallower):

@@ -20,7 +20,7 @@ function drive(car: DriveProfile, speed: number, seconds: number, input: (t: num
   return state
 }
 
-const controls = (driveThrottle: number, driveSteering: number, running: boolean): CarControls => ({ driveThrottle, driveSteering, running })
+const controls = (driveThrottle: number, driveSteering: number, driftHeld: boolean): CarControls => ({ driveThrottle, driveSteering, driftHeld })
 const slipAngle = (s: MotionState): number => Math.atan2(s.lateral, Math.max(Math.abs(s.speed), 0.5))
 
 describe.each(CARS)('%s handling', (_, car) => {

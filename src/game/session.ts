@@ -3,7 +3,7 @@ import { bakeEnvironment, configureRenderer, createPostPipeline } from '../rende
 import { createDesertWorld } from '../worlds/desert'
 import { AudioMix } from '../audio/mix'
 import { loadRosterAsset, type RosterEntry } from '../content/roster'
-import type { TransformerAsset } from '../content/transformer/asset/loader'
+import type { PlayableTransformerAsset } from '../content/transformer/asset/loader'
 import type { Character } from '../content/transformer/character'
 import { FollowCamera } from './follow-camera'
 import { GameInput } from './input'
@@ -34,12 +34,17 @@ export class GameSession {
   private readonly built = new Map<string, Character>()
   private switching: string | null = null
   private standing = false
+  private carActions = true
   /** the robot stands: it can walk, jump and fight */
   get standingRobot(): boolean {
     return this.standing
   }
   /** called when the robot comes to stand or leaves it (car form, transforming); for UI such as the touch jump button */
   onStandingChange: ((standing: boolean) => void) | null = null
+  /** the car is fully settled and not switching: the mobile drift button may be held */
+  get carActionsAvailable(): boolean { return this.carActions }
+  /** called when car-only touch actions become available or unavailable */
+  onCarActionsChange: ((available: boolean) => void) | null = null
   private readonly timer = new Timer()
   private readonly jump = new RobotJump()
   /** camera reactions and the fight's clock rate (hit-stop) */
@@ -53,7 +58,7 @@ export class GameSession {
   private readonly suspensionEuler = new Euler()
   private readonly onFrameError: (error: Error) => void
 
-  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: TransformerAsset, onFrameError: (error: Error) => void) {
+  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: PlayableTransformerAsset, onFrameError: (error: Error) => void) {
     this.renderer = renderer
     this.camera = camera
     this.onFrameError = onFrameError
@@ -118,10 +123,16 @@ export class GameSession {
         try {
           await this.renderer.compileAsync(next.model.root, this.camera, this.scene)
           await this.renderer.compileAsync(next.effects.object, this.camera, this.scene)
+          this.built.set(entry.id, next)
+          if (!this.canSwitch) return false
+          this.swap(next)
+          // Keep combat warm during the hidden first frames: this forces the
+          // weapon geometry and its cast-shadow path through real GPU draws.
+          await this.settleFrames(SWITCH_SETTLE_FRAMES)
+          return true
         } finally {
           next.combat.effects.warm(false)
         }
-        this.built.set(entry.id, next)
       }
       if (!this.canSwitch) return false
       this.swap(next)
@@ -133,12 +144,16 @@ export class GameSession {
     }
   }
 
-  /** Compile every pipeline the scene can draw, the fight's hidden weapon and effects included. */
+  /** Compile and draw every path the scene can use, including the hidden combat weapon and its shadow. */
   async compile(): Promise<void> {
     const effects = this.character.combat.effects
     effects.warm(true)
     try {
       await this.renderer.compileAsync(this.scene, this.camera)
+      // compileAsync prepares pipelines, but a real hidden draw also forces
+      // first-use geometry uploads before the entry screen can report ready.
+      this.pipeline.render()
+      await this.waitForGpu()
     } finally {
       effects.warm(false)
     }
@@ -147,6 +162,10 @@ export class GameSession {
   /** Let the render loop draw `frames` frames, then wait until the GPU has finished them. */
   private async settleFrames(frames: number): Promise<void> {
     for (let i = 0; i < frames; i++) await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()) })
+    await this.waitForGpu()
+  }
+
+  private async waitForGpu(): Promise<void> {
     const device = (this.renderer.backend as { device?: GPUDevice }).device
     if (device) await device.queue.onSubmittedWorkDone()
   }
@@ -222,6 +241,11 @@ export class GameSession {
     if (standing !== this.standing) {
       this.standing = standing
       this.onStandingChange?.(standing)
+    }
+    const carActions = !busy && state.mode === 'car' && state.progress <= 0
+    if (carActions !== this.carActions) {
+      this.carActions = carActions
+      this.onCarActionsChange?.(carActions)
     }
     if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive)
     else if (!fight.active) updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)

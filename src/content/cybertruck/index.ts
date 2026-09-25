@@ -1,6 +1,6 @@
 import type { ContactEffects } from '../../game/contact-effects'
 import type { AudioMix } from '../../audio/mix'
-import type { TransformerAsset } from '../transformer/asset/loader'
+import type { PlayableTransformerAsset, TransformerAsset } from '../transformer/asset/loader'
 import { loadTransformerAsset } from '../transformer/asset/loader'
 import { TransformerModel } from '../transformer/model/transformer'
 import { RobotGait } from '../transformer/animation/gait'
@@ -48,7 +48,7 @@ export const CYBERTRUCK_PROFILE: CharacterProfile = {
   robotRadius: 1.5,
 }
 
-export async function loadCybertruckAsset(): Promise<TransformerAsset> {
+export async function loadCybertruckAsset(): Promise<PlayableTransformerAsset> {
   const [asset, weapon] = await Promise.all([loadTransformerAsset('cybertruck', CYBERTRUCK_LABEL), loadWeaponAsset(CYBERTRUCK_WEAPON, CYBERTRUCK_LABEL)])
   return { ...asset, weapon }
 }

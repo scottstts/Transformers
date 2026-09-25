@@ -1,17 +1,19 @@
 /** What the on-screen controls drive. */
 export interface TouchHost {
-  /** stick deflection on the unit disc (x right, y forward); `run` at the rim */
+  /** stick deflection on the unit disc (x right, y forward); `run` at the rim for robot locomotion only */
   stick(x: number, y: number, run: boolean): void
   /** orbit the camera by a drag, in CSS pixels */
   look(dx: number, dy: number): void
   transform(): void
   jump(): void
+  /** hold/release Shift while driving */
+  drift(held: boolean): void
   attack(): void
 }
 
 /** Stick travel (px) from the centre to the rim. */
 const STICK_RADIUS = 52
-/** Deflection past which the stick runs (robot) or drifts (car), as Shift does. */
+/** Deflection past which the stick runs in robot form. Car drift is button-only on touch. */
 const RUN_DEFLECTION = 0.92
 /** Touch drag is a little quicker than a mouse: a thumb covers fewer pixels. */
 const LOOK_GAIN = 1.35
@@ -20,6 +22,7 @@ const STICK_ZONE = 0.45
 
 const TRANSFORM_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 14.5a9.2 9.2 0 0 1 16-5.3"/><path d="M23.6 4.6v5h-5"/><path d="M25 17.5a9.2 9.2 0 0 1-16 5.3"/><path d="M8.4 27.4v-5h5"/><path d="m13 16 3-3 3 3-3 3z"/></svg>'
 const JUMP_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="m9 15 7-7 7 7"/><path d="m9 23 7-7 7 7"/></svg>'
+const DRIFT_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 22c5.5-1 7.5-9.5 15-12"/><path d="m18.5 8.5 4.5 1.5-1.5 4.5"/><path d="M7.5 26h.01M12.5 25h.01"/></svg>'
 const ATTACK_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8.5 23.5 23 9"/><path d="M15 8.5h8.5V17"/><path d="m7 17 3.5 3.5"/></svg>'
 
 /**
@@ -35,7 +38,9 @@ export class TouchControls {
   private readonly base: HTMLDivElement
   private readonly knob: HTMLDivElement
   private readonly jumpButton: HTMLButtonElement
+  private readonly driftButton: HTMLButtonElement
   private readonly attackButton: HTMLButtonElement
+  private driftPointer: number | null = null
   private stickPointer: number | null = null
   private readonly stickOrigin = { x: 0, y: 0 }
   private lookPointer: number | null = null
@@ -89,12 +94,15 @@ export class TouchControls {
     this.knob.className = 'touch-knob'
     this.base.append(this.knob)
     this.jumpButton = this.button('touch-jump', 'Jump', JUMP_ICON, () => host.jump())
+    this.driftButton = this.holdButton('touch-drift', 'Drift', DRIFT_ICON, (held) => host.drift(held))
     this.attackButton = this.button('touch-attack', 'Attack', ATTACK_ICON, () => host.attack())
     this.setRobotActions(false)
+    this.setCarAction(false)
     this.root.append(
       this.base,
       this.button('touch-transform', 'Transform', TRANSFORM_ICON, () => host.transform()),
       this.jumpButton,
+      this.driftButton,
       this.attackButton,
     )
     this.root.addEventListener('pointerdown', this.onDown)
@@ -106,7 +114,7 @@ export class TouchControls {
     document.body.append(this.root)
   }
 
-  /** Show the jump and attack buttons only while the robot stands: a car can do neither. */
+  /** Show the jump and attack buttons only while the robot stands. */
   setRobotActions(available: boolean): void {
     for (const button of [this.jumpButton, this.attackButton]) {
       button.classList.toggle('away', !available)
@@ -114,9 +122,17 @@ export class TouchControls {
     }
   }
 
+  /** The car reuses the jump button's slot for a held Shift/drift control. */
+  setCarAction(available: boolean): void {
+    this.driftButton.classList.toggle('away', !available)
+    this.driftButton.inert = !available
+    if (!available) this.releaseDrift()
+  }
+
   /** Let go of everything (an overlay opened, or the page lost focus). */
   release(): void {
     this.releaseStick()
+    this.releaseDrift()
     this.lookPointer = null
   }
 
@@ -143,6 +159,43 @@ export class TouchControls {
     button.addEventListener('pointercancel', lift)
     button.addEventListener('pointerleave', lift)
     return button
+  }
+
+  private holdButton(kind: string, label: string, icon: string, held: (on: boolean) => void): HTMLButtonElement {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = `touch-button ${kind}`
+    button.setAttribute('aria-label', label)
+    button.innerHTML = icon
+    button.addEventListener('pointerdown', (event) => {
+      if (this.driftPointer !== null) return
+      event.stopPropagation()
+      event.preventDefault()
+      this.driftPointer = event.pointerId
+      button.classList.add('pressed')
+      button.setPointerCapture(event.pointerId)
+      held(true)
+    })
+    const lift = (event: PointerEvent): void => {
+      if (event.pointerId !== this.driftPointer) return
+      this.driftPointer = null
+      button.classList.remove('pressed')
+      held(false)
+    }
+    button.addEventListener('pointerup', lift)
+    button.addEventListener('pointercancel', lift)
+    button.addEventListener('lostpointercapture', lift)
+    return button
+  }
+
+  private releaseDrift(): void {
+    if (this.driftPointer === null && !this.driftButton.classList.contains('pressed')) return
+    if (this.driftPointer !== null && this.driftButton.hasPointerCapture(this.driftPointer)) {
+      this.driftButton.releasePointerCapture(this.driftPointer)
+    }
+    this.driftPointer = null
+    this.driftButton.classList.remove('pressed')
+    this.host.drift(false)
   }
 
   private moveStick(x: number, y: number): void {

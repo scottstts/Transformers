@@ -1,6 +1,6 @@
 import type { ContactEffects } from '../../game/contact-effects'
 import type { AudioMix } from '../../audio/mix'
-import type { TransformerAsset } from '../transformer/asset/loader'
+import type { PlayableTransformerAsset, TransformerAsset } from '../transformer/asset/loader'
 import { loadTransformerAsset } from '../transformer/asset/loader'
 import type { TransformerManifest } from '../transformer/asset/format'
 import { TransformerModel } from '../transformer/model/transformer'
@@ -77,7 +77,7 @@ const RACER_GAIT: GaitStyle = {
   jumpTuck: 0.34,
 }
 
-export async function loadF1Asset(): Promise<TransformerAsset> {
+export async function loadF1Asset(): Promise<PlayableTransformerAsset> {
   const [asset, weapon] = await Promise.all([loadTransformerAsset('ferrari-f1', F1_LABEL), loadWeaponAsset(F1_WEAPON, F1_LABEL)])
   return { ...asset, weapon }
 }

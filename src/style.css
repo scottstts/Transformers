@@ -147,12 +147,12 @@ body.menu-open .touch-controls { opacity: 0; pointer-events: none; }
 .touch-button.pressed { background: rgba(20, 22, 25, 0.62); transform: scale(0.92); }
 .touch-transform { right: calc(env(safe-area-inset-right) + 22px); bottom: calc(env(safe-area-inset-bottom) + 44px); width: 78px; height: 78px; }
 .touch-transform svg { width: 36px; height: 36px; }
-.touch-jump { right: calc(env(safe-area-inset-right) + 116px); bottom: calc(env(safe-area-inset-bottom) + 24px); width: 58px; height: 58px; }
-.touch-jump svg { width: 26px; height: 26px; }
+.touch-jump, .touch-drift { right: calc(env(safe-area-inset-right) + 116px); bottom: calc(env(safe-area-inset-bottom) + 24px); width: 58px; height: 58px; }
+.touch-jump svg, .touch-drift svg { width: 26px; height: 26px; }
 .touch-attack { right: calc(env(safe-area-inset-right) + 32px); bottom: calc(env(safe-area-inset-bottom) + 138px); width: 58px; height: 58px; }
 .touch-attack svg { width: 26px; height: 26px; }
-.touch-jump.away, .touch-attack.away { opacity: 0; transform: scale(0.6); pointer-events: none; }
-.touch-jump, .touch-attack { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
+.touch-jump.away, .touch-drift.away, .touch-attack.away { opacity: 0; transform: scale(0.6); pointer-events: none; }
+.touch-jump, .touch-drift, .touch-attack { transition: transform 0.2s cubic-bezier(0.3, 0.8, 0.2, 1), opacity 0.2s ease, background 0.12s ease; }
 
 @media (prefers-reduced-motion: reduce) {
   .entry-mark span, .entry-line, .entry-gauge, .entry-stage, body.entry .entry-button { animation: none; }
