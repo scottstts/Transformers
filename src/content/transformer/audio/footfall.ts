@@ -1,73 +1,44 @@
 import type { AudioMix } from '../../../audio/mix'
+import { noise, voice } from '../combat/audio/shots'
 
 /** A robot's foot on sand, tuned to its mass. */
 export interface FootfallTuning {
-  /** ground-pressure sine: start and end pitch (Hz) of the drop */
-  subHz: [number, number]
-  /** lowpass of the ground thump (Hz) */
-  thumpHz: number
-  /** gravel crunch band (Hz): lower bound and spread */
-  crunchHz: [number, number]
-  /** damper exhale band (Hz); the foot's hydraulic damper venting */
-  exhaleHz: number
+  /** lowpass of the weight settling into the sand (Hz): start, end */
+  pressHz: [number, number]
+  /** sand grind band under the sole (Hz): lower bound and random spread */
+  grindHz: [number, number]
   /** voice gain before the dry mix and reverb send */
   level: number
 }
 
-/** A multi-tonne foot: ground thump, sub pressure, gravel crunch and damper exhale. */
+/** A multi-tonne foot: a deep, dull press. */
 export const HEAVY_FOOT: FootfallTuning = {
-  subHz: [64, 34],
-  thumpHz: 380,
-  crunchHz: [1400, 2600],
-  exhaleHz: 2400,
-  level: 0.4,
+  pressHz: [240, 130],
+  grindHz: [1500, 500],
+  level: 0.3,
 }
 
-/** One footfall on the shared mix; nothing persists between steps. */
+/**
+ * One foot set down on the shared mix, `strength` 0..1+: weight shifting onto
+ * the sole and the sand grinding under it as it settles. Soft onsets
+ * throughout, no pitched drop and no damper exhale, so a stride or a flurry of
+ * fighting footwork stays underneath everything else. Nothing persists
+ * between steps.
+ */
 export function footfall(mix: AudioMix, tuning: FootfallTuning, strength = 1): void {
   const ctx = mix.ctx
   if (!ctx || !mix.enabled) return
-  const out = mix.output
+  const t = ctx.currentTime + 0.005
+  const g = Math.min(1.2, strength)
+  const bus = voice(mix, tuning.level, 0.18, 0.5)
   const tex = mix.tex
-  const t = ctx.currentTime + 0.01
-  const g = 0.5 * strength
-  const bus = ctx.createGain()
-  bus.gain.value = tuning.level
-  bus.connect(out.dry)
-  const send = ctx.createGain()
-  send.gain.value = 0.35
-  bus.connect(send).connect(out.send)
-  // ground pressure: sub sine drop + lowpassed brown burst
-  const o = ctx.createOscillator()
-  o.frequency.setValueAtTime(tuning.subHz[0], t)
-  o.frequency.exponentialRampToValueAtTime(tuning.subHz[1], t + 0.35)
-  const og = ctx.createGain()
-  og.gain.setValueAtTime(g, t)
-  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.5)
-  o.connect(og).connect(bus)
-  o.start(t)
-  o.stop(t + 0.55)
-  shot(ctx, tex.brown, t, 0.32, bus, 'lowpass', tuning.thumpHz, g * 0.9)
-  // gravel crunch: a few dense grains of filtered chatter
-  for (let i = 0; i < 6; i++) {
-    shot(ctx, tex.chatter, t + Math.pow(Math.random(), 1.8) * 0.16, 0.05 + Math.random() * 0.05, bus, 'bandpass',
-      tuning.crunchHz[0] + Math.random() * tuning.crunchHz[1], g * 0.18)
+  // the weight settling into the sand: a dull, rounded press
+  noise(ctx, tex.brown, bus, t, 0.2, 'lowpass', tuning.pressHz[0], tuning.pressHz[1], 0.025, 0.5 * g)
+  // the sole grinding the sand as it takes the weight
+  const grind = tuning.grindHz[0] + Math.random() * tuning.grindHz[1]
+  noise(ctx, tex.white, bus, t + 0.01, 0.24 * (0.8 + Math.random() * 0.4), 'bandpass', grind, grind * 0.45, 0.04, 0.07 * g, 0.2)
+  // a few grains shifting under the edge of the foot
+  for (let i = 0; i < 3; i++) {
+    noise(ctx, tex.chatter, bus, t + 0.02 + Math.random() * 0.14, 0.05, 'bandpass', grind * 1.45 + Math.random() * 1600, grind, 0.006, 0.035 * g)
   }
-  // damper exhale
-  shot(ctx, tex.white, t + 0.05, 0.22, bus, 'bandpass', tuning.exhaleHz, g * 0.05)
-  setTimeout(() => { bus.disconnect(); send.disconnect() }, 1200)
-}
-
-function shot(ctx: AudioContext, buf: AudioBuffer, t: number, dur: number, dest: AudioNode, type: BiquadFilterType, f: number, gain: number): void {
-  const src = ctx.createBufferSource()
-  src.buffer = buf
-  const fl = ctx.createBiquadFilter()
-  fl.type = type
-  fl.frequency.value = f
-  const g = ctx.createGain()
-  g.gain.setValueAtTime(gain, t)
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
-  src.connect(fl).connect(g).connect(dest)
-  src.start(t, Math.random() * (buf.duration - dur - 0.05))
-  src.stop(t + dur + 0.02)
 }

@@ -72,8 +72,12 @@ export class F1Effects implements CharacterEffects {
   }
 
   addFootstep(side: Side, running: number): void {
+    this.audio.footstep(0.8 + running * 0.7)
+    this.plantFoot(side, running)
+  }
+
+  plantFoot(side: Side, running: number): void {
     const strength = 0.8 + running * 0.7
-    this.audio.footstep(strength)
     this.shake = Math.min(this.shake + (0.05 + running * 0.06) * STEP_SHAKE, 0.2)
     this.pendingSteps.push([side, strength])
   }

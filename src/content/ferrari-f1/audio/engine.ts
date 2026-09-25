@@ -37,13 +37,11 @@ const RACER_MACHINE: MachineTuning = {
   level: 0.9,
 }
 
-/** A robot of about half the truck robot's mass: a tighter thump, less sub. */
+/** A robot of about half the truck robot's mass: a lighter, tighter press. */
 const RACER_FOOT: FootfallTuning = {
-  subHz: [82, 44],
-  thumpHz: 460,
-  crunchHz: [1700, 2800],
-  exhaleHz: 2900,
-  level: 0.3,
+  pressHz: [300, 160],
+  grindHz: [1800, 600],
+  level: 0.26,
 }
 
 /** Wide slicks under a light car: a lighter roar than the truck's. */

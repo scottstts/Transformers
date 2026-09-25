@@ -74,7 +74,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - **Swing voice:** flow noise off the fastest fist, foot or edge. Level goes with speed cubed, and the band slides up with speed (a turbulent body band plus an edge band). The truck's is low and heavy, the racer's thinner.
   - **Forming and dissolving:** a torch-like roaring hiss with crackle.
   - **Slam:** ground pressure, thump, sand thrown up and raining back.
-  - **Fighting footfalls** are the character's own footstep.
+  - **Fighting footfalls** plant the foot (`plantFoot`: dust, footprint, shake at the fighting style's share of a running step) and play the character's own footfall at the move's step strength.
   - Nothing is a percussive "hit".
 
 ## The moves

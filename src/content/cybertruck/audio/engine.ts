@@ -16,8 +16,8 @@ import { RocketVoice } from './rocket'
  *                   unit while it runs and an actuator per exported stroke;
  *                   no impacts
  *   thrusters       the rocket burn of the lift jets (see rocket.ts)
- *   footfall        a multi-tonne foot: ground thump, sub pressure, gravel
- *                   crunch and damper exhale
+ *   footfall        a multi-tonne foot: a deep press into the sand and the
+ *                   grind under the sole (shared voice)
  *   drive           a soft electric drive-motor hum, following the wheels
  *                   (wheelspin winds it up)
  *   tyres           sliding tyres tearing through the desert crust (shared
