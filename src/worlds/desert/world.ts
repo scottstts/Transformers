@@ -1,7 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { fog, densityFogFactor, color, positionWorld, float, mix, smoothstep } from 'three/tsl';
 import { skyMaterial, groundMaterial, rockMaterial, hazeColor, viewDirection, SKY } from './materials.ts';
-import type { CircleCollider } from '../../game/types';
+import type { CircleCollider, SegmentCollider } from '../../game/types';
+import { Forts } from './fort/index.ts';
+import { SHADOW_ONLY_LAYER } from '../../rendering/layers.ts';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 
 interface RockItem {
@@ -78,12 +80,17 @@ export function rockGeometry( r, seed, detail = 1 ) {
 
 }
 
+const ZERO = new THREE.Vector3( 0, 0, 0 );
+
 /** Focus height (m) above which the shadow camera rises with it; a standing robot's focus is below it. */
 const SHADOW_LIFT_FROM = 6;
 
 export class DesertWorld {
 	scene: THREE.Scene;
 	colliders: CircleCollider[] = [];
+	/** walls and building sides (the forts) */
+	segments: SegmentCollider[] = [];
+	forts: Forts;
 	instanceMatrix: THREE.Matrix4;
 	instancePosition: THREE.Vector3;
 	sky: THREE.Mesh;
@@ -117,6 +124,9 @@ export class DesertWorld {
 
 		this.buildMountains();
 		this.buildRocks();
+		this.forts = new Forts( scene );
+		this.colliders.push( ...this.forts.circles );
+		this.segments.push( ...this.forts.segments );
 
 		// lights
 		this.sun = new THREE.DirectionalLight( SKY.sunColor, 3.4 );
@@ -129,6 +139,7 @@ export class DesertWorld {
 		sc.bias = - 0.0004;
 		sc.normalBias = 0.03;
 		sc.radius = 3;
+		sc.camera.layers.enable( SHADOW_ONLY_LAYER );
 		scene.add( this.sun, this.sun.target );
 
 		const hemi = new THREE.HemisphereLight( 0xcfd8e2, 0x9a7f63, 0.35 );
@@ -237,6 +248,19 @@ export class DesertWorld {
 
 	}
 
+	private cleared( x: number, z: number, r: number ): boolean {
+
+		for ( const e of this.forts.exclusions ) {
+
+			const dx = x - e.x, dz = z - e.z;
+			if ( dx * dx + dz * dz < ( e.r + r ) * ( e.r + r ) ) return true;
+
+		}
+
+		return false;
+
+	}
+
 	/** Recentre tiled scatter + far scenery around the focus point. */
 	update( camera, focus ) {
 
@@ -256,9 +280,11 @@ export class DesertWorld {
 					const x = it.x + t.tile * Math.round( ( focus.x - it.x ) / t.tile );
 					const z = it.z + t.tile * Math.round( ( focus.z - it.z ) / t.tile );
 					it.wx = x; it.wz = z;
-					if ( it.collider ) { it.collider.x = x; it.collider.z = z; }
-					p.set( x, - it.s.y * 0.25, z );
-					m.compose( p, it.q, it.s );
+					// nothing of the scatter lies inside a fort's grounds (its boulders would stand in the walls)
+					const cleared = this.cleared( x, z, it.r );
+					if ( it.collider ) { it.collider.x = x; it.collider.z = z; it.collider.r = cleared ? 0 : Math.max( it.s.x, it.s.z ) * 0.95; }
+					p.set( x, cleared ? - 50 : - it.s.y * 0.25, z );
+					m.compose( p, it.q, cleared ? ZERO : it.s );
 					t.mesh.setMatrixAt( i, m );
 
 				} );

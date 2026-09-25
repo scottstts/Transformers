@@ -199,3 +199,33 @@ export const F1_MOVES: Moveset = {
   recover: 0.85,
   recoverCues: [{ t: 0.0, cue: 'weapon-out', value: 0.4 }],
 }
+
+/**
+ * The guard (held with the right mouse button): the racer crosses its
+ * forearms in an X in front of its visor, sinks onto bent knees and leans
+ * into it, a light fighter covering up. The shield forms round it
+ * (fighter.ts); the pose holds for as long as the guard does.
+ */
+export const F1_GUARD: CombatMove = {
+  name: 'guard',
+  duration: 1e6,
+  chain: [1e6, 1e6],
+  keys: {
+    hipDrop: [[0.14, 0.2]],
+    hipPitch: [[0.14, 10]],
+    spineX: [[0.16, 5]],
+    chestX: [[0.16, 6]],
+    headX: [[0.18, 6]],
+    'R.az': [[0.13, -30]],
+    'R.el': [[0.13, 16]],
+    'R.reach': [[0.13, 0.52]],
+    'R.elbow': [[0.13, 55]],
+    'R.grip': [[0.08, 1]],
+    'L.az': [[0.15, -30]],
+    'L.el': [[0.15, 26]],
+    'L.reach': [[0.15, 0.5]],
+    'L.elbow': [[0.15, 55]],
+    'L.grip': [[0.08, 1]],
+  },
+  cues: [{ t: 0.02, cue: 'servo', value: 0.2 }],
+}

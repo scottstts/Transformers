@@ -15,6 +15,8 @@ import { SwingTrail, type TrailStyle } from './fx/trail'
 import { SwingVoice, type SwingTuning } from './audio/swing'
 import { dissolve, forge, slam, type ForgeTuning } from './audio/shots'
 import type { Weapon } from './weapon'
+import { Shield } from './fx/shield'
+import { armourStruck, guardBlocked, guardDrop, guardRaise } from './audio/guard'
 
 /** A character's fighting look and sound. */
 export interface FighterStyle {
@@ -27,6 +29,8 @@ export interface FighterStyle {
   light: number
   /** step dust and sound at a fighting footfall (share of a running step) */
   step: number
+  /** the guard shield's energy colour (linear): the character's special light */
+  shield: [number, number, number]
 }
 
 /** How long the weapon takes to form and to go (s), unless a cue says otherwise. */
@@ -65,6 +69,8 @@ export class Fighter implements CombatEffects {
   /** heat shimmer over whatever the special makes hot */
   protected readonly haze = new HeatHaze()
   protected readonly trail: SwingTrail
+  /** the guard's energy shield */
+  protected readonly shield: Shield
   protected readonly voice: SwingVoice
   protected readonly light: PointLight
   protected camera: CombatCamera | null = null
@@ -93,7 +99,9 @@ export class Fighter implements CombatEffects {
     this.voice = new SwingVoice(mix, style.swing)
     // kept in the scene at zero: the light count, and so every shader, never changes
     this.light = new PointLight(style.light, 0, 14, 2)
-    this.object.add(this.sparks.mesh, this.trail.mesh, this.light, this.billows.mesh, this.blast.light, this.haze.mesh)
+    // the shield encloses the robot's own parts, fitted as it moves
+    this.shield = new Shield(style.shield, model.node('bone:pelvis'), model.root)
+    this.object.add(this.sparks.mesh, this.trail.mesh, this.light, this.billows.mesh, this.blast.light, this.haze.mesh, this.shield.mesh)
     this.tracked = ['hand.R', 'hand.L', 'foot.R', 'foot.L'].map((b) => model.node(`bone:${b}`))
     this.lastPos = this.tracked.map(() => new Vector3())
     if (weapon) weapon.attach(model.node('bone:hand.R'))
@@ -134,6 +142,7 @@ export class Fighter implements CombatEffects {
   }
 
   update(dt: number, frame: CombatFrame): void {
+    this.shield.update(dt, frame.state.yaw)
     this.sparks.update(dt)
     this.billows.update(dt)
     this.blast.update(dt)
@@ -170,6 +179,11 @@ export class Fighter implements CombatEffects {
     this.voice.update(this.swingSpeed * Math.min(1, frame.weight * 1.5))
   }
 
+  ambient(dt: number, yaw: number): void {
+    this.shield.update(dt, yaw)
+    this.sparks.update(dt)
+  }
+
   end(): void {
     this.voice.update(0)
   }
@@ -185,6 +199,8 @@ export class Fighter implements CombatEffects {
     this.lightLevel = 0
     this.blast.reset()
     this.voice.update(0)
+    this.shield.set(false)
+    this.shield.update(1, 0)
   }
 
   warm(on: boolean): void {
@@ -193,6 +209,39 @@ export class Fighter implements CombatEffects {
     this.sparks.mesh.visible = on
     this.billows.warm(on)
     this.haze.warm(on)
+    this.shield.warm(on)
+  }
+
+  guardReach(): number {
+    // at a soldier's chest height
+    return this.shield.reach(1.6)
+  }
+
+  guard(on: boolean): void {
+    this.shield.set(on)
+    const weight = this.model.dims.hipZ / 3
+    if (on) guardRaise(this.mix, weight)
+    else guardDrop(this.mix, weight)
+  }
+
+  struck(at: Vector3, from: Vector3, strength: number, guarded: boolean): void {
+    const cam = this.camera
+    const listener = this.model.root.position
+    if (guarded && this.shield.raised) {
+      // the blade stops on the field: a flash and ripple where it met, sparks thrown back off it
+      const p = this.shield.surfacePoint(from, _p)
+      this.shield.hit(p, strength)
+      const out = _u.subVectors(from, p).setY(0.3).normalize()
+      this.sparks.emit({ count: Math.round(18 + 22 * strength), at: p, dir: out, spread: 0.6, speed: [2, 9], life: [0.15, 0.5], size: 0.016, drag: 2.5, gravity: 0.4, palette: this.style.palette, jitter: 0.1 })
+      guardBlocked(this.mix, strength, p.distanceTo(listener) * 0.2)
+      cam?.shake(0.05 + 0.08 * strength)
+    } else {
+      // the blade rakes the armour: sparks off the steel
+      const out = _u.subVectors(from, at).setY(0.2).normalize()
+      this.sparks.emit({ count: Math.round(14 + 20 * strength), at, dir: out, spread: 0.7, speed: [1.5, 7], life: [0.12, 0.45], size: 0.012, drag: 3, gravity: 0.8, palette: 0, jitter: 0.08 })
+      armourStruck(this.mix, strength, at.distanceTo(listener) * 0.2)
+      cam?.kick(0.06 + 0.1 * strength)
+    }
   }
 
   dispose(): void {

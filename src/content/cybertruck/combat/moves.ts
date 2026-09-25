@@ -231,3 +231,33 @@ export const CYBERTRUCK_MOVES: Moveset = {
   recover: 1.15,
   recoverCues: [{ t: 0.0, cue: 'weapon-out', value: 0.5 }],
 }
+
+/**
+ * The guard (held with the right mouse button): a boxer's high guard, both
+ * fists up in front of the helmet with the forearms upright and the elbows
+ * in over the ribs, knees bent and weight low, chin tucked. The shield forms
+ * round it (fighter.ts); the pose holds for as long as the guard does.
+ */
+export const CYBERTRUCK_GUARD: CombatMove = {
+  name: 'guard',
+  duration: 1e6,
+  chain: [1e6, 1e6],
+  keys: {
+    hipDrop: [[0.18, 0.34]],
+    hipPitch: [[0.18, 8]],
+    spineX: [[0.2, 4]],
+    chestX: [[0.2, 7]],
+    headX: [[0.22, 8]],
+    'R.az': [[0.16, -6]],
+    'R.el': [[0.16, 24]],
+    'R.reach': [[0.16, 0.4]],
+    'R.elbow': [[0.16, 22]],
+    'R.grip': [[0.1, 1]],
+    'L.az': [[0.18, -4]],
+    'L.el': [[0.18, 28]],
+    'L.reach': [[0.18, 0.42]],
+    'L.elbow': [[0.18, 20]],
+    'L.grip': [[0.1, 1]],
+  },
+  cues: [{ t: 0.02, cue: 'servo', value: 0.3 }],
+}

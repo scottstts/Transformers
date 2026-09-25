@@ -3,6 +3,7 @@ import type { TransformerModel } from '../../content/transformer/model/transform
 import type { CharacterCombat, CombatCamera, CombatFrame } from '../../content/transformer/combat/effects'
 import type { CombatMove, MoveCue } from '../../content/transformer/combat/moves'
 import type { SpecialMove } from '../../content/transformer/combat/special'
+import type { HitEvent, MoveHits } from '../../content/transformer/combat/hits'
 import { MovePlayer } from '../../content/transformer/combat/player'
 import { FootPlanner } from '../../content/transformer/combat/feet'
 import { Curve } from '../../content/transformer/combat/curves'
@@ -62,6 +63,21 @@ export class RobotCombat {
   private struck = false
   /** a combo move's blow lands (it charges the special) */
   onStrike: ((move: number) => void) | null = null
+  /** turns a move's aim (rad) from the standing point (x, z) toward something to hit, if anything is there */
+  aimAssist: ((x: number, z: number, heading: number) => number) | null = null
+  /** a blow, sweep or blast of the current move reaches the world (hits.ts) */
+  onHit: ((hit: HitEvent) => void) | null = null
+  /** the current move's hits and how far through them the move is */
+  private hits: MoveHits | null = null
+  private nextStrike = 0
+  private nextBlast = 0
+  private sweepBase = 0
+  private sweepSerial = 0
+  private readonly lastDesired = new Vector3()
+  private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false }
+  /** the guard is held (the input), and the guard pose is up */
+  private guardHeld = false
+  private guarding = false
   private nextStep = 0
   private weight = 0
   private exiting = false
@@ -88,7 +104,21 @@ export class RobotCombat {
 
   /** The fight owns the robot (movement, jumps and transforming wait). */
   get active(): boolean {
-    return this.combo.active || this.special !== null || this.weight > 0
+    return this.combo.active || this.special !== null || this.weight > 0 || this.guarding
+  }
+
+  /** The guard pose is up: enemy blows land on the shield. */
+  get guarded(): boolean {
+    return this.guarding
+  }
+
+  /**
+   * Hold or release the guard. It rises whenever no move is playing (a combo's
+   * recovery gives way to it) and holds while held; releasing it recovers into
+   * the stance. A click from the guard starts the combo from the guard pose.
+   */
+  setGuard(held: boolean): void {
+    this.guardHeld = held
   }
 
   /** The special is playing: a cutscene, no input. */
@@ -145,9 +175,11 @@ export class RobotCombat {
     this.combo.cancel()
     this.queued.length = 0
     this.exiting = false
+    this.endGuard()
     this.special = special
     this.tempoCurve.set(1, special.tempo)
     this.beginMove(special.move, state, camera, REAIM.first)
+    this.hits = this.combat.hits.special
     this.combat.effects.beginSpecial()
     return special
   }
@@ -155,6 +187,9 @@ export class RobotCombat {
   /** Drop the fight at once and hand the pose back (the robot leaves the stance, or the character is swapped out). */
   cancel(): void {
     this.special = null
+    this.hits = null
+    if (this.guarding) this.combat.effects.guard(false)
+    this.guarding = false
     this.combo.cancel()
     this.weight = 0
     this.exiting = false
@@ -167,7 +202,11 @@ export class RobotCombat {
     this.frameState = state
     this.frameCamera = camera
     if (!this.special) this.combo.update(dt, this.onComboEvent)
-    if (!this.combo.active && !this.special && this.weight === 0) return
+    this.updateGuard(state, camera)
+    if (!this.combo.active && !this.special && this.weight === 0 && !this.guarding) {
+      this.combat.effects.ambient(dt, state.yaw)
+      return
+    }
 
     this.player.update(dt, this.onMoveCue)
     if (!this.special && this.combo.phase === 'move' && !this.struck) {
@@ -183,7 +222,7 @@ export class RobotCombat {
       this.special = null
       this.combo.recover(this.onComboEvent)
     }
-    const owning = this.combo.active || this.special !== null
+    const owning = this.combo.active || this.special !== null || this.guarding
 
     // weight: in over the first moments, out as the recovery settles
     if (this.combo.phase === 'recover' && this.combo.time > this.combat.moveset.recover - EXIT) this.exiting = true
@@ -195,6 +234,7 @@ export class RobotCombat {
     this.combat.overlay.pose.v.set(this.player.values)
     this.applyRoot(state)
     this.poseFeet(state, dt)
+    this.emitHits(state, dt)
 
     const f = this.frame
     f.weight = this.combat.overlay.weight
@@ -217,6 +257,7 @@ export class RobotCombat {
   private onCombo(event: ComboEvent, state: MotionState, camera: PerspectiveCamera): void {
     const effects = this.combat.effects
     if (event.type === 'start') {
+      this.endGuard()
       const first = this.weight === 0
       if (first) {
         this.player.reset(this.combat.overlay.neutral)
@@ -224,8 +265,10 @@ export class RobotCombat {
         effects.begin()
       }
       this.beginMove(this.moves[event.move], state, camera, first ? REAIM.first : REAIM.chained)
+      this.hits = this.combat.hits.moves[event.move] ?? null
       effects.moveStart(event.move, this.frame.camera)
     } else if (event.type === 'recover') {
+      this.hits = null
       this.setGround(state, state.yaw)
       this.player.settle(this.combat.overlay.neutral, this.combat.moveset.recover * SETTLE_SHARE, this.combat.moveset.recoverCues)
       this.recoverFeet(state)
@@ -234,7 +277,10 @@ export class RobotCombat {
 
   private beginMove(move: CombatMove, state: MotionState, camera: PerspectiveCamera, limit: number): void {
     camera.getWorldDirection(this.forward)
-    const aim = Math.hypot(this.forward.x, this.forward.z) > 1e-3 ? Math.atan2(this.forward.x, this.forward.z) : state.yaw
+    let aim = Math.hypot(this.forward.x, this.forward.z) > 1e-3 ? Math.atan2(this.forward.x, this.forward.z) : state.yaw
+    if (this.aimAssist && limit > 0) {
+      aim = this.aimAssist(state.pos.x + Math.sin(state.yaw) * this.robotOffset, state.pos.z + Math.cos(state.yaw) * this.robotOffset, aim)
+    }
     const heading = state.yaw + Math.max(-limit, Math.min(limit, wrap(aim - state.yaw)))
     this.setGround(state, heading)
     const v = this.player.values
@@ -244,6 +290,85 @@ export class RobotCombat {
     this.player.start(move, this.combat.overlay.neutral)
     this.nextStep = 0
     this.struck = false
+    this.hits = null
+    this.nextStrike = 0
+    this.nextBlast = 0
+    this.sweepBase = this.sweepSerial
+    this.sweepSerial += 16
+    this.lastDesired.set(NaN, 0, 0)
+  }
+
+  /** Raise the guard when it is held and nothing else plays; lower it when released. */
+  private updateGuard(state: MotionState, camera: PerspectiveCamera): void {
+    if (this.guardHeld && !this.guarding && !this.special && this.combo.phase !== 'move') {
+      if (this.weight === 0) {
+        this.player.reset(this.combat.overlay.neutral)
+        this.plantFeet()
+        this.combat.effects.begin()
+      }
+      this.combo.cancel()
+      this.queued.length = 0
+      this.exiting = false
+      this.guarding = true
+      this.beginMove(this.combat.guard, state, camera, 0)
+      this.combat.effects.guard(true)
+    } else if (!this.guardHeld && this.guarding) {
+      this.endGuard()
+      this.combo.recover(this.onComboEvent)
+    }
+  }
+
+  private endGuard(): void {
+    if (!this.guarding) return
+    this.guarding = false
+    this.combat.effects.guard(false)
+  }
+
+  /** The current move's strikes and blasts whose time has come, and its sweeps while they run. */
+  private emitHits(state: MotionState, dt: number): void {
+    const hits = this.hits
+    const sink = this.onHit
+    const d = this.desired
+    const motion = Number.isNaN(this.lastDesired.x) || dt <= 0 ? 0 : Math.hypot(d.x - this.lastDesired.x, d.z - this.lastDesired.z) / dt
+    this.lastDesired.copy(d)
+    if (!hits || !sink) return
+    const t = this.player.time
+    const e = this.hit
+    e.special = this.special !== null
+    const strikes = hits.strikes
+    while (strikes && this.nextStrike < strikes.length && strikes[this.nextStrike].t <= t) {
+      const s = strikes[this.nextStrike++]
+      e.shape = 'sector'; e.kind = s.kind; e.x = d.x; e.z = d.z
+      e.heading = state.yaw + ((s.aim ?? 0) * Math.PI) / 180
+      e.reach = s.reach; e.arc = (s.arc * Math.PI) / 180
+      e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.sweep = -1; e.radial = false
+      sink(e)
+    }
+    const blasts = hits.blasts
+    const h = this.heading
+    while (blasts && this.nextBlast < blasts.length && blasts[this.nextBlast].t <= t) {
+      const b = blasts[this.nextBlast++]
+      const [lat, fwd] = b.at
+      e.shape = 'circle'; e.kind = b.kind
+      e.x = this.origin.x + Math.sin(h) * fwd + Math.cos(h) * lat
+      e.z = this.origin.z + Math.cos(h) * fwd - Math.sin(h) * lat
+      e.heading = h; e.reach = b.radius; e.arc = Math.PI * 2
+      e.damage = b.damage; e.knock = b.knock; e.lift = b.lift; e.motion = 0; e.sweep = -1; e.radial = true
+      sink(e)
+    }
+    const sweeps = hits.sweeps
+    if (sweeps) {
+      for (let i = 0; i < sweeps.length; i++) {
+        const w = sweeps[i]
+        if (t < w.t0 || t > w.t1) continue
+        e.shape = 'circle'; e.kind = w.kind
+        e.x = d.x + Math.sin(state.yaw) * w.ahead
+        e.z = d.z + Math.cos(state.yaw) * w.ahead
+        e.heading = state.yaw; e.reach = w.radius; e.arc = Math.PI * 2
+        e.damage = w.damage; e.knock = w.knock; e.lift = w.lift; e.motion = motion; e.sweep = this.sweepBase + i; e.radial = false
+        sink(e)
+      }
+    }
   }
 
   /** The move's ground frame starts at the robot's standing point, facing `heading`. */

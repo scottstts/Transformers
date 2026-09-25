@@ -16,6 +16,9 @@ import { CameraFx } from './combat/camera-fx'
 import { Director, type DirectorSubject } from './combat/director'
 import { Energy } from './combat/energy'
 import { Lens } from '../rendering/lens'
+import type { SoldierAsset } from '../content/soldier/asset'
+import { Horde, type EnemyTarget } from './enemies/horde'
+import { CarBarrier } from './enemies/barrier'
 
 /** Frames rendered behind the switch cover before the new car is revealed. */
 const SWITCH_SETTLE_FRAMES = 3
@@ -71,8 +74,16 @@ export class GameSession {
   private readonly suspensionInverse = new Matrix4()
   private readonly suspensionEuler = new Euler()
   private readonly onFrameError: (error: Error) => void
+  /** the forts' soldiers, and the ring that keeps the car out of the forts */
+  readonly horde: Horde
+  private readonly barrier = new CarBarrier()
+  private readonly target: EnemyTarget = { x: 0, z: 0, radius: 1, vx: 0, vz: 0, height: 4, heading: 0, guard: 0, present: true }
+  private holding: 'car' | 'wall' | null = null
+  private wallTime = 0
+  /** called when the player is held at a fort (the car at its perimeter, the robot against its walls), or no longer (UI hint) */
+  onFortHold: ((hold: 'car' | 'wall' | null) => void) | null = null
 
-  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: PlayableTransformerAsset, onFrameError: (error: Error) => void) {
+  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: PlayableTransformerAsset, soldiers: SoldierAsset, onFrameError: (error: Error) => void) {
     this.renderer = renderer
     this.camera = camera
     this.onFrameError = onFrameError
@@ -81,6 +92,9 @@ export class GameSession {
     configureRenderer(renderer)
     this.scene.add(this.character.model.root, this.character.effects.object)
     this.character.model.pose(0, null)
+    this.horde = new Horde(soldiers, this.world.forts, this.environment.contactEffects, this.audio)
+    this.horde.onStruck = (at, from, strength) => this.character.combat.effects.struck(at, from, strength, this.fight.guarded)
+    this.scene.add(this.horde.object)
 
     bakeEnvironment(renderer, this.scene, this.environment.environmentScene())
 
@@ -173,6 +187,7 @@ export class GameSession {
     const effects = this.character.combat.effects
     effects.warm(true)
     this.environment.contactEffects.warm(true)
+    this.horde.warm(true)
     try {
       await this.renderer.compileAsync(this.scene, this.camera)
       // compileAsync prepares pipelines, but a real hidden draw also forces
@@ -182,6 +197,7 @@ export class GameSession {
     } finally {
       effects.warm(false)
       this.environment.contactEffects.warm(false)
+      this.horde.warm(false)
     }
   }
 
@@ -209,6 +225,12 @@ export class GameSession {
     if (!fight) {
       fight = new RobotCombat(character.combat, character.model, character.robotOffset, this.state, this.cameraFx)
       fight.onStrike = (move) => this.energy.strike(move)
+      // a blow that catches soldiers bites: a moment of hit-stop on a landed strike
+      fight.aimAssist = (x, z, heading) => this.horde.assist(x, z, heading)
+      fight.onHit = (hit) => {
+        const caught = this.horde.hit(hit)
+        if (caught > 0 && hit.shape === 'sector') this.cameraFx.hitStop(0.05, 0.18)
+      }
       this.fights.set(character.id, fight)
     }
     return fight
@@ -299,6 +321,7 @@ export class GameSession {
     }
     const attack = this.input.consumeAttack() && stance && !this.jump.active && !special
     if (attack) fight.press()
+    fight.setGuard(this.input.guarding && stance && !this.jump.active && !special)
     if (this.input.consumeJump() && stance && !attack && !fight.active) this.jump.start(Math.abs(state.speed) / profile.robot.runSpeed)
     const jump = this.jump.update(dt)
     fight.update(dt, state, this.camera)
@@ -315,7 +338,16 @@ export class GameSession {
     }
     if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive)
     else if (!fight.active) updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)
-    resolveCircleCollisions(state, this.world.colliders, this.character.robotOffset, profile)
+    // the forts' ring holds the car back; the robot walks through it
+    this.barrier.apply(state, this.world.forts, profile.drive.maxSpeed, state.progress < 1)
+    const walled = resolveCircleCollisions(state, this.world.colliders, this.character.robotOffset, profile, this.world.segments)
+    // a robot pushing against a fort's walls for a moment is told where the way in is
+    this.wallTime = walled && state.mode === 'robot' && !fight.active ? this.wallTime + frameDt : 0
+    const hold = this.barrier.holding ? 'car' : this.wallTime > 0.6 && this.world.forts.near(state.pos.x, state.pos.z) ? 'wall' : null
+    if (hold !== this.holding) {
+      this.holding = hold
+      this.onFortHold?.(hold)
+    }
     fight.afterCollisions(state)
 
     const pose = gait.update(dt, state.speed, state.yawRate, this.input.running, state.progress >= 1, jump)
@@ -353,9 +385,35 @@ export class GameSession {
       this.director.apply(this.camera, t, frameDt, this.subjectFor(this.character))
     }
     this.cameraFx.apply(this.camera)
+    this.updateTarget(dt)
+    this.horde.update(dt, this.target, this.camera)
     this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root))
     effects.shakeCamera(this.camera, dt)
     this.pipeline.render()
+  }
+
+  /** Where the player's body stands for the soldiers: the robot's standing point, or the car. */
+  private updateTarget(dt: number): void {
+    const state = this.state
+    const robot = state.progress >= 1
+    const offset = robot ? this.character.robotOffset : 0
+    const x = state.pos.x + Math.sin(state.yaw) * offset
+    const z = state.pos.z + Math.cos(state.yaw) * offset
+    const t = this.target
+    if (dt > 0) {
+      t.vx = (x - t.x) / dt
+      t.vz = (z - t.z) / dt
+      // a teleport (a car switch) is not a shove
+      if (Math.hypot(t.vx, t.vz) > 60) t.vx = t.vz = 0
+    }
+    t.x = x
+    t.z = z
+    t.radius = robot ? this.character.profile.robotRadius : this.character.profile.carRadius
+    t.height = robot ? this.character.model.dims.hipZ * 1.8 : 1.6
+    t.heading = state.yaw
+    t.guard = this.fight.guarded ? this.character.combat.effects.guardReach() : 0
+    // out of reach while the special carries it off or it is in the air
+    t.present = !this.fight.cinematic && this.fight.air < 1 && !this.jump.active
   }
 
   dispose(): void {

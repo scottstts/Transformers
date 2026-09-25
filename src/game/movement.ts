@@ -1,5 +1,6 @@
 import type { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import type { CircleCollider, Form, MotionState } from './types'
+import type { CircleCollider, Form, MotionState, SegmentCollider } from './types'
+import { pushOut, type Contact } from './collide'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
 import { GameInput } from './input'
 import type { CharacterProfile, RobotProfile } from '../content/transformer/character'
@@ -44,13 +45,33 @@ export function updateRobot(state: MotionState, input: GameInput, camera: Perspe
   state.longAccel = state.latAccel = 0
 }
 
-export function resolveCircleCollisions(state: MotionState, colliders: CircleCollider[], robotOffset: number, profile: Pick<CharacterProfile, 'carRadius' | 'robotRadius'>): void {
+/** Push the body out of rocks and walls; returns true when it is against a wall (a segment). */
+export function resolveCircleCollisions(state: MotionState, colliders: CircleCollider[], robotOffset: number, profile: Pick<CharacterProfile, 'carRadius' | 'robotRadius'>, segments: readonly SegmentCollider[] = []): boolean {
   const transition = easedRange(state.progress, 0.3, 0.7)
   const offset = robotOffset * transition
   const radius = lerp(profile.carRadius, profile.robotRadius, transition)
   const forwardX = Math.sin(state.yaw)
   const forwardZ = Math.cos(state.yaw)
+  // walls and building sides (the forts): the body's centre pushed out of the capsules
+  let walled = false
+  if (segments.length) {
+    _p.x = state.pos.x + forwardX * offset
+    _p.z = state.pos.z + forwardZ * offset
+    const c = pushOut(_p, radius, segments, [], _contact)
+    if (c) {
+      walled = true
+      state.pos.x = _p.x - forwardX * offset
+      state.pos.z = _p.z - forwardZ * offset
+      // the velocity into the wall is lost; along it, it scrapes
+      const vx = forwardX * state.speed, vz = forwardZ * state.speed
+      const into = vx * c.nx + vz * c.nz
+      if (into < 0) state.speed *= Math.max(0, 1 - Math.min(1, -into / Math.max(Math.abs(state.speed), 1e-3)) * 0.9)
+      state.lateral *= 0.5
+    }
+  }
   for (const collider of colliders) {
+    // a cleared collider (a boulder taken off a fort's grounds) is gone, not a point
+    if (collider.r <= 0) continue
     const dx = state.pos.x + forwardX * offset - collider.x
     const dz = state.pos.z + forwardZ * offset - collider.z
     const distance = Math.hypot(dx, dz)
@@ -62,6 +83,7 @@ export function resolveCircleCollisions(state: MotionState, colliders: CircleCol
       state.lateral *= 0.5
     }
   }
+  return walled
 }
 
 /** Requests during braking or playback are discarded, never queued. */
@@ -87,3 +109,6 @@ export function isTransforming(state: MotionState): boolean {
 export function forward(state: MotionState, out: Vector3): Vector3 {
   return out.set(Math.sin(state.yaw), 0, Math.cos(state.yaw))
 }
+
+const _p = { x: 0, z: 0 }
+const _contact: Contact = { nx: 0, nz: 0, depth: 0 }

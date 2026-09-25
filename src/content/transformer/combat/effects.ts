@@ -1,7 +1,8 @@
 import type { Vector3 } from 'three/webgpu'
 import type { MotionState } from '../../../game/types'
 import type { CombatOverlay } from './overlay'
-import type { MoveCue, Moveset } from './moves'
+import type { CombatMove, MoveCue, Moveset } from './moves'
+import type { CombatHits } from './hits'
 import type { SpecialMove } from './special'
 import type { Side } from './pose'
 import type { Weapon } from './weapon'
@@ -56,6 +57,8 @@ export interface CombatEffects {
   /** a foot is dragged over the ground this frame (m/s) */
   skid(side: Side, at: Vector3, speed: number, dt: number): void
   update(dt: number, frame: CombatFrame): void
+  /** a frame outside the fight: what still plays out (sparks landing, the shield dropping) */
+  ambient(dt: number, yaw: number): void
   /** the combo has ended and the stance is back */
   end(): void
   /** stop everything at once (the character leaves the scene or the stance) */
@@ -68,6 +71,16 @@ export interface CombatEffects {
   warm(on: boolean): void
   /** stop the continuous voices (the character leaves the scene); they rebuild on the next fight */
   dispose(): void
+  /** the guard is raised (its shield forms) or lowered */
+  guard(on: boolean): void
+  /** the raised shield's horizontal radius round the robot at a soldier's height (m), 0 when down */
+  guardReach(): number
+  /**
+   * An enemy's blow lands on the robot at `at` (world), coming from `from`,
+   * strength 0..1: flares the shield there while guarding, else strikes sparks
+   * off the armour. The robot takes no damage.
+   */
+  struck(at: Vector3, from: Vector3, strength: number, guarded: boolean): void
 }
 
 /** A character's fighting: its combo, the rig overlay that poses it and its effects. */
@@ -79,4 +92,8 @@ export interface CharacterCombat {
   readonly stepLift: number
   /** the big move the full energy meter unlocks */
   readonly special: SpecialMove
+  /** what the combo's blows and the special do to enemies */
+  readonly hits: CombatHits
+  /** the defensive pose held while the guard is up (its keys ease in; the last pose holds) */
+  readonly guard: CombatMove
 }

@@ -54,6 +54,25 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - The racer's sword forms from white-hot metal as it is drawn from the left hip, the draw becoming the slash. Sword draws are horizontal yaw sweeps: going through upright whipped the blade over the shoulder and through the torso.
 - **Materials:** each weapon has forged copies of its character's materials. Compiling skips invisible objects, so the session warms the weapon, trail and sparks during boot and first-time car switches. Warmup forces the complete weapon and its cast-shadow path visible under the loading cover and submits real hidden frames, so shader pipelines and geometry uploads are complete before play resumes.
 
+## Guard
+
+- Holding the right mouse button (or the touch guard button) raises the guard. It is `CharacterCombat.guard`, a `CombatMove` whose keys ease into a defensive pose and then hold, played on the same channels. The truck uses a boxer's high guard; the racer crosses its forearms.
+- The guard rises whenever no move is playing: a combo's recovery gives way to it. A click from the guard starts move 1 from the guard pose. Releasing it goes through the normal recovery. A special drops it.
+- While guarding, the fight owns the robot (no walking, jumping or transforming) and `RobotCombat.guarded` is true.
+- **Shield** (`fx/shield.ts`): an ellipsoidal field of glowing hexagonal tiles, in the character's special colour.
+  - The tiles are geometry: a Goldberg tiling (the dual of a geodesic sphere, frequency 8), so hexagons keep an even size everywhere. An angular hex mapping pinched at the top. Each tile's vertices carry its centre and seed, and an edge coordinate (0 centre, 1 outline). The shader draws thin filtered outlines and lights whole tiles.
+  - At rest only the outlines glow, faint and gathering at the silhouette; the tiles breathe barely. A blow flares the tiles round it toward white and sends a ring of lit tiles across the field. Tiles pop in from the ground up when it forms.
+  - Keep the levels low. A bright Fresnel fill read as a milky glass bubble, and bright outlines bloomed to white.
+  - It is fitted every frame to the robot's own parts: every mesh's bounds, in the heading frame round the pelvis, inside an ellipsoid of fixed shape plus a margin. That way each robot (and its guard pose) is enclosed whole. A fixed radius left the truck's shoulders outside.
+  - `guardReach` gives its radius at a soldier's height; the soldiers' ring and slash reach move outside it (enemies.md).
+- `CombatEffects.struck` shows an enemy blow: on the shield (flare, sparks thrown back off it, the field's thump) or, unguarded, on the armour (sparks off the steel, a scrape, a small camera kick). The robot takes no damage.
+- `CombatEffects.ambient` keeps the sparks and the dropping shield running on frames outside the fight.
+
+## Hits
+
+- Each move's effect on enemies is data beside its keys (`<character>/combat/hits.ts`, types in `transformer/combat/hits.ts`): sector strikes at a time, sweeps over a window, radial blasts at ground points. `RobotCombat` emits them as `HitEvent`s at the move's own time, in its ground frame, through `onHit`.
+- Blows are volumes on the ground in front of the robot rather than limb paths: the robots stand head and shoulders over the 3 m soldiers. See enemies.md for how soldiers take them, and `aimAssist` for the soft turn toward a nearby soldier.
+
 ## Effects (`fighter.ts`, `fx/`, `audio/`)
 
 - **Move cues:**

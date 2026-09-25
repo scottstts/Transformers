@@ -4,7 +4,9 @@ import { ROSTER, loadRosterAsset, rosterEntry, saveVehicle, savedVehicle } from 
 import { VehicleMenu } from '../ui/vehicle-menu'
 import { TouchControls } from '../ui/touch-controls'
 import { CinemaBars, EnergyMeter } from '../ui/energy-meter'
+import { FortHint } from '../ui/fort-hint'
 import { PerspectiveCamera } from 'three/webgpu'
+import { loadSoldierAsset } from '../content/soldier/asset'
 
 export async function startGame(setStage: (stage: string) => void): Promise<GameSession> {
   const mount = document.querySelector<HTMLElement>('#app')
@@ -16,12 +18,17 @@ export async function startGame(setStage: (stage: string) => void): Promise<Game
   const entry = rosterEntry(savedVehicle())
   const assetLoad = loadRosterAsset(entry)
   assetLoad.catch(() => undefined)
+  // the forts' soldiers download alongside
+  const soldierLoad = loadSoldierAsset()
+  soldierLoad.catch(() => undefined)
   try {
     await host.initialize()
     setStage(`Loading ${entry.label} model`)
     const asset = await host.observe(assetLoad)
+    setStage('Loading soldier model')
+    const soldiers = await host.observe(soldierLoad)
     setStage('Building game world')
-    const session = new GameSession(host.renderer, sizingCamera, entry, asset, (error) => host.fail(error))
+    const session = new GameSession(host.renderer, sizingCamera, entry, asset, soldiers, (error) => host.fail(error))
     setStage('Compiling shaders')
     await host.observe(session.compile())
     setStage('Rendering first frame')
@@ -59,11 +66,14 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
       jump: () => session.input.pressJump(),
       drift: (held) => session.input.setShift(held),
       attack: () => session.input.pressAttack(),
+      guard: (held) => session.input.setGuard(held),
       special: () => session.input.pressSpecial(),
     })
     : null
   const energy = new EnergyMeter()
   new CinemaBars()
+  const fortHint = new FortHint(touch)
+  session.onFortHold = (hold) => fortHint.set(hold)
   const menu = new VehicleMenu({
     touch,
     roster: ROSTER,

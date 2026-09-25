@@ -11,7 +11,8 @@ const STICK_DEAD = 0.15
  * sideways steers (proportionally), and a stick pushed to the rim runs only in
  * robot form. Car drift is a separate held Shift state. A left click under
  * pointer lock is an attack (the click that
- * takes the lock is not); F is the special.
+ * takes the lock is not); holding the right button holds the guard; F is the
+ * special.
  */
 export class GameInput {
   /** touch stick: x right, y forward, each -1..1 */
@@ -26,6 +27,9 @@ export class GameInput {
   private jumpPressed = false
   private attackPressed = false
   private specialPressed = false
+  /** right mouse button held (under pointer lock), and the touch guard button */
+  private guardMouse = false
+  private guardTouch = false
   private readonly forward = new Vector3()
   private readonly right = new Vector3()
   private readonly direction = new Vector3()
@@ -43,15 +47,29 @@ export class GameInput {
   private readonly onKeyUp = (event: KeyboardEvent): void => { this.keys.delete(event.code) }
   private readonly onBlur = (): void => {
     this.keys.clear()
+    this.guardMouse = false
+    this.guardTouch = false
     this.setStick(0, 0, false)
     this.setShift(false)
   }
   private readonly onPointerLockChange = (): void => {
-    if (document.pointerLockElement !== this.canvas) this.keys.clear()
+    if (document.pointerLockElement !== this.canvas) {
+      this.keys.clear()
+      this.guardMouse = false
+    }
   }
   private readonly onPointerDown = (event: PointerEvent): void => {
     this.onInteraction()
-    if (event.button === 0 && document.pointerLockElement === this.canvas) this.attackPressed = true
+    if (document.pointerLockElement !== this.canvas) return
+    if (event.button === 0) this.attackPressed = true
+    if (event.button === 2) this.guardMouse = true
+  }
+  private readonly onPointerUp = (event: PointerEvent): void => {
+    if (event.button === 2) this.guardMouse = false
+  }
+  private readonly onContextMenu = (event: Event): void => {
+    // the right button is the guard, not a menu
+    if (document.pointerLockElement === this.canvas || event.target === this.canvas) event.preventDefault()
   }
 
   constructor(canvas: HTMLCanvasElement, onTransform: () => void, onInteraction: () => void) {
@@ -62,8 +80,18 @@ export class GameInput {
     window.addEventListener('keyup', this.onKeyUp)
     window.addEventListener('blur', this.onBlur)
     window.addEventListener('pointerdown', this.onPointerDown)
+    window.addEventListener('pointerup', this.onPointerUp)
+    window.addEventListener('contextmenu', this.onContextMenu)
     document.addEventListener('pointerlockchange', this.onPointerLockChange)
   }
+
+  /** The guard is held (right mouse button, or the touch guard button). */
+  get guarding(): boolean {
+    return this.guardMouse || this.guardTouch
+  }
+
+  /** Hold or release the guard from the touch controls. */
+  setGuard(held: boolean): void { this.guardTouch = held }
 
   /** Space was pressed since the last call. */
   consumeJump(): boolean {
@@ -143,6 +171,8 @@ export class GameInput {
     window.removeEventListener('keyup', this.onKeyUp)
     window.removeEventListener('blur', this.onBlur)
     window.removeEventListener('pointerdown', this.onPointerDown)
+    window.removeEventListener('pointerup', this.onPointerUp)
+    window.removeEventListener('contextmenu', this.onContextMenu)
     document.removeEventListener('pointerlockchange', this.onPointerLockChange)
   }
 }

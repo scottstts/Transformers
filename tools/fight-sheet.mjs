@@ -2,6 +2,7 @@
 // Usage: node tools/fight-sheet.mjs <out> [car] [clicks] [from:to:count] [views] [zoom]   (writes <out>-<view>.png)
 //   clicks: comma-separated click times (s), e.g. 0,0.6,1.3,2.5; F<t> plays the special at t (frames are then in the world's clock)
 //   frames: from:to:count evenly spaced frame times, or a comma-separated list
+//   clicks may also hold guard windows: G<t0>-<t1>; BRAWL=<fort index> fights that fort's garrison in its yard
 //   views:  comma-separated: side | right | front | back | quarter | low | top | director (the special's own camera)
 import { createServer } from 'vite'
 
@@ -19,7 +20,7 @@ const frames = span.includes(':')
 const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { renderFightSheet } = await server.ssrLoadModule('/tools/preview/fight.ts')
-  await renderFightSheet(out, { car, clicks: clicks.split(',').filter(Boolean), frames, views: views.split(','), zoom: Number(zoom) })
+  await renderFightSheet(out, { car, clicks: clicks.split(',').filter(Boolean), frames, views: views.split(','), zoom: Number(zoom), brawl: process.env.BRAWL === undefined ? undefined : Number(process.env.BRAWL) })
 } finally {
   await server.close()
 }

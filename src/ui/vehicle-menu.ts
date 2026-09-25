@@ -30,8 +30,8 @@ type HintMode = 'play' | 'fight' | 'special' | 'paused' | 'touch'
 
 const HINTS: Record<HintMode, string> = {
   play: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span>',
-  fight: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span><i></i><kbd>Click</kbd><span>to fight</span>',
-  special: '<kbd>Click</kbd><span>to fight</span><i></i><kbd>F</kbd><span>special</span>',
+  fight: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span><i></i><kbd>Click</kbd><span>to fight</span><i></i><kbd>Right</kbd><span>guard</span>',
+  special: '<kbd>Click</kbd><span>to fight</span><i></i><kbd>Right</kbd><span>guard</span><i></i><kbd>F</kbd><span>special</span>',
   paused: '<span>Click to play</span><i></i><kbd>Tab</kbd><span>to switch</span>',
   touch: '<span>Switch vehicle</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg>',
 }

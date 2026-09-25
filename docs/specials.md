@@ -52,6 +52,15 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 - **HeatHaze:** hot air as soft billboards that read the frame drawn so far (`viewportSharedTexture`) through rising screen-space ripples. They are drawn last (render order 4) and depth tested, so only what lies behind a patch wavers. The offset scales with the patch's size over its distance, so the ripple is the same in the world at any range. The frame copy happens only while a patch is drawn, and the mesh is hidden when none is alive. Where it is used: the truck's jets while they burn, its overcharged axe head, over its cooling glass; the racer's power unit on the limiter, along its hanging arcs, over the burning ring and its centre.
 - All three are warmed with the fighter (`warm`), as are the world's debris and the racer's arcs.
 
+## Against the soldiers
+
+A special's hits are far bigger than the combo's (`hits.ts`, enemies.md). They are marked `special`, which throws debris 30 % harder and scorches blast victims.
+
+- **Skyfall**: the launch blows everything within 10 m flat. The impact kills everything within 22 m of the crater.
+- **Red Line**: each cut marks what it passes through (70 damage) and the hairpins throw what they skid into. At the flick, the blast at the ring's centre (13.5 m) takes the rest.
+
+Soldiers cannot reach the robot during the cutscene (the target is absent).
+
 ## Skyfall (Cybertruck)
 
 - The truck's thruster charge, taken to the sky. The jets are the `Thrusters.boost` override in three modes: back (the charge), down (lift-off) and up-and-back (the dive). One exhaust axis per mode.
