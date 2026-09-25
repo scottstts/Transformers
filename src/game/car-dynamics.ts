@@ -39,8 +39,8 @@ import type { DriveProfile } from '../content/transformer/character'
 export interface CarControls {
   readonly driveThrottle: number
   readonly driveSteering: number
-  /** Shift: full power, loose rear */
-  readonly running: boolean
+  /** Explicit Shift/drift hold: full power, loose rear. */
+  readonly driftHeld: boolean
 }
 
 const G = 9.81
@@ -87,7 +87,7 @@ const DRIFT_LIMIT_SPEED: [number, number] = [7, 14]
 /** One driver-command evaluation per frame; the sub-steps integrate it. */
 export function updateCar(state: MotionState, input: CarControls, dt: number, locked: boolean, car: DriveProfile): void {
   const throttle = locked ? 0 : input.driveThrottle
-  const loose = !locked && input.running
+  const loose = !locked && input.driftHeld
   state.throttle = throttle
   state.boost = loose && throttle > 0
   state.release = damp(state.release, loose ? 1 : 0, loose ? RELEASE_RATE : REGRIP_RATE, dt)

@@ -20,6 +20,11 @@ export interface TransformerAsset {
   weapon?: WeaponAsset
 }
 
+/** A roster-ready character asset: vehicle geometry and combat weapon have both finished loading. */
+export interface PlayableTransformerAsset extends TransformerAsset {
+  weapon: WeaponAsset
+}
+
 /**
  * Fetches and decodes an exported model (`public/models/<name>.{json,bin}`);
  * any failure rejects with a message naming `label`.

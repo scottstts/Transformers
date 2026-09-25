@@ -42,6 +42,8 @@ export class Weapon {
   private readonly meshes: Mesh[] = []
   private glowLevel = 0
   private formed = false
+  /** true only while boot/switch warmup forces every weapon pipeline through a real draw */
+  private warming = false
 
   constructor(asset: WeaponAsset, materials: Record<string, Material>, style: ForgeStyle, grip: Matrix4) {
     this.asset = asset
@@ -74,8 +76,28 @@ export class Weapon {
     hand.add(this.object)
   }
 
+  /** Force the complete weapon, including its shadow path, through hidden warmup draws. */
+  warm(on: boolean): void {
+    this.warming = on
+    if (on) {
+      this.object.visible = true
+      this.front.value = 1
+      this.glow.value = 0
+      for (const mesh of this.meshes) mesh.castShadow = true
+    } else {
+      this.update(0)
+    }
+  }
+
   /** Per frame: follow `presence`, run the afterglow down once formed. */
   update(dt: number): void {
+    if (this.warming) {
+      this.object.visible = true
+      this.front.value = 1
+      this.glow.value = 0
+      for (const mesh of this.meshes) mesh.castShadow = true
+      return
+    }
     const p = Math.max(0, Math.min(1, this.presence))
     this.front.value = p
     const visible = p > 0.001
@@ -83,6 +105,7 @@ export class Weapon {
     if (!visible) {
       this.glowLevel = 0
       this.formed = false
+      for (const mesh of this.meshes) mesh.castShadow = false
       return
     }
     const whole = p >= 0.999

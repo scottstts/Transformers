@@ -206,7 +206,7 @@ describe('ferrari f1 car', () => {
   it('pulls away and reaches its top speeds, boosted faster', () => {
     const top = (boost: boolean): number => {
       const state = createMotionState()
-      const controls = { driveThrottle: 1, driveSteering: 0, running: boost }
+      const controls = { driveThrottle: 1, driveSteering: 0, driftHeld: boost }
       for (let i = 0; i < 60 * 30; i++) updateCar(state, controls, 1 / 60, false, F1_PROFILE.drive)
       return state.speed
     }

@@ -54,6 +54,7 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
       look: (dx, dy) => session.cameraRig.look(dx, dy),
       transform: () => session.toggleForm(),
       jump: () => session.input.pressJump(),
+      drift: (held) => session.input.setShift(held),
       attack: () => session.input.pressAttack(),
     })
     : null
@@ -76,9 +77,13 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
       if (open) pad?.release()
     },
   })
+  pad?.setCarAction(session.carActionsAvailable)
   session.onStandingChange = (standing) => {
     pad?.setRobotActions(standing)
     menu.refreshHint()
+  }
+  session.onCarActionsChange = (available) => {
+    pad?.setCarAction(available)
   }
   return { menu, touch: pad }
 }

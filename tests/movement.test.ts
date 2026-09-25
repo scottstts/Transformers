@@ -62,7 +62,7 @@ describe('world collisions', () => {
 describe('car controls', () => {
   it('does not apply throttle from steering alone', () => {
     const state = createMotionState()
-    const controls = { driveThrottle: 0, driveSteering: 1, running: false }
+    const controls = { driveThrottle: 0, driveSteering: 1, driftHeld: false }
     for (let i = 0; i < 60; i++) updateCar(state, controls, 1 / 60, false, CAR)
     expect(state.speed).toBe(0)
     expect(state.pos.length()).toBe(0)
@@ -76,8 +76,8 @@ describe('car controls', () => {
     left.yaw = 0
     right.speed = 8
     left.speed = 8
-    const rightControls = { driveThrottle: 0, driveSteering: 1, running: false }
-    const leftControls = { driveThrottle: 0, driveSteering: -1, running: false }
+    const rightControls = { driveThrottle: 0, driveSteering: 1, driftHeld: false }
+    const leftControls = { driveThrottle: 0, driveSteering: -1, driftHeld: false }
     for (let i = 0; i < 30; i++) {
       updateCar(right, rightControls, 1 / 60, false, CAR)
       updateCar(left, leftControls, 1 / 60, false, CAR)
@@ -90,7 +90,7 @@ describe('car controls', () => {
 
   it('brakes before changing from forward to reverse', () => {
     const state = createMotionState()
-    const controls = { driveThrottle: 1, driveSteering: 0, running: false }
+    const controls = { driveThrottle: 1, driveSteering: 0, driftHeld: false }
     for (let i = 0; i < 120; i++) updateCar(state, controls, 1 / 60, false, CAR)
     expect(state.speed).toBeGreaterThan(0)
     controls.driveThrottle = -1

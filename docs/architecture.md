@@ -13,9 +13,9 @@ Each character package (`src/content/cybertruck/`, `src/content/ferrari-f1/`) su
 ## Switching cars
 
 `GameSession.switchCharacter` swaps cars in either form when no transformation or jump is running. A car is built the first time it is chosen:
-- download its asset;
+- download its vehicle and weapon assets together; the roster load promise is typed as `PlayableTransformerAsset`, so it cannot report ready without the weapon;
 - place it where the current car stands;
-- compile its shaders against the live scene's lighting (`compileAsync(object, camera, scene)`), so the swap itself does not hitch.
+- compile its shaders against the live scene's lighting (`compileAsync(object, camera, scene)`), then keep the combat weapon/effects warm through the hidden settle frames so geometry uploads plus the weapon cast-shadow pipeline are submitted before the cover lifts.
 
 Built cars stay cached (GPU resources warm) for switching back. On the swap:
 - the old car's voices stop;
@@ -30,9 +30,10 @@ The vehicle menu (`src/ui/vehicle-menu.ts`) is the only in-game UI besides the t
 - a floating stick on the left 45 % of the screen, which centres under the thumb;
 - a drag anywhere else to look (`FollowCamera.look`, the same path as mouse movement);
 - a transform button;
-- jump and attack buttons, shown only while the robot stands (`GameSession.onStandingChange`), since a car can do neither.
+- jump and attack buttons, shown only while the robot stands (`GameSession.onStandingChange`);
+- a held drift button in the jump button's exact slot while the car is fully settled. It drives the same Shift state as the keyboard and is released as soon as transformation, switching, the menu, or focus loss makes car actions unavailable.
 
-The stick maps onto the keyboard controls rather than adding an analog mode. Forward and back switch the throttle on and off, as W and S do. Sideways steers the car proportionally. For the robot, the stick gives a camera-relative walking direction. Pushing the stick to the rim is Shift (run, or drift in the car). The menu pill moves to the top on touch screens, clear of the thumbs, and a tap opens it. The touch controls hide and release every finger while the menu is open.
+The stick maps onto the keyboard controls rather than adding a separate car mode. Forward and back switch the throttle on and off, as W and S do, and sideways steers the car proportionally. In car form the stick never implies Shift, even at full deflection: ordinary joystick driving stays in the same aided regime as desktop WASD. The held Drift button is the only touch source for the car's Shift state, and releasing it follows the exact desktop Shift-release path. For the robot, the stick gives a camera-relative walking direction and pushing it to the rim still runs. The menu pill moves to the top on touch screens, clear of the thumbs, and a tap opens it. The touch controls hide and release every finger while the menu is open.
 
 ## Audio
 

@@ -169,7 +169,7 @@ export class Fighter implements CombatEffects {
   }
 
   warm(on: boolean): void {
-    if (this.weapon) this.weapon.object.visible = on
+    this.weapon?.warm(on)
     this.trail.mesh.visible = on
     this.sparks.mesh.visible = on
   }

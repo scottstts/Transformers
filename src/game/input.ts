@@ -8,8 +8,9 @@ const STICK_DEAD = 0.15
 /**
  * Keyboard and mouse input, plus an analog stick from the touch controls. The
  * stick maps onto the same controls as the keys: forward/back is the throttle,
- * sideways steers (proportionally), and a stick pushed to the rim runs or
- * drifts (Shift). A left click under pointer lock is an attack (the click that
+ * sideways steers (proportionally), and a stick pushed to the rim runs only in
+ * robot form. Car drift is a separate held Shift state. A left click under
+ * pointer lock is an attack (the click that
  * takes the lock is not).
  */
 export class GameInput {
@@ -17,6 +18,8 @@ export class GameInput {
   private stickX = 0
   private stickY = 0
   private stickRun = false
+  /** mobile drift button: held state, equivalent to either Shift key */
+  private touchShift = false
   private readonly onTransform: () => void
   private readonly onInteraction: () => void
   private readonly keys = new Set<string>()
@@ -39,6 +42,7 @@ export class GameInput {
   private readonly onBlur = (): void => {
     this.keys.clear()
     this.setStick(0, 0, false)
+    this.setShift(false)
   }
   private readonly onPointerLockChange = (): void => {
     if (document.pointerLockElement !== this.canvas) this.keys.clear()
@@ -86,8 +90,14 @@ export class GameInput {
   /** A jump from the touch controls (same as Space). */
   pressJump(): void { this.jumpPressed = true }
 
+  /** Hold/release Shift from the touch drift button. */
+  setShift(held: boolean): void { this.touchShift = held }
+
   pressed(...codes: string[]): boolean { return codes.some((code) => this.keys.has(code)) }
-  get running(): boolean { return this.stickRun || this.pressed('ShiftLeft', 'ShiftRight') }
+  /** Robot run: stick at the rim or either Shift source. */
+  get running(): boolean { return this.stickRun || this.driftHeld }
+  /** Car drift/boost: only an explicit held Shift key or the mobile Drift button. */
+  get driftHeld(): boolean { return this.touchShift || this.pressed('ShiftLeft', 'ShiftRight') }
   get driveThrottle(): number {
     const keys = Number(this.pressed('KeyW', 'ArrowUp')) - Number(this.pressed('KeyS', 'ArrowDown'))
     return keys || (this.stickY > STICK_THROTTLE ? 1 : this.stickY < -STICK_THROTTLE ? -1 : 0)
