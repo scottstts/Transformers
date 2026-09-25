@@ -46,8 +46,8 @@ const RACER_FOOT: FootfallTuning = {
   level: 0.3,
 }
 
-/** Wide slicks under a light car: a tighter, slightly higher tear than the truck's. */
-const RACER_TYRES: TyreTuning = { scrubHz: [330, 30], rumbleHz: 140, distanceHz: 2800, level: 0.16 }
+/** Wide slicks under a light car: a lighter roar than the truck's. */
+const RACER_TYRES: TyreTuning = { scrubHz: 1100, rumbleHz: 140, level: 0.16 }
 
 export class F1Audio implements CharacterAudio {
   private readonly mix: AudioMix
@@ -85,7 +85,7 @@ export class F1Audio implements CharacterAudio {
    */
   drive(dt: number, wheelSpeed: number, throttle: number, boost: boolean, isCar: boolean, slide: number): void {
     this.engine.update(dt, wheelSpeed, throttle, boost, isCar)
-    this.tyres.update(isCar ? slide : 0, wheelSpeed)
+    this.tyres.update(isCar ? slide : 0)
   }
 
   dispose(): void {

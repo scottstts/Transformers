@@ -48,12 +48,14 @@ Crackle is what makes it a rocket rather than wind: steep positive shocks with a
 
 Driving plays only a plain electric drive motor: a soft hum following the driven wheels' speed (wheelspin winds it up) with a faint, heavily lowpassed whine, silent at rest. Rolling tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill).
 
-Sliding tyres (drift, wheelspin, lock) have their own shared voice (`transformer/audio/tyres.ts`), silent until the tread slides. On the desert a sliding tyre doesn't squeal like rubber on asphalt; it tears through the crust and throws grit. The voice has three layers:
-- a band-passed scrub from the turbulent roar texture, rising in pitch and level with the slide speed;
-- a gravel spray from the chatter texture, denser with the slide;
+Sliding tyres (drift, wheelspin, lock) have their own shared voice (`transformer/audio/tyres.ts`), silent until the tread slides faster than 1.5 m/s, so ordinary cornering makes no tyre sound. On the desert a sliding tyre doesn't squeal; it tears through the crust with a broadband roar. The voice has three layers, whose levels alone follow the slide:
+- a scrub from the turbulent roar texture through a fixed highpass and lowpass (900 Hz for the truck, `HEAVY_TYRES`);
+- a quiet broadband grain hiss (0.9–3 kHz);
 - a low body rumble.
 
-All of it goes through a 2.4 kHz distance lowpass (`HEAVY_TYRES`), keeping it well below the brightness that was rejected before. Footfalls keep the ground thump, gravel crunch and damper exhale, with a dedicated voice gain of 0.4 before both the dry mix and reverb send. This keeps walking and running subdued while preserving their relative impact strength; jump contacts use the same footfall voice.
+The first version was rejected as sounding like water poured into a glass. It swept a band-pass filter's centre up with the slide speed and played the gravel chatter texture (tuned, ringing clicks) at a varying rate. Keep this voice unpitched: no moving filters, no resonant filters (Q ≤ 0.5), no tuned click textures.
+
+Footfalls keep the ground thump, gravel crunch and damper exhale, with a dedicated voice gain of 0.4 before both the dry mix and reverb send. This keeps walking and running subdued while preserving their relative impact strength; jump contacts use the same footfall voice.
 
 ## Mix and textures
 
