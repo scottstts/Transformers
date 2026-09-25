@@ -18,6 +18,14 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 
 `tests/desert-world.test.ts` checks tyre-track ribbon continuity and restarts.
 
+`tests/combo.test.ts` checks the click combo (one click one move, chaining only inside the window, early clicks ignored, a late click restarting from move 1, nothing after move 4) and that keyed curves pass their keys without overshoot. `tests/combat.test.ts` checks, for both robots:
+- four well-formed moves;
+- that neutral channels reproduce the gait's stance (a seamless hand-back);
+- the whole combo: planted feet on the ground, wrists and the formed weapon never inside the chest, pelvis or head, the weapon gone and the gait back in charge at the end;
+- a single click playing move 1 only.
+
+`tools/fight-probe.mjs` prints a combo's pose numbers and `tools/fight-sheet.mjs` renders contact sheets of it (combat.md).
+
 `tests/car-dynamics.test.ts` checks, for both cars:
 - grip cornering without Shift (no slide);
 - a held drift staying within its angle band without spinning, and scrubbing speed;
@@ -58,6 +66,7 @@ For a look at effects without a browser, `tools/preview.mjs` renders fixed shots
 - tyre tracks after a drive (`tracks*`);
 - a left drift and its roost (`drift`, `drift-roost`) and its marks (`drift-marks*`);
 - the opening broadside (`side`);
+- the robot standing (`robot-front`, `robot-hand`);
 - the nearest boulder (`boulder`):
 
 ```bash

@@ -7,6 +7,8 @@ import { RobotGait } from '../transformer/animation/gait'
 import type { Character, CharacterProfile } from '../transformer/character'
 import { createMaterials } from './materials.ts'
 import { CybertruckEffects } from './effects'
+import { loadWeaponAsset } from '../transformer/asset/weapon'
+import { createCybertruckCombat } from './combat'
 
 export const CYBERTRUCK_LABEL = 'Cybertruck'
 
@@ -46,9 +48,13 @@ export const CYBERTRUCK_PROFILE: CharacterProfile = {
   robotRadius: 1.5,
 }
 
-export function loadCybertruckAsset(): Promise<TransformerAsset> {
-  return loadTransformerAsset('cybertruck', CYBERTRUCK_LABEL)
+export async function loadCybertruckAsset(): Promise<TransformerAsset> {
+  const [asset, weapon] = await Promise.all([loadTransformerAsset('cybertruck', CYBERTRUCK_LABEL), loadWeaponAsset(CYBERTRUCK_WEAPON, CYBERTRUCK_LABEL)])
+  return { ...asset, weapon }
 }
+
+/** The robot's axe (public/models/cybertruck-axe.*). */
+export const CYBERTRUCK_WEAPON = 'cybertruck-axe'
 
 /** The Cybertruck's authored parts and simulation settings. */
 export function createCybertruck(asset: TransformerAsset, contactEffects: ContactEffects, mix: AudioMix): Character & { effects: CybertruckEffects } {
@@ -56,11 +62,13 @@ export function createCybertruck(asset: TransformerAsset, contactEffects: Contac
     label: CYBERTRUCK_LABEL,
     footNodes: ['bone:foot.L', 'bone:foot.R', 'asm:toecap.L', 'asm:toecap.R'],
   })
+  const effects = new CybertruckEffects(model, contactEffects, asset.manifest.events, model.duration, mix)
   return {
     id: 'cybertruck',
     model,
     gait: new RobotGait(),
-    effects: new CybertruckEffects(model, contactEffects, asset.manifest.events, model.duration, mix),
+    effects,
+    combat: createCybertruckCombat(model, asset.weapon, effects, contactEffects, mix),
     profile: CYBERTRUCK_PROFILE,
     transformationDuration: model.duration,
     robotOffset: model.dims.robotF,

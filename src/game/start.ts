@@ -22,7 +22,7 @@ export async function startGame(setStage: (stage: string) => void): Promise<Game
     setStage('Building game world')
     const session = new GameSession(host.renderer, sizingCamera, entry, asset, (error) => host.fail(error))
     setStage('Compiling shaders')
-    await host.observe(host.renderer.compileAsync(session.scene, session.camera))
+    await host.observe(session.compile())
     setStage('Rendering first frame')
     session.frame()
     await host.waitForGpu()
@@ -54,15 +54,16 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
       look: (dx, dy) => session.cameraRig.look(dx, dy),
       transform: () => session.toggleForm(),
       jump: () => session.input.pressJump(),
+      attack: () => session.input.pressAttack(),
     })
     : null
-  if (pad) session.onStandingChange = (standing) => pad.setJumpAvailable(standing)
   const menu = new VehicleMenu({
     touch,
     roster: ROSTER,
     current: () => session.character.id,
     get canSwitch() { return session.canSwitch },
     get playing() { return touch || session.cameraRig.locked },
+    get standing() { return session.standingRobot },
     switchTo: async (entry) => {
       const switched = await session.switchCharacter(entry)
       if (switched) saveVehicle(entry.id)
@@ -75,5 +76,9 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
       if (open) pad?.release()
     },
   })
+  session.onStandingChange = (standing) => {
+    pad?.setRobotActions(standing)
+    menu.refreshHint()
+  }
   return { menu, touch: pad }
 }

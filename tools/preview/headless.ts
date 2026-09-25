@@ -38,6 +38,34 @@ export async function createHeadlessRenderer(width: number, height: number) {
   await renderer.init()
   renderer.setSize(width, height, false)
 
+  /** The last frame as tightly packed RGBA rows. */
+  async function grab(): Promise<Uint8Array> {
+    const dev = device
+    const tex = target!
+    const bytesPerRow = Math.ceil(width * 4 / 256) * 256
+    const buffer = dev.createBuffer({ size: bytesPerRow * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+    const enc = dev.createCommandEncoder()
+    enc.copyTextureToBuffer({ texture: tex }, { buffer, bytesPerRow }, [width, height])
+    dev.queue.submit([enc.finish()])
+    await buffer.mapAsync(GPUMapMode.READ)
+    const src = new Uint8Array(buffer.getMappedRange())
+    const out = new Uint8Array(width * height * 4)
+    const bgra = format.startsWith('bgra')
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const s = y * bytesPerRow + x * 4
+        const d = (y * width + x) * 4
+        out[d] = src[s + (bgra ? 2 : 0)]
+        out[d + 1] = src[s + 1]
+        out[d + 2] = src[s + (bgra ? 0 : 2)]
+        out[d + 3] = 255
+      }
+    }
+    buffer.unmap()
+    buffer.destroy()
+    return out
+  }
+
   async function capture(path: string): Promise<void> {
     const dev = device
     const tex = target!
@@ -65,7 +93,17 @@ export async function createHeadlessRenderer(width: number, height: number) {
     writeFileSync(path, png(width, height, rows))
   }
 
-  return { renderer, capture }
+  return { renderer, capture, grab }
+}
+
+/** Write tightly packed RGBA rows as a PNG. */
+export function writePng(path: string, width: number, height: number, rgba: Uint8Array): void {
+  const rows = Buffer.alloc((width * 4 + 1) * height)
+  for (let y = 0; y < height; y++) {
+    rows[y * (width * 4 + 1)] = 0
+    rows.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), y * (width * 4 + 1) + 1)
+  }
+  writeFileSync(path, png(width, height, rows))
 }
 
 function png(width: number, height: number, rows: Buffer): Buffer {

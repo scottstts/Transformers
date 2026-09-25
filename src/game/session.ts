@@ -11,6 +11,8 @@ import { advanceTransformation, isTransforming, requestTransformation, resolveCi
 import { updateCar } from './car-dynamics'
 import { createMotionState, type Form } from './types'
 import { RobotJump } from './jump'
+import { RobotCombat } from './combat/robot-combat'
+import { CameraFx } from './combat/camera-fx'
 
 /** Frames rendered behind the switch cover before the new car is revealed. */
 const SWITCH_SETTLE_FRAMES = 3
@@ -32,10 +34,19 @@ export class GameSession {
   private readonly built = new Map<string, Character>()
   private switching: string | null = null
   private standing = false
+  /** the robot stands: it can walk, jump and fight */
+  get standingRobot(): boolean {
+    return this.standing
+  }
   /** called when the robot comes to stand or leaves it (car form, transforming); for UI such as the touch jump button */
   onStandingChange: ((standing: boolean) => void) | null = null
   private readonly timer = new Timer()
   private readonly jump = new RobotJump()
+  /** camera reactions and the fight's clock rate (hit-stop) */
+  private readonly cameraFx = new CameraFx()
+  /** each built character's fight (kept with the character) */
+  private readonly fights = new Map<string, RobotCombat>()
+  private fight: RobotCombat
   private readonly up = new Vector3(0, 1, 0)
   private readonly suspensionRotation = new Matrix4()
   private readonly suspensionInverse = new Matrix4()
@@ -54,6 +65,7 @@ export class GameSession {
 
     bakeEnvironment(renderer, this.scene, this.environment.environmentScene())
 
+    this.fight = this.fightFor(this.character)
     this.cameraRig = new FollowCamera(this.camera, renderer.domElement, this.state.yaw, this.character.robotOffset, this.character.profile.camera)
     this.cameraRig.showSide(this.state.yaw)
     this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.audio.resume())
@@ -63,7 +75,7 @@ export class GameSession {
   }
 
   selectForm(form: Form): void {
-    if (this.jump.active || this.switching) return
+    if (this.jump.active || this.fight.active || this.switching) return
     requestTransformation(this.state, form)
   }
 
@@ -71,9 +83,9 @@ export class GameSession {
     this.selectForm(this.state.mode === 'car' ? 'robot' : 'car')
   }
 
-  /** A car can be swapped in whenever no transformation or jump is running (either form). */
+  /** A car can be swapped in whenever no transformation, jump or fight is running (either form). */
   get canSwitch(): boolean {
-    return !isTransforming(this.state) && !this.jump.active
+    return !isTransforming(this.state) && !this.jump.active && !this.fight.active
   }
 
   /** The car being loaded by `switchCharacter`, if any. */
@@ -102,7 +114,13 @@ export class GameSession {
         const asset = await loadRosterAsset(entry)
         next = entry.create(asset, this.environment.contactEffects, this.audio)
         this.stage(next)
-        await this.renderer.compileAsync(next.model.root, this.camera, this.scene)
+        next.combat.effects.warm(true)
+        try {
+          await this.renderer.compileAsync(next.model.root, this.camera, this.scene)
+          await this.renderer.compileAsync(next.effects.object, this.camera, this.scene)
+        } finally {
+          next.combat.effects.warm(false)
+        }
         this.built.set(entry.id, next)
       }
       if (!this.canSwitch) return false
@@ -112,6 +130,17 @@ export class GameSession {
     } finally {
       this.switching = null
       this.audio.hold(false)
+    }
+  }
+
+  /** Compile every pipeline the scene can draw, the fight's hidden weapon and effects included. */
+  async compile(): Promise<void> {
+    const effects = this.character.combat.effects
+    effects.warm(true)
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera)
+    } finally {
+      effects.warm(false)
     }
   }
 
@@ -130,6 +159,15 @@ export class GameSession {
     }
   }
 
+  private fightFor(character: Character): RobotCombat {
+    let fight = this.fights.get(character.id)
+    if (!fight) {
+      fight = new RobotCombat(character.combat, character.model, character.robotOffset, this.state, this.cameraFx)
+      this.fights.set(character.id, fight)
+    }
+    return fight
+  }
+
   /** Place a character's model where the current one stands (at the current pose). */
   private stage(next: Character): void {
     const root = next.model.root
@@ -143,6 +181,9 @@ export class GameSession {
     const state = this.state
     this.scene.remove(previous.model.root, previous.effects.object)
     previous.effects.audio.dispose()
+    this.fight.cancel()
+    previous.combat.effects.dispose()
+    this.cameraFx.reset()
     // a standing robot stays where it stands: the car origin moves by the difference in stations
     if (state.progress >= 1) {
       const shift = previous.robotOffset - next.robotOffset
@@ -151,6 +192,7 @@ export class GameSession {
     }
     state.speed = Math.min(state.speed, next.profile.drive.maxSpeed)
     this.character = next
+    this.fight = this.fightFor(next)
     this.stage(next)
     this.scene.add(next.model.root, next.effects.object)
     this.cameraRig.setCharacter(next.robotOffset, next.profile.camera)
@@ -160,27 +202,39 @@ export class GameSession {
 
   private updateAndRender(): void {
     this.timer.update()
-    const dt = Math.max(1 / 240, Math.min(this.timer.getDelta(), 1 / 30))
+    const frameDt = Math.max(1 / 240, Math.min(this.timer.getDelta(), 1 / 30))
+    // the fight's hit-stop slows the world's clock for a moment; the camera keeps real time
+    this.cameraFx.update(frameDt)
+    const dt = frameDt * this.cameraFx.timeScale
     const state = this.state
     const { model, gait, effects, profile } = this.character
+    const fight = this.fight
     const previous = advanceTransformation(state, dt, this.character.transformationDuration)
     // a car switch in progress locks the controls, as a transformation does
     const busy = isTransforming(state) || this.switching !== null
-    if (this.input.consumeJump() && !busy && state.mode === 'robot' && state.progress >= 1) this.jump.start(Math.abs(state.speed) / profile.robot.runSpeed)
+    const stance = !busy && state.mode === 'robot' && state.progress >= 1
+    const attack = this.input.consumeAttack() && stance && !this.jump.active
+    if (attack) fight.press()
+    if (this.input.consumeJump() && stance && !attack && !fight.active) this.jump.start(Math.abs(state.speed) / profile.robot.runSpeed)
     const jump = this.jump.update(dt)
+    fight.update(dt, state, this.camera)
     const standing = state.mode === 'robot' && state.progress >= 1
     if (standing !== this.standing) {
       this.standing = standing
       this.onStandingChange?.(standing)
     }
     if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive)
-    else updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)
+    else if (!fight.active) updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)
     resolveCircleCollisions(state, this.world.colliders, this.character.robotOffset, profile)
+    fight.afterCollisions(state)
 
     const pose = gait.update(dt, state.speed, state.yawRate, this.input.running, state.progress >= 1, jump)
     if (jump.tookOff) effects.takeoff()
     if (jump.landed) effects.land(gait.jumpLead)
+    // the fight places its own feet: the stride's footfalls fall silent under it
+    if (fight.poseWeight > 0.5) gait.events.length = 0
     while (gait.events.length) effects.addFootstep(gait.events.pop() as 'R' | 'L', gait.run)
+    if (fight.poseWeight > 0) pose.air = (pose.air ?? 0) + (fight.air - (pose.air ?? 0)) * fight.poseWeight
 
     model.steer = state.steer
     model.spin = state.spin
@@ -197,7 +251,8 @@ export class GameSession {
     effects.timeline(previous, state.progress)
     effects.update(dt, state)
 
-    this.cameraRig.update(dt, state, model.root, this.input.driving && !busy && state.mode === 'car')
+    this.cameraRig.update(frameDt, state, model.root, this.input.driving && !busy && state.mode === 'car')
+    this.cameraFx.apply(this.camera)
     this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root))
     effects.shakeCamera(this.camera, dt)
     this.pipeline.render()

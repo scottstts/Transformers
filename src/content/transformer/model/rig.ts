@@ -9,8 +9,23 @@ import type { RigBone, RigDims } from '../asset/format'
  * the legs with the same two-bone IK the transformation was audited with.
  */
 
-/** A foot target: ankle forward of its station and up (m), foot pitch (rad, + toe down). */
-export interface GaitLeg { step: number; up: number; pitch: number }
+/**
+ * A foot target: ankle forward of its station and up (m), foot pitch (rad, + toe down);
+ * optionally the ankle's lateral place in the model frame (m, + left; default: the
+ * stance station) and the foot's yaw (rad, + toe turned left).
+ */
+export interface GaitLeg { step: number; up: number; pitch: number; x?: number; yaw?: number }
+
+/**
+ * A second pose laid over the gait (fighting): it may move the pelvis frame and
+ * any bone's local rotation, and returns the leg targets the IK then solves.
+ * Called with the gait's locals in place and the gait's pelvis frame in `root`.
+ */
+export interface RigOverlay {
+  /** 0..1 how far the overlay owns the pose; 0 leaves the gait untouched */
+  readonly weight: number
+  apply(rig: RobotRig, root: Matrix4, gait: GaitPose): Record<'R' | 'L', GaitLeg>
+}
 
 export interface GaitPose {
   legs: Record<'R' | 'L', GaitLeg>
@@ -52,8 +67,9 @@ export class RobotRig {
   readonly parent: Array<number>
   readonly offset: Vector3[]
   readonly index: Record<string, number> = {}
-  private readonly stand: LocalPose[]
-  private readonly dims: RigDims
+  /** the exported stand pose (local) */
+  readonly stand: LocalPose[]
+  readonly dims: RigDims
   /** local pose per bone, written by the pose functions */
   readonly local: LocalPose[]
   /** joint-frame world matrices (authoring frame, before the ground lift) */
@@ -76,8 +92,8 @@ export class RobotRig {
   /** pelvis joint frame of the last live pose */
   readonly root = new Matrix4()
 
-  /** Stand pose + gait channels; legs solved to the gait's foot targets. */
-  poseLive(g: GaitPose): void {
+  /** Stand pose + gait channels (+ an overlay such as a fighting move); legs solved to the foot targets. */
+  poseLive(g: GaitPose, overlay: RigOverlay | null = null): void {
     const d = this.dims
     const S = this.stand
     for (let i = 0; i < this.names.length; i++) {
@@ -109,7 +125,7 @@ export class RobotRig {
         for (let k = 0; k < 3; k++) set(`${f}${k + 1}.${side}`, eulerXYZ(0, s * d.fingerCurl[k] * curl, 0, tmp))
       }
     }
-    this.solve(root, g)
+    this.solve(root, overlay && overlay.weight > 0 ? overlay.apply(this, root, g) : g.legs)
   }
 
   /** FK from the local poses; the pelvis joint frame is `root`. */
@@ -127,7 +143,7 @@ export class RobotRig {
     }
   }
 
-  private solve(root: Matrix4, g: GaitPose): void {
+  private solve(root: Matrix4, legs: Record<'R' | 'L', GaitLeg>): void {
     const d = this.dims
     this.forward(root)
     // knee pole: pelvis front, blended with pelvis up for rigs whose legs also fold forward
@@ -136,16 +152,18 @@ export class RobotRig {
     const stanceX = d.stanceX ?? d.hipX
     const footF = d.footF ?? d.robotF
     for (const [side, s] of SIDES) {
-      const leg = g.legs[side]
-      _v2.set(s * stanceX, -(footF + leg.step), d.ankleZ + leg.up)
+      const leg = legs[side]
+      _v2.set(leg.x ?? s * stanceX, -(footF + leg.step), d.ankleZ + leg.up)
       const knee = solveLeg(this.world[this.index[`hip.${side}`]], _v2, d.thigh, d.shin, pole, this.local[this.index[`thigh.${side}`]].q)
       this.local[this.index[`shin.${side}`]].q.setFromAxisAngle(X_AXIS, knee)
     }
     this.forward(root)
     for (const [side] of SIDES) {
-      // foot held level to the ground, pitched by the gait
+      // foot held level to the ground, turned by its yaw and pitched by the gait
+      const leg = legs[side]
       const shin = _q1.setFromRotationMatrix(this.world[this.index[`shin.${side}`]]).invert()
-      this.local[this.index[`foot.${side}`]].q.copy(shin.multiply(_q2.setFromAxisAngle(X_AXIS, g.legs[side].pitch)))
+      if (leg.yaw) shin.multiply(_q2.setFromAxisAngle(Z_AXIS, leg.yaw))
+      this.local[this.index[`foot.${side}`]].q.copy(shin.multiply(_q2.setFromAxisAngle(X_AXIS, leg.pitch)))
     }
     this.forward(root)
   }
@@ -153,6 +171,7 @@ export class RobotRig {
 
 const ONE = new Vector3(1, 1, 1)
 const X_AXIS = new Vector3(1, 0, 0)
+const Z_AXIS = new Vector3(0, 0, 1)
 const SIDES = [['L', 1], ['R', -1]] as const
 const _m0 = new Matrix4()
 const _m1 = new Matrix4()

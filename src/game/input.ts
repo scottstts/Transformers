@@ -6,9 +6,11 @@ const STICK_THROTTLE = 0.35
 const STICK_DEAD = 0.15
 
 /**
- * Keyboard input, plus an analog stick from the touch controls. The stick maps
- * onto the same controls as the keys: forward/back is the throttle, sideways
- * steers (proportionally), and a stick pushed to the rim runs or drifts (Shift).
+ * Keyboard and mouse input, plus an analog stick from the touch controls. The
+ * stick maps onto the same controls as the keys: forward/back is the throttle,
+ * sideways steers (proportionally), and a stick pushed to the rim runs or
+ * drifts (Shift). A left click under pointer lock is an attack (the click that
+ * takes the lock is not).
  */
 export class GameInput {
   /** touch stick: x right, y forward, each -1..1 */
@@ -19,6 +21,7 @@ export class GameInput {
   private readonly onInteraction: () => void
   private readonly keys = new Set<string>()
   private jumpPressed = false
+  private attackPressed = false
   private readonly forward = new Vector3()
   private readonly right = new Vector3()
   private readonly direction = new Vector3()
@@ -40,7 +43,10 @@ export class GameInput {
   private readonly onPointerLockChange = (): void => {
     if (document.pointerLockElement !== this.canvas) this.keys.clear()
   }
-  private readonly onPointerDown = (): void => { this.onInteraction() }
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    this.onInteraction()
+    if (event.button === 0 && document.pointerLockElement === this.canvas) this.attackPressed = true
+  }
 
   constructor(canvas: HTMLCanvasElement, onTransform: () => void, onInteraction: () => void) {
     this.canvas = canvas
@@ -59,6 +65,16 @@ export class GameInput {
     this.jumpPressed = false
     return pressed
   }
+
+  /** A click (or the touch attack button) since the last call. */
+  consumeAttack(): boolean {
+    const pressed = this.attackPressed
+    this.attackPressed = false
+    return pressed
+  }
+
+  /** An attack from the touch controls (same as a click). */
+  pressAttack(): void { this.attackPressed = true }
 
   /** Touch stick deflection (clamped to the unit disc by the caller); `run` when pushed to the rim. */
   setStick(x: number, y: number, run: boolean): void {

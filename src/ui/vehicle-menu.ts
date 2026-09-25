@@ -11,6 +11,8 @@ export interface VehicleHost {
   /** pause / restore mouse look while the menu sits over the locked pointer */
   holdLook(held: boolean): void
   readonly playing: boolean
+  /** the robot stands (it can fight) */
+  readonly standing: boolean
   /** on-screen touch controls instead of mouse and keyboard */
   readonly touch: boolean
   /** the menu opened or closed */
@@ -20,10 +22,11 @@ export interface VehicleHost {
 /** Horizontal drag (px) that counts as a swipe. */
 const SWIPE_PX = 40
 
-type HintMode = 'play' | 'paused' | 'touch'
+type HintMode = 'play' | 'fight' | 'paused' | 'touch'
 
 const HINTS: Record<HintMode, string> = {
   play: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span>',
+  fight: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span><i></i><kbd>Click</kbd><span>to fight</span>',
   paused: '<span>Click to play</span><i></i><kbd>Tab</kbd><span>to switch</span>',
   touch: '<span>Switch vehicle</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg>',
 }
@@ -207,9 +210,9 @@ export class VehicleMenu {
     if (resume) this.host.resume()
   }
 
-  /** Refresh the pill after the game starts or stops playing. */
+  /** Refresh the pill after the game starts or stops playing, or the robot comes to or leaves its stance. */
   refreshHint(): void {
-    const mode: HintMode = this.host.touch ? 'touch' : this.host.playing ? 'play' : 'paused'
+    const mode: HintMode = this.host.touch ? 'touch' : !this.host.playing ? 'paused' : this.host.standing ? 'fight' : 'play'
     if (mode === this.hintMode) return
     this.hintMode = mode
     this.hintLabels.forEach((label, key) => { label.classList.toggle('shown', key === mode) })

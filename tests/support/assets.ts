@@ -3,6 +3,7 @@ import { decodeTransformerAsset, type TransformerAsset } from '../../src/content
 import type { TransformerManifest } from '../../src/content/transformer/asset/format.ts'
 import type { ContactEffects } from '../../src/game/contact-effects.ts'
 import type { GaitPose } from '../../src/content/transformer/model/rig.ts'
+import { decodeWeaponAsset, type WeaponAsset, type WeaponManifest } from '../../src/content/transformer/asset/weapon.ts'
 
 /** An exported model from public/models, decoded as the game does. */
 export function readAsset(name: string): TransformerAsset {
@@ -25,4 +26,11 @@ export const REST_GAIT: GaitPose = {
   legs: { R: { step: 0, up: 0, pitch: 0 }, L: { step: 0, up: 0, pitch: 0 } },
   crouch: 0.1, sway: 0, arms: { R: 0, L: 0 }, elbow: { R: 0, L: 0 },
   lean: 0, roll: 0, twist: 0, breath: 0, headYaw: 0, headPitch: 0, curl: 0.45,
+}
+
+/** An exported combat weapon from public/models, decoded as the game does. */
+export function readWeapon(name: string): WeaponAsset {
+  const manifest = JSON.parse(readFileSync(`public/models/${name}.json`, 'utf8')) as WeaponManifest
+  const binary = readFileSync(`public/models/${name}.bin`)
+  return decodeWeaponAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength), name)
 }

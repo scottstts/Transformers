@@ -2,7 +2,7 @@ import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material } f
 import type { TransformerAsset } from '../asset/loader'
 import { supportPoints } from '../asset/loader'
 import type { NodeKind, RigDims } from '../asset/format'
-import { RobotRig, type GaitPose } from './rig'
+import { RobotRig, type GaitPose, type RigOverlay } from './rig'
 
 /**
  * A transformer character at runtime (the Cybertruck, the Ferrari F1, ...).
@@ -62,6 +62,8 @@ export class TransformerModel {
   spin = 0
   T = 0
   lift = 0
+  /** a pose laid over the live gait at T = 1 (a fighting move), owned by the combat system */
+  overlay: RigOverlay | null = null
   readonly dims: RigDims
   readonly duration: number
 
@@ -71,7 +73,8 @@ export class TransformerModel {
   private readonly parent: Int32Array
   private readonly kind: NodeKind[]
   private readonly world: Matrix4[]
-  private readonly rig: RobotRig
+  /** the live skeleton (the gait and any overlay pose it at T = 1) */
+  readonly rig: RobotRig
   private readonly boneOf: Int32Array
   private readonly wheels: Array<{ node: number; front: boolean }> = []
   private readonly frontWheel: Uint8Array
@@ -158,7 +161,7 @@ export class TransformerModel {
     const f0 = Math.min(Math.floor(fpos), this.frames - 2)
     const a = fpos - f0
     const gw = gait ? smooth(MathUtils.clamp((T - this.gaitBlendFrom) / (1 - this.gaitBlendFrom), 0, 1)) : 0
-    if (gw > 0 && gait) this.rig.poseLive(gait)
+    if (gw > 0 && gait) this.rig.poseLive(gait, this.overlay)
     const carW = 1 - smooth(MathUtils.clamp(T / CAR_FADE, 0, 1))
 
     const count = this.nodes.length

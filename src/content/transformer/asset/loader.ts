@@ -1,5 +1,6 @@
 import { BufferAttribute, BufferGeometry, Vector3 } from 'three/webgpu'
 import type { TransformerManifest, MeshRecord } from './format'
+import type { WeaponAsset } from './weapon'
 
 export interface DecodedMesh {
   material: string
@@ -15,6 +16,8 @@ export interface TransformerAsset {
   scales?: Float32Array
   /** ground lift per frame */
   lift: Float32Array
+  /** the robot's combat weapon, a separate export (blender/weapons_build) */
+  weapon?: WeaponAsset
 }
 
 /**
@@ -45,7 +48,7 @@ export function decodeTransformerAsset(manifest: TransformerManifest, buffer: Ar
   return { manifest, meshes, tracks, scales, lift }
 }
 
-function decodeGeometry(buffer: ArrayBuffer, record: MeshRecord): BufferGeometry {
+export function decodeGeometry(buffer: ArrayBuffer, record: MeshRecord): BufferGeometry {
   const n = record.count
   const quantized = new Int16Array(buffer, record.position, n * 3)
   const octahedral = new Int16Array(buffer, record.normal, n * 2)
