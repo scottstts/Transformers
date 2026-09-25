@@ -57,7 +57,7 @@ Sliding tyres (drift, wheelspin, lock) have their own shared voice (`transformer
 
 The first version was rejected as sounding like water poured into a glass. It swept a band-pass filter's centre up with the slide speed and played the gravel chatter texture (tuned, ringing clicks) at a varying rate. Keep this voice unpitched: no moving filters, no resonant filters (Q ≤ 0.5), no tuned click textures.
 
-Footfalls keep the ground thump, gravel crunch and damper exhale, with a dedicated voice gain of 0.4 before both the dry mix and reverb send. This keeps walking and running subdued while preserving their relative impact strength; jump contacts use the same footfall voice.
+Footfalls are a soft settle, not a percussive thump: the weight pressing into the sand (lowpassed brown noise, no pitched sub drop) and the sand grinding under the sole, with soft onsets and no damper exhale. The earlier thump-and-exhale voice was rejected as intrusive and percussive. One voice serves walking, running, jump contacts and fighting footwork, at a voice gain of 0.3.
 
 ## Mix and textures
 

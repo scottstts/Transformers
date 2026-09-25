@@ -46,8 +46,8 @@ const LIGHT_INTENSITY = 12
  *   servo      (value: seconds) a heavy joint drive on the character's machine
  *
  * and, every frame: the swing voice follows the fastest fist, foot or edge,
- * the weapon's edge leaves its trail, fighting footfalls go through the
- * character's own footstep (sound, dust, footprint).
+ * the weapon's edge leaves its trail, fighting footfalls plant the
+ * character's foot (dust, footprint) with its own footfall at the fight's strength.
  */
 export class Fighter implements CombatEffects {
   readonly object = new Group()
@@ -124,7 +124,8 @@ export class Fighter implements CombatEffects {
   }
 
   step(side: Side, strength: number): void {
-    this.character.addFootstep(side, this.style.step * strength)
+    this.character.plantFoot(side, this.style.step * strength)
+    this.character.audio.footstep(strength)
   }
 
   skid(_side: Side, at: Vector3, speed: number, dt: number): void {

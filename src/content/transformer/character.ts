@@ -91,6 +91,8 @@ export interface CharacterEffects {
   /** world-space effects to add to the scene */
   readonly object: Object3D
   addFootstep(side: 'R' | 'L', running: number): void
+  /** a foot set down without the walking footfall's sound (fighting footwork voices its own): dust, footprint, a little shake */
+  plantFoot(side: 'R' | 'L', running: number): void
   takeoff(): void
   /** lands on both feet, or on `lead` alone (a running leap: the other foot follows in the stride) */
   land(lead: 'R' | 'L' | null): void

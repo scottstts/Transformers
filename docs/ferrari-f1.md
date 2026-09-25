@@ -69,7 +69,7 @@ Everything must sound like a recording of the real thing: no percussive, novelty
   - **Idle:** hunts slightly around 4 800 rpm.
   - **Start and stop:** it starts with a rev flare the first time audio runs and whenever the car re-forms, and it runs down as the transformation begins. No pops or crackles.
 - **Transformation:** the shared machine (see cybertruck-audio.md) as a racer would build it (`RACER_MACHINE`): smaller, quicker drives (still low: a 220 Hz top whirr) with a faster ratchet, a small fast pump, and a stiff, well-damped carbon monocoque. Its panel modes are higher and die away quickly, so its seats are drier than the truck's. It is heard through a 2 kHz distance lowpass.
-- **Footfall:** the shared voice tuned for a lighter robot (`RACER_FOOT`).
+- **Footfall:** the shared voice tuned for a lighter robot (`RACER_FOOT`): a higher, tighter press and a finer grind.
 - **Tyres:** the shared sliding-tyre voice (cybertruck-audio.md) with a lighter roar (`RACER_TYRES`, 1.1 kHz lowpass). The power unit follows the rear wheels' surface speed, so wheelspin in a drift revs it.
 
 ## Build issues found at export (left as authored)
