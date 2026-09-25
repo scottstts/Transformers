@@ -10,7 +10,7 @@ export interface TouchHost {
 
 /** Stick travel (px) from the centre to the rim. */
 const STICK_RADIUS = 52
-/** Deflection past which the stick runs (robot) or boosts (car), as Shift does. */
+/** Deflection past which the stick runs (robot) or drifts (car), as Shift does. */
 const RUN_DEFLECTION = 0.92
 /** Touch drag is a little quicker than a mouse: a thumb covers fewer pixels. */
 const LOOK_GAIN = 1.35

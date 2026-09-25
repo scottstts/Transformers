@@ -4,12 +4,27 @@ import type { MechanismEvent } from './asset/format'
 import type { TransformerModel } from './model/transformer'
 import type { RobotGait } from './animation/gait'
 
-/** Car handling: the game's bicycle model (game/movement.ts) takes its limits from here. */
+/** Car handling: the game's single-track model (game/car-dynamics.ts) takes its limits from here. */
 export interface DriveProfile {
   wheelbase: number
+  /** car origin (centre of mass) to the front axle (m); the rear axle is the rest of the wheelbase */
+  frontAxle: number
+  /** centre-of-mass height (m): fore-aft load transfer */
+  cgHeight: number
+  /** yaw inertia over mass (m^2) */
+  yawInertia: number
+  /** tyre-ground friction at the peak, and the slip angle of the peak (rad) */
+  grip: number
+  peakSlip: number
+  /** extra grip per (m/s)^2 of speed (downforce) */
+  downforce: number
+  /** share of the drive at the rear axle */
+  driveRear: number
+  /** rear grip while Shift loosens the rear (fraction of `grip`) */
+  driftGrip: number
   /** rolling radius for wheel spin (m) */
   wheelRadius: number
-  /** top speed (m/s), normal and boosted (Shift) */
+  /** top speed (m/s), normal and with Shift's full power */
   maxSpeed: number
   boostSpeed: number
   /** drive acceleration at rest (m/s^2), normal and boosted */
@@ -76,7 +91,8 @@ export interface CharacterEffects {
   readonly object: Object3D
   addFootstep(side: 'R' | 'L', running: number): void
   takeoff(): void
-  land(): void
+  /** lands on both feet, or on `lead` alone (a running leap: the other foot follows in the stride) */
+  land(lead: 'R' | 'L' | null): void
   timeline(previous: number, current: number): void
   update(dt: number, state: MotionState): void
   shakeCamera(camera: PerspectiveCamera, dt: number): void

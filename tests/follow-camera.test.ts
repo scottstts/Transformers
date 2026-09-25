@@ -81,8 +81,8 @@ describe('follow camera', () => {
     // shake displaces the camera between frames; a re-lock must not bake that into the orbit
     camera.position.y += 0.2
 
-    // menu: input suspended before the pointer is released (a cursor-restore movement is ignored)
-    rig.suspendInput()
+    // menu: mouse look held before the pointer is released (a cursor-restore movement is ignored)
+    rig.holdLook(true)
     move(300, 120)
     rig.update(1 / 60, state, root)
     camera.position.y += 0.2
@@ -91,6 +91,7 @@ describe('follow camera', () => {
     clock.mockReturnValue(5000)
     fakeDocument.pointerLockElement = canvas
     documentListeners.get('pointerlockchange')?.(new Event('pointerlockchange'))
+    rig.holdLook(false)
     // the first movement after the lock carries the unlocked cursor travel, however late it comes
     clock.mockReturnValue(9000)
     move(260, -90)

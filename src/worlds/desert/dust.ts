@@ -9,6 +9,8 @@ import { N } from '../../rendering/noise.ts';
  * CPU-simulated (a few thousand particles) and drawn as one instanced sprite.
  */
 const MAX = 3000;
+/** roost puffs per second per m/s of tread slide, per tyre */
+const ROOST_RATE = 7;
 
 export class Dust {
 	pos: Float32Array;
@@ -91,22 +93,46 @@ export class Dust {
 
 	}
 
-	/** tyre spray: continuous, scaled by speed and wheel slip */
-	wheel( p, fwd, speed, slip, dt ) {
+	/**
+	 * Tyre dust, continuous: a rolling tyre lifts a trail behind it with speed;
+	 * a sliding tread (drift, wheelspin, lock) throws a roost of sand the way
+	 * it slides over the ground, which billows into a heavy cloud. `velocity`
+	 * is the contact's ground velocity, `slide` the tread's slide (m/s).
+	 */
+	wheel( p: THREE.Vector3, velocity: THREE.Vector3, slide: THREE.Vector3, dt: number ) {
 
-		const v = Math.abs( speed );
-		const rate = Math.max( 0, v - 1.2 ) * 3.2 + slip * 60;
-		let n = rate * dt;
-		const intensity = Math.min( 1, v / 18 + slip );
+		const v = Math.hypot( velocity.x, velocity.z );
+		const s = Math.hypot( slide.x, slide.z );
+		const intensity = Math.min( 1, v / 18 + s / 6 );
+		let n = Math.max( 0, v - 1.2 ) * 3.2 * dt;
 		while ( n > 0 ) {
 
 			if ( n < 1 && Math.random() > n ) break;
 			n -= 1;
-			const back = - Math.sign( speed ) * ( 0.15 + Math.random() * 0.25 ) * v;
+			const back = - ( 0.15 + Math.random() * 0.25 );
 			this.emit(
 				p.x + ( Math.random() - 0.5 ) * 0.4, 0.2 + Math.random() * 0.2, p.z + ( Math.random() - 0.5 ) * 0.4,
-				fwd.x * back + ( Math.random() - 0.5 ) * 2.0, 0.4 + Math.random() * 1.4 * intensity, fwd.z * back + ( Math.random() - 0.5 ) * 2.0,
+				velocity.x * back + ( Math.random() - 0.5 ) * 2.0, 0.4 + Math.random() * 1.4 * intensity, velocity.z * back + ( Math.random() - 0.5 ) * 2.0,
 				{ size: 0.45 + v * 0.01, grow: 2.0 + v * 0.09, life: 2.2 + v * 0.05, alpha: 0.12 + 0.2 * intensity }
+			);
+
+		}
+
+		if ( s < 0.8 ) return;
+		const sx = slide.x / s, sz = slide.z / s;
+		n = Math.min( s, 16 ) * ROOST_RATE * dt;
+		while ( n > 0 ) {
+
+			if ( n < 1 && Math.random() > n ) break;
+			n -= 1;
+			const throwSpeed = s * ( 0.35 + Math.random() * 0.5 );
+			const carry = 0.2 + Math.random() * 0.25;
+			this.emit(
+				p.x + sx * 0.25 + ( Math.random() - 0.5 ) * 0.5, 0.15 + Math.random() * 0.25, p.z + sz * 0.25 + ( Math.random() - 0.5 ) * 0.5,
+				sx * throwSpeed + velocity.x * carry + ( Math.random() - 0.5 ) * 2.4,
+				0.8 + Math.random() * ( 1.2 + s * 0.14 ),
+				sz * throwSpeed + velocity.z * carry + ( Math.random() - 0.5 ) * 2.4,
+				{ size: 0.55 + s * 0.035, grow: 3.0 + s * 0.28, life: 2.6 + s * 0.09, alpha: 0.16 + 0.16 * Math.min( 1, s / 8 ) }
 			);
 
 		}

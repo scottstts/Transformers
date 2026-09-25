@@ -18,9 +18,30 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 
 `tests/desert-world.test.ts` checks tyre-track ribbon continuity and restarts.
 
-`tests/input.test.ts` checks that the touch stick maps onto the keyboard controls: an on/off throttle, proportional steering, boost at the rim and a camera-relative robot direction.
+`tests/car-dynamics.test.ts` checks, for both cars:
+- grip cornering without Shift (no slide);
+- a held drift staying within its angle band without spinning, and scrubbing speed;
+- recovery after Shift is released;
+- frame-rate independence;
+- aided braking at the profile rate without lock-ups.
 
-`tests/movement.test.ts` checks that transform requests cannot reverse or queue during braking or playback in either direction. `tests/jump.test.ts` checks frame-rate-independent jump timing, one-shot take-off/landing events, replay, arm and foot-target continuity from idle/walk/run, and a two-foot landing without stray stride footfalls.
+`tests/input.test.ts` checks that the touch stick maps onto the keyboard controls: an on/off throttle, proportional steering, Shift (drift or run) at the rim and a camera-relative robot direction.
+
+`tests/movement.test.ts` checks that transform requests cannot reverse or queue during braking or playback in either direction. `tests/jump.test.ts` checks:
+- frame-rate-independent jump timing at any momentum;
+- one-shot take-off and landing events, and replay;
+- a shorter, shallower take-off from a run;
+- arm and foot-target continuity from idle, walk and run;
+- two-foot landings (standing, walking) and lead-foot landings (leaps);
+- no stray stride footfalls;
+- planted feet moving back exactly at body speed;
+- the pelvis shifting over the planted leg.
+
+`tools/drift-lab.mjs` prints handling telemetry for scripted driver inputs:
+
+```bash
+node tools/drift-lab.mjs ferrari-f1 hold exit donut
+```
 
 The Blender build carries the geometry and mechanism audits (`ferrari-f1.md` has the F1 export command):
 
@@ -32,7 +53,12 @@ It reports islands, clashes and coplanar faces at T = 0 and T = 1, the lowest pa
 
 The audits point to problems; they are not a gate. The Cybertruck's current transformation was reviewed visually and accepted, including the small, hidden contacts the audits still list. Judge by visibility and scale: fix large visible pass-throughs, floating parts and anything poking through a car panel, and leave small hidden overlaps. After a design change, bake and review the timeline visually first. Run the audits only when a visible problem needs locating, or before reworking the choreography.
 
-For a look at effects without a browser, `tools/preview.mjs` renders fixed shots headlessly with the game's renderer and post pipeline (Dawn WebGPU in Node). Shots are the transformation frames (`rise-*`, `plume-detail`), tyre tracks after a drive (`tracks*`) the opening broadside (`side`) and the nearest boulder (`boulder`):
+For a look at effects without a browser, `tools/preview.mjs` renders fixed shots headlessly with the game's renderer and post pipeline (Dawn WebGPU in Node). Shots are:
+- the transformation frames (`rise-*`, `plume-detail`);
+- tyre tracks after a drive (`tracks*`);
+- a left drift and its roost (`drift`, `drift-roost`) and its marks (`drift-marks*`);
+- the opening broadside (`side`);
+- the nearest boulder (`boulder`):
 
 ```bash
 node tools/preview.mjs preview-out rise-close tracks-low

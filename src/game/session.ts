@@ -7,7 +7,8 @@ import type { TransformerAsset } from '../content/transformer/asset/loader'
 import type { Character } from '../content/transformer/character'
 import { FollowCamera } from './follow-camera'
 import { GameInput } from './input'
-import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions, updateCar, updateRobot } from './movement'
+import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions, updateRobot } from './movement'
+import { updateCar } from './car-dynamics'
 import { createMotionState, type Form } from './types'
 import { RobotJump } from './jump'
 
@@ -165,7 +166,7 @@ export class GameSession {
     const previous = advanceTransformation(state, dt, this.character.transformationDuration)
     // a car switch in progress locks the controls, as a transformation does
     const busy = isTransforming(state) || this.switching !== null
-    if (this.input.consumeJump() && !busy && state.mode === 'robot' && state.progress >= 1) this.jump.start()
+    if (this.input.consumeJump() && !busy && state.mode === 'robot' && state.progress >= 1) this.jump.start(Math.abs(state.speed) / profile.robot.runSpeed)
     const jump = this.jump.update(dt)
     const standing = state.mode === 'robot' && state.progress >= 1
     if (standing !== this.standing) {
@@ -178,7 +179,7 @@ export class GameSession {
 
     const pose = gait.update(dt, state.speed, state.yawRate, this.input.running, state.progress >= 1, jump)
     if (jump.tookOff) effects.takeoff()
-    if (jump.landed) effects.land()
+    if (jump.landed) effects.land(gait.jumpLead)
     while (gait.events.length) effects.addFootstep(gait.events.pop() as 'R' | 'L', gait.run)
 
     model.steer = state.steer

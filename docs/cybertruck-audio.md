@@ -46,7 +46,14 @@ Crackle is what makes it a rocket rather than wind: steep positive shocks with a
 
 ## Driving and walking
 
-Driving plays only a plain electric drive motor: a soft hum following road speed with a faint, heavily lowpassed whine, silent at rest. Tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill). Footfalls keep the ground thump, gravel crunch and damper exhale, with a dedicated voice gain of 0.4 before both the dry mix and reverb send. This keeps walking and running subdued while preserving their relative impact strength; jump contacts use the same footfall voice.
+Driving plays only a plain electric drive motor: a soft hum following the driven wheels' speed (wheelspin winds it up) with a faint, heavily lowpassed whine, silent at rest. Rolling tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill).
+
+Sliding tyres (drift, wheelspin, lock) have their own shared voice (`transformer/audio/tyres.ts`), silent until the tread slides. On the desert a sliding tyre doesn't squeal like rubber on asphalt; it tears through the crust and throws grit. The voice has three layers:
+- a band-passed scrub from the turbulent roar texture, rising in pitch and level with the slide speed;
+- a gravel spray from the chatter texture, denser with the slide;
+- a low body rumble.
+
+All of it goes through a 2.4 kHz distance lowpass (`HEAVY_TYRES`), keeping it well below the brightness that was rejected before. Footfalls keep the ground thump, gravel crunch and damper exhale, with a dedicated voice gain of 0.4 before both the dry mix and reverb send. This keeps walking and running subdued while preserving their relative impact strength; jump contacts use the same footfall voice.
 
 ## Mix and textures
 

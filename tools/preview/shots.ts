@@ -10,7 +10,7 @@ import type { TransformerManifest } from '../../src/content/transformer/asset/fo
 import type { Character } from '../../src/content/transformer/character'
 import { AudioMix } from '../../src/audio/mix'
 import { createMotionState } from '../../src/game/types'
-import { updateCar } from '../../src/game/movement'
+import { updateCar } from '../../src/game/car-dynamics'
 
 const WIDTH = 1280
 const HEIGHT = 720
@@ -61,6 +61,40 @@ const drive = (steer: (frame: number) => number, from: [number, number, number],
   s.look(place(from), place(at), true)
 }
 
+/**
+ * Run up to speed, then drift left with Shift for `frames` frames. With
+ * `after` = 0 the shot is taken at the end of the drift from the car's frame
+ * (x right, y up, z forward); otherwise the car brakes for `after` frames and
+ * the shot looks at the marks from the frame of the car halfway through the drift.
+ */
+const drift = (frames: number, after: number, from: [number, number, number], at: [number, number, number]): Shot => (s) => {
+  const input = { driveThrottle: 1, driveSteering: 0, running: false }
+  for (let i = 0; i < 150; i++) {
+    updateCar(s.state, input, DT, false, s.player.profile.drive)
+    s.step(0)
+  }
+  input.running = true
+  input.driveSteering = -1
+  let anchor: [number, number, number] = [0, 0, 0]
+  for (let i = 0; i < frames; i++) {
+    updateCar(s.state, input, DT, false, s.player.profile.drive)
+    s.step(0)
+    if (i === frames >> 1) anchor = [s.state.pos.x, s.state.pos.z, s.state.yaw]
+  }
+  input.running = false
+  input.driveSteering = 0
+  input.driveThrottle = after ? -1 : 1
+  for (let i = 0; i < after; i++) {
+    updateCar(s.state, input, DT, false, s.player.profile.drive)
+    s.step(0)
+  }
+  const [x, z, yaw] = after ? anchor : [s.state.pos.x, s.state.pos.z, s.state.yaw]
+  const f = new Vector3(Math.sin(yaw), 0, Math.cos(yaw))
+  const r = new Vector3(-f.z, 0, f.x)
+  const place = (v: [number, number, number]): [number, number, number] => [x + r.x * v[0] + f.x * v[2], v[1], z + r.z * v[0] + f.z * v[2]]
+  s.look(place(from), place(at), true)
+}
+
 const SHOTS: Record<string, Shot> = {
   'rise-33': rise(0.33, [-7, 3.2, -8], [0, 1.2, -0.5]),
   'rise-40': rise(0.4, [-8, 3.5, -7], [0, 1.8, -0.5]),
@@ -72,6 +106,10 @@ const SHOTS: Record<string, Shot> = {
   tracks: drive((i) => (i > 80 && i < 220 ? 0.3 : 0), [0, 5, -9], [0, 0, 7]),
   'tracks-low': drive(() => 0, [1.8, 1.4, -4], [0, 0, 6]),
   'tracks-top': drive((i) => (i > 80 && i < 220 ? 0.3 : 0), [0, 14, -2], [0, 0, 2]),
+  'drift': drift(100, 0, [-6, 2.6, -7], [0, 0.8, 0]),
+  'drift-roost': drift(120, 0, [9, 1.6, -3], [0, 1, -2]),
+  'drift-marks': drift(150, 200, [0, 14, -1], [0, 0, 0]),
+  'drift-marks-low': drift(150, 200, [2.5, 1.5, -7], [0, 0, 2]),
   // the opening broadside (FollowCamera.showSide) at the Cybertruck framing: 7.875 m out, pitch 0.07, focus 1.1 m
   side: (s) => { s.look([-7.875 * Math.cos(0.07), 1.1 + 7.875 * Math.sin(0.07), 0], [0, 1.1, 0]) },
   boulder: (s) => {

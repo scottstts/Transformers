@@ -38,9 +38,10 @@ The export rebuilds the scene from the scripts (they reproduce the working `.ble
   - Tests assert the TypeScript stand reproduces the baked T = 1 pose, and that the soles stay on the ground through the 0.9–1 blend.
 - **Soles:** every node the foot bones carry except carrier struts: the foot and toe structure, the sole platform and flaps, and the wing halves and nose tip that dock on the foot.
 - **Profile** (`F1_PROFILE`):
-  - drive: 3.6 m wheelbase, 0.36 m rolling radius, 58 / 80 m/s top speed (boosted), 11 / 15 m/s² drive, 34 m/s² braking;
+  - drive: 3.6 m wheelbase, 0.36 m rolling radius, 58 / 80 m/s top speed (Shift), 11 / 15 m/s² drive, 34 m/s² braking;
+  - handling: rear drive, grip 1.45 plus downforce (+75 % at 50 m/s), a small steering lock, so its drifts hold shallower angles than the truck's (car-handling.md);
   - chassis: a stiff low car (a third of the truck's pitch and roll) pivoting at 0.3 m;
-  - robot: walk 3.2 m/s, run 7.8 m/s; its hips are two thirds as high as the truck robot's, so the gait style scales stride, lift, sway and jump crouch down and swings the arms a little more;
+  - robot: walk 3.2 m/s, run 7.8 m/s; its hips are two thirds as high as the truck robot's, so the gait style scales stride, lift, sway and jump crouch down, swings the arms and hips a little more and rolls on a longer sole (heel 0.43, toe 0.78 m from the ankle; the wing halves dock on the foot);
   - camera: 7.2 m behind the car and 10.2 m from the robot.
 - **Materials** (`materials.ts`), one per `f1b/mats.py` slot:
   - Paint is clearcoated, with faint orange peel in the coat.
@@ -53,7 +54,7 @@ The export rebuilds the scene from the scripts (they reproduce the working `.ble
 - **Touchdowns:** during the transformation, a foot that lifts clear (10 cm) and comes back down (2 cm) lands with a footfall and dust. This is read from the posed soles, so it holds in both directions.
 - **Rain light:** flashes at 4 Hz while the car harvests energy (lift-off or braking above 5 m/s), as on the real car.
 - **Eyes:** come on as the helmet settles onto the neck (the `stow:R.head.helmet` window).
-- **Tyres:** dust and tracks use the real tread widths, 305 mm front and 405 mm rear.
+- **Tyres:** dust, grit and tracks use the real tread widths, 305 mm front and 405 mm rear.
 
 ## Audio (`audio/`)
 
@@ -68,6 +69,7 @@ Everything must sound like a recording of the real thing: no percussive, novelty
   - **Start and stop:** it starts with a rev flare the first time audio runs and whenever the car re-forms, and it runs down as the transformation begins. No pops or crackles.
 - **Transformation:** the shared machine (see cybertruck-audio.md) as a racer would build it (`RACER_MACHINE`): smaller, quicker drives (still low: a 220 Hz top whirr) with a faster ratchet, a small fast pump, and a stiff, well-damped carbon monocoque. Its panel modes are higher and die away quickly, so its seats are drier than the truck's. It is heard through a 2 kHz distance lowpass.
 - **Footfall:** the shared voice tuned for a lighter robot (`RACER_FOOT`).
+- **Tyres:** the shared sliding-tyre voice (cybertruck-audio.md) tuned tighter and a little higher (`RACER_TYRES`). The power unit follows the rear wheels' surface speed, so wheelspin in a drift revs it.
 
 ## Build issues found at export (left as authored)
 
