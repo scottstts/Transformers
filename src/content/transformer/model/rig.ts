@@ -52,6 +52,16 @@ export interface GaitPose {
   abduct?: number
   /** upper arm rotated inward about its own axis (deg): the bent forearm comes across the body */
   armTwist?: Record<'R' | 'L', number>
+  /** Locomotion knee pole override; the exported pole remains the standing default. */
+  kneePoleUp?: number
+  /** Minimum knee flexion (degrees); fit pelvis height to the feet before solving IK. */
+  minKnee?: number
+  /**
+   * One leg's targets sampled over the whole stride cycle. The pelvis is
+   * lowered for the cycle's longest reach, not the current frame's, so a
+   * long stride sets a steady carriage instead of a plunge at every splay.
+   */
+  stridePath?: readonly GaitLeg[]
 }
 
 export interface LocalPose { t: Vector3; q: Quaternion }
@@ -134,7 +144,9 @@ export class RobotRig {
         for (let k = 0; k < 3; k++) set(`${f}${k + 1}.${side}`, eulerXYZ(0, s * d.fingerCurl[k] * curl, 0, tmp))
       }
     }
-    this.solve(root, overlay && overlay.weight > 0 ? overlay.apply(this, root, g) : g.legs, g.track ?? 1)
+    const weight = overlay?.weight ?? 0
+    this.solve(root, overlay && weight > 0 ? overlay.apply(this, root, g) : g.legs,
+      g.track ?? 1, g.kneePoleUp ?? d.kneePoleUp ?? 0, g.minKnee ?? 0, 1 - weight, g.stridePath)
   }
 
   /** FK from the local poses; the pelvis joint frame is `root`. */
@@ -152,14 +164,38 @@ export class RobotRig {
     }
   }
 
-  private solve(root: Matrix4, legs: Record<'R' | 'L', GaitLeg>, track: number): void {
+  private solve(root: Matrix4, legs: Record<'R' | 'L', GaitLeg>, track: number, poleUp: number, minKnee: number, reachWeight: number,
+    stridePath: readonly GaitLeg[] | undefined): void {
     const d = this.dims
     this.forward(root)
-    // knee pole: pelvis front, blended with pelvis up for rigs whose legs also fold forward
-    const pelvis = _m0.extractRotation(this.world[this.index.pelvis])
-    const pole = _v1.set(0, -1, d.kneePoleUp ?? 0).applyMatrix4(pelvis).normalize()
     const stanceX = (d.stanceX ?? d.hipX) * track
     const footF = d.footF ?? d.robotF
+    if (minKnee > 0 && reachWeight > 0) {
+      // Keep the requested foot stations, not a clamped, skating ankle. A long
+      // step lowers the pelvis just enough to leave a soft knee at extension.
+      const reachSq = d.thigh * d.thigh + d.shin * d.shin + 2 * d.thigh * d.shin * Math.cos(deg(minKnee))
+      const need = (hip: Vector3, leg: GaitLeg, s: number): number => {
+        const dx = (leg.x ?? s * stanceX) - hip.x
+        const dy = -(footF + leg.step) - hip.y
+        return hip.z - (d.ankleZ + leg.up + Math.sqrt(Math.max(0, reachSq - dx * dx - dy * dy)))
+      }
+      let drop = -Infinity
+      let carriage = -Infinity
+      for (const [side, s] of SIDES) {
+        const hip = _v2.setFromMatrixPosition(this.world[this.index[`hip.${side}`]])
+        drop = softMaximum(drop, need(hip, legs[side], s))
+        if (stridePath) for (const leg of stridePath) carriage = Math.max(carriage, need(hip, leg, s))
+      }
+      // the current frame's reach still holds wherever the carriage falls short (jumps, overlays)
+      drop = softMaximum(0, softMaximum(carriage, drop))
+      if (drop > 0) {
+        root.elements[14] -= drop * reachWeight
+        this.forward(root)
+      }
+    }
+    // knee pole: pelvis front, blended with pelvis up for rigs whose legs also fold forward
+    const pelvis = _m0.extractRotation(this.world[this.index.pelvis])
+    const pole = _v1.set(0, -1, poleUp).applyMatrix4(pelvis).normalize()
     for (const [side, s] of SIDES) {
       const leg = legs[side]
       _v2.set(leg.x ?? s * stanceX, -(footF + leg.step), d.ankleZ + leg.up)
@@ -196,6 +232,12 @@ const _b = new Vector3()
 const _c = new Vector3()
 const _d = new Vector3()
 const _e = new Vector3()
+
+/** Ease the change of supporting leg and the onset of compression over 6 cm. */
+function softMaximum(a: number, b: number): number {
+  const overlap = Math.max(0, 0.06 - Math.abs(a - b))
+  return Math.max(a, b) + overlap * overlap / 0.24
+}
 
 /**
  * Two-bone leg IK (port of f1b/motion.solve_leg): the thigh frame's -Z runs

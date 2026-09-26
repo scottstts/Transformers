@@ -88,11 +88,17 @@ export interface GaitStyle {
 	armAbduct?: [ number, number ];
 	runElbow?: number;
 	armCross?: number;
+	/** Contact share per cycle; shorter running support accommodates long steps without overreaching. */
+	stance?: [ number, number ];
+	/** Knee pole's up component, standing and moving. */
+	kneePoleUp?: [ number, number ];
+	/** Forward lean in degrees per m/s, walking and running. */
+	lean?: [ number, number ];
 }
 
 /** A heavy machine: long stance, weight shift over the planted leg. */
 export const HEAVY_GAIT: GaitStyle = {
-	stride: [ 1.35, 2.3 ],
+	stride: [ 2.025, 4.6 ],
 	lift: [ 0.32, 0.7 ],
 	runFlight: 0.07,
 	runCompression: 0.07,
@@ -116,15 +122,17 @@ export const HEAVY_GAIT: GaitStyle = {
 const LEAP_MOMENTUM = 0.55;
 /** Stance share of the cycle, walking and running. */
 const STANCE: [ number, number ] = [ 0.6, 0.36 ];
-/** Cadence floor: slow walks shorten the step, not the cadence below this (m). */
+/** Cadence floor near rest; the foot sweep itself still fades to zero. */
 const MIN_CADENCE_STRIDE = 0.55;
 /** Share of the stance spent rolling off the heel, and where the toe-off starts. */
 const HEEL_ROLL = 0.2;
 const TOE_ROLL = 0.6;
-/** Swing: how early the lift peaks (0 at mid-swing), relaxed toe (rad), leg retraction before the strike (share of stance speed). */
+/** Swing: how early the lift peaks (0 at mid-swing), relaxed toe (rad), how fast the stance velocity fades after lift-off and before the strike. */
 const LIFT_SKEW = 0.3;
 const SWING_TOE = 0.12;
-const RETRACTION = 0.5;
+const SWING_TANGENT_FADE = 10;
+/** Samples of the stride cycle handed to the rig to size the pelvis carriage. */
+const STRIDE_SAMPLES = 16;
 /** Pelvis sway / list lag behind the leg phase (rad): the weight arrives over the leg after the strike. */
 const WEIGHT_LAG = 0.3;
 /** Arm swing lag behind the legs (rad) and the arms' spring (rad/s, damping ratio). */
@@ -160,6 +168,7 @@ export class RobotGait {
 	private accelLean = 0;
 	private bank = 0;
 	private lastSpeed = 0;
+	private travelShare = 0;
 	private readonly armSpring: Record<Side, Spring> = { R: { x: 0, v: 0 }, L: { x: 0, v: 0 } };
 	private readonly elbowSpring: Record<Side, Spring> = { R: { x: 0, v: 0 }, L: { x: 0, v: 0 } };
 	private springsLive = false;
@@ -171,6 +180,7 @@ export class RobotGait {
 	private readonly jumpLegs: Record<Side, GaitLeg> = { R: { step: 0, up: 0, pitch: 0 }, L: { step: 0, up: 0, pitch: 0 } };
 	private readonly takeoff: Record<Side, GaitLeg> = { R: { step: 0, up: 0, pitch: 0 }, L: { step: 0, up: 0, pitch: 0 } };
 	private readonly planted: Record<Side, boolean> = { R: true, L: true };
+	private readonly stridePath: GaitLeg[] = Array.from( { length: STRIDE_SAMPLES }, () => ( { step: 0, up: 0, pitch: 0 } ) );
 
 	constructor( style: GaitStyle = HEAVY_GAIT ) {
 
@@ -195,12 +205,15 @@ export class RobotGait {
 
 		const stride = lerp( st.stride[ 0 ], st.stride[ 1 ], this.run ) * this.amp;
 		const cadenceStride = Math.max( stride, MIN_CADENCE_STRIDE );
-		const stanceFrac = lerp( STANCE[ 0 ], STANCE[ 1 ], this.run );
+		const contact = st.stance ?? STANCE;
+		const stanceFrac = lerp( contact[ 0 ], contact[ 1 ], this.run );
 		// the stride freezes in the air; on the ground (loading, recovering) it keeps pace with the body
 		if ( stride > 0.02 && ! jump?.airborne ) this.phase += dir * ( eff / ( 2 * cadenceStride ) ) * TAU * dt;
 
 		// stance sweep: what the body travels while the foot is down
-		const sweep = eff > 0.01 ? 2 * stanceFrac * cadenceStride * mv / eff : 0;
+		// Blend translation into a pivot/stop without snapping an extended foot to its station.
+		this.travelShare = lerp( this.travelShare, eff > 0 ? mv / eff : 0, 1 - Math.exp( - dt * 10 ) );
+		const sweep = 2 * stanceFrac * stride * this.travelShare;
 		const lift = lerp( st.lift[ 0 ], st.lift[ 1 ], this.run ) * this.amp;
 		const strike = lerp( st.heelStrike[ 0 ], st.heelStrike[ 1 ], this.run ) * RAD * this.amp;
 		const toeOff = lerp( st.toeOff[ 0 ], st.toeOff[ 1 ], this.run ) * RAD * this.amp;
@@ -240,7 +253,7 @@ export class RobotGait {
 		const accel = dt > 0 ? ( speed - this.lastSpeed ) / dt : 0;
 		this.lastSpeed = speed;
 		this.accelLean = lerp( this.accelLean, active ? clamp( accel * ACCEL_LEAN, - 6, 8 ) : 0, 1 - Math.exp( - dt * 4 ) );
-		this.lean = lerp( this.lean, clamp( speed * lerp( 1.3, 1.9, this.run ), - 4, 15 ), 1 - Math.exp( - dt * 3 ) );
+		this.lean = lerp( this.lean, clamp( speed * lerp( st.lean?.[ 0 ] ?? 1.3, st.lean?.[ 1 ] ?? 1.9, this.run ), - 4, 15 ), 1 - Math.exp( - dt * 3 ) );
 		this.bank = lerp( this.bank, active ? clamp( speed * turnRate * TURN_BANK, - 9, 9 ) : 0, 1 - Math.exp( - dt * 4 ) );
 
 		// hips yaw with the stepping leg (right hip forward at the right heel strike), shoulders counter-rotate
@@ -252,7 +265,10 @@ export class RobotGait {
 		for ( const [ S, off ] of [ [ 'R', 0 ], [ 'L', Math.PI ] ] as const ) {
 
 			// negative shoulder pitch swings forward: the right arm swings back as the right leg reaches forward
-			const sw = Math.cos( this.phase + off - ARM_LAG ) * lerp( st.armSwing[ 0 ], st.armSwing[ 1 ], this.run ) * this.amp;
+			// Follow the actual support/swing timing: a run's toe-off happens well before half-cycle.
+			const f = this.cycle( S, this.phase - ARM_LAG );
+			const armPhase = f < stanceFrac ? Math.PI * f / stanceFrac : Math.PI + Math.PI * ( f - stanceFrac ) / ( 1 - stanceFrac );
+			const sw = Math.cos( armPhase ) * lerp( st.armSwing[ 0 ], st.armSwing[ 1 ], this.run ) * this.amp;
 			arms[ S ] = sw + 1.5 * Math.sin( this.time * 0.9 + off );
 			elbow[ S ] = - Math.max( 0, - sw ) * 0.7 - this.run * ( st.runElbow ?? 55 ) * this.amp;
 
@@ -289,13 +305,25 @@ export class RobotGait {
 		} else this.jumping = false;
 		if ( ! inJump ) this.jumpLead = null;
 
-		// arms follow through on springs
-		this.follow( arms, elbow, dt );
+		// Keep spring lag bounded as cadence rises, so the arms stay opposite the legs.
+		const armResponse = clamp( eff / ( 2 * cadenceStride ) * TAU * 2.4, ARM_SPRING, 36 );
+		this.follow( arms, elbow, dt, armResponse );
 
 		const roll = list + this.bank;
 		const moving = this.amp * locomotion;
 		const cross = ( st.armCross ?? 0 ) * lerp( 0.35, 1, this.run ) * moving;
+		// the whole cycle's foot path, fading out as a jump takes over the legs
+		for ( let i = 0; i < STRIDE_SAMPLES; i ++ ) {
+
+			const leg = this.legAt( i / STRIDE_SAMPLES, stanceFrac, sweep, lift, strike, toeOff, this.stridePath[ i ] );
+			leg.step *= dir * locomotion;
+			leg.up *= locomotion;
+
+		}
 		return {
+			minKnee: 20 * moving,
+			stridePath: this.stridePath,
+			kneePoleUp: st.kneePoleUp ? lerp( st.kneePoleUp[ 0 ], st.kneePoleUp[ 1 ], moving ) : undefined,
 			track: st.track ? lerp( 1, lerp( st.track[ 0 ], st.track[ 1 ], this.run ), moving ) : 1,
 			abduct: st.armAbduct ? lerp( 1, lerp( st.armAbduct[ 0 ], st.armAbduct[ 1 ], this.run ), moving ) : 1,
 			armTwist: { R: cross, L: cross },
@@ -340,14 +368,16 @@ export class RobotGait {
 		} else {
 
 			const t = ( f - stance ) / ( 1 - stance );
-			// Hermite from the lift-off to the strike, leaving and arriving with a little of the stance's backward speed
-			const m = - RETRACTION * sweep * ( 1 - stance ) / stance;
-			const t2 = t * t, t3 = t2 * t;
-			base = ( 2 * t3 - 3 * t2 + 1 ) * ( - sweep / 2 ) + ( t3 - 2 * t2 + t ) * m + ( - 2 * t3 + 3 * t2 ) * ( sweep / 2 ) + ( t3 - t2 ) * m;
-			up = lift * Math.sin( Math.PI * ( t + LIFT_SKEW * t * ( 1 - t ) ) );
+			// Match the stance velocity at both ends, with zero vertical velocity at contact.
+			// The tangent terms fade quickly, limiting overshoot past the contact stations.
+			const m = - sweep * ( 1 - stance ) / stance;
+			base = sweep * ( smooth( t ) - 0.5 ) + m * ( t * ( 1 - t ) ** SWING_TANGENT_FADE + ( t - 1 ) * t ** SWING_TANGENT_FADE );
+			const clearance = Math.sin( Math.PI * ( t + LIFT_SKEW * t * ( 1 - t ) ) );
+			up = lift * clearance * clearance;
 			toe = toeOff * ( 1 - ramp( 0, 0.35, t ) );
 			heel = strike * ramp( 0.6, 1, t );
-			relax = SWING_TOE * Math.sin( Math.PI * t ) * this.amp;
+			const toeRelax = Math.sin( Math.PI * t );
+			relax = SWING_TOE * toeRelax * toeRelax * this.amp;
 
 		}
 		const st = this.style;
@@ -495,7 +525,7 @@ export class RobotGait {
 	}
 
 	/** Arms and elbows follow their targets on damped springs (sub-stepped, frame-rate independent). */
-	private follow( arms: Record<Side, number>, elbow: Record<Side, number>, dt: number ): void {
+	private follow( arms: Record<Side, number>, elbow: Record<Side, number>, dt: number, response: number ): void {
 
 		if ( ! this.springsLive ) {
 
@@ -510,7 +540,7 @@ export class RobotGait {
 		}
 		const steps = Math.max( 1, Math.ceil( dt * 240 ) );
 		const h = dt / steps;
-		const k = ARM_SPRING * ARM_SPRING, c = 2 * ARM_DAMPING * ARM_SPRING;
+		const k = response * response, c = 2 * ARM_DAMPING * response;
 		for ( const S of SIDES ) {
 
 			for ( const [ s, target ] of [ [ this.armSpring[ S ], arms[ S ] ], [ this.elbowSpring[ S ], elbow[ S ] ] ] as const ) {

@@ -49,42 +49,43 @@ export const F1_PROFILE: CharacterProfile = {
     rollLimit: 0.02,
     pivotHeight: 0.3,
   },
-  robot: { walkSpeed: 3.2, runSpeed: 7.8 },
+  robot: { walkSpeed: 4.8, runSpeed: 15.6 },
   camera: { carDistance: 7.2, robotDistance: 10.2, carFocus: 0.85, robotFocus: 2.9 },
   carRadius: 2.4,
   robotRadius: 1.2,
 }
 
 /**
- * A lighter, quicker robot than the truck's: shorter strides, snappier arms.
- * Its stand is built wide (feet outside the hips, arms splayed 16 degrees
- * clear of the sidepods); carried into the stride that read as a clown's
- * walk, so moving it tracks its feet under the hips and brings its arms in,
- * pumping forward and across the body when it runs.
+ * A long, relaxed walk and an athletic run. The broad soles stay on parallel
+ * tracks under the hips; the knees bend forward instead of following the
+ * transformation's upward pole. Short run support leaves time for recovery.
  */
-const RACER_GAIT: GaitStyle = {
-  stride: [1.05, 1.9],
-  lift: [0.24, 0.44],
+export const RACER_GAIT: GaitStyle = {
+  stride: [1.575, 3.8],
+  stance: [0.6, 0.28],
+  lift: [0.16, 0.48],
   runFlight: 0.06,
   runCompression: 0.05,
-  runCrouch: 0.09,
-  sway: 0.05,
-  bob: 0.025,
-  hipYaw: 6,
-  hipList: 3,
-  shoulders: 5,
-  armSwing: [16, 32],
-  heelStrike: [14, 6],
-  toeOff: [30, 36],
+  runCrouch: 0.12,
+  sway: 0.035,
+  bob: 0.018,
+  hipYaw: 4,
+  hipList: 2,
+  shoulders: 3,
+  armSwing: [20, 34],
+  heelStrike: [10, 3],
+  toeOff: [22, 28],
   heel: 0.43,
   toe: 0.78,
   ankle: 0.26,
   jumpCrouch: 0.3,
   jumpTuck: 0.34,
-  track: [0.78, 0.64],
-  armAbduct: [0.55, 0.45],
-  runElbow: 72,
-  armCross: 22,
+  track: [0.82, 0.78],
+  armAbduct: [0.45, 0.4],
+  runElbow: 52,
+  armCross: 6,
+  kneePoleUp: [1, 0],
+  lean: [0.7, 0.8],
 }
 
 export async function loadF1Asset(): Promise<PlayableTransformerAsset> {

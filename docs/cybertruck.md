@@ -52,7 +52,7 @@ The rise about the feet is carried by two plasma jets (`fx/thrusters.ts`, `fx/pl
 
 ## Robot locomotion
 
-The gait and jump are shared by every robot (robot-locomotion.md). The truck robot walks at 3.4 m/s and runs at 7.5 m/s with `HEAVY_GAIT`: long stance, a 7 cm weight shift, heel and toe roll about its 0.31 / 0.62 m sole edges.
+The gait and jump are shared by every robot (robot-locomotion.md). The truck robot walks at 5.1 m/s and runs at 15 m/s with `HEAVY_GAIT`: 2.025 / 4.6 m steps at the original step rates, long stance, a 7 cm weight shift, heel and toe roll about its 0.31 / 0.62 m sole edges.
 
 ## Controls and camera
 
