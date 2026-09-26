@@ -454,4 +454,6 @@ def build(coll):
     return {
         'grips': {'main': [0.0, 0.0, 0.0], 'off': list(grip_off())},
         'muzzles': {'cannon': list(MUZZLE_CANNON), 'rotary': list(MUZZLE_ROTARY)},
+        # no cutting edge: the manifest's edge is the cannon's bore line (breech -> muzzle)
+        'edge': [[CANNON_X, 0.0, 1.40], list(MUZZLE_CANNON)],
     }

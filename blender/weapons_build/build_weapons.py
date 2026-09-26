@@ -4,9 +4,10 @@
         --python blender/weapons_build/build_weapons.py
 
 Rebuilds each weapon from the scripts into its own collection of
-blender/weapons.blend (the axe at the origin, the sword beside it), saves the
-file and writes public/models/cybertruck-axe.{json,bin} and
-ferrari-f1-sword.{json,bin}. Pass `-- --no-save` to export without saving."""
+blender/weapons.blend (the axe at the origin, the sword and the gun beside it),
+saves the file and writes public/models/cybertruck-axe.{json,bin},
+ferrari-f1-sword.{json,bin} and semi-gun.{json,bin}. Pass `-- --no-save` to
+export without saving."""
 import sys
 import time
 import importlib
@@ -19,10 +20,10 @@ for p in (BLENDER + '/weapons_build', BLENDER + '/ferrari-f1_build'):
 for name in [m for m in sys.modules if m in ('wpn', 'f1b') or m.startswith(('wpn.', 'f1b.'))]:
     del sys.modules[name]
 wpn = importlib.import_module('wpn')
-from wpn import axe, sword, export  # noqa: E402
+from wpn import axe, sword, gun, export  # noqa: E402
 from f1b import kit as K  # noqa: E402
 
-WEAPONS = [(axe, 'cybertruck-axe', 0.0), (sword, 'ferrari-f1-sword', 1.6)]
+WEAPONS = [(axe, 'cybertruck-axe', 0.0), (sword, 'ferrari-f1-sword', 1.6), (gun, 'semi-gun', 3.4)]
 
 t = time.time()
 for module, asset, x in WEAPONS:
