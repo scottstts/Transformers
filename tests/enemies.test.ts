@@ -274,6 +274,29 @@ describe('debris', () => {
     expect(spread).toBeGreaterThan(2)
     expect(spread).toBeLessThan(25)
   })
+
+  it('reports each part hitting the sand, and nothing once the parts lie still', () => {
+    const rig = new SoldierRig(asset.manifest)
+    rig.pose({ x: 0, z: 0, y: 0, yaw: 0, tilt: new Quaternion() }, createSoldierPose())
+    const debris = new Debris(rig, asset.manifest.pieces)
+    debris.start(new Vector3(8, 2, 0), new Vector3(), 2)
+    const heard = new Set<number>()
+    let total = 0, late = 0
+    for (let t = 0; t < DEBRIS_LIE; t += DT) {
+      debris.update(DT)
+      for (let k = 0; k < debris.landingCount; k++) {
+        const l = debris.landings[k]
+        expect(l.speed).toBeGreaterThan(0.9)
+        heard.add(l.piece)
+        total++
+        if (t > 3) late++
+      }
+    }
+    // most parts are heard landing; a few bounces and tumbles each, not a rattle every frame
+    expect(heard.size).toBeGreaterThan(debris.count * 0.6)
+    expect(total).toBeLessThan(debris.count * 6)
+    expect(late).toBe(0)
+  })
 })
 
 describe('guard shield tiling', () => {

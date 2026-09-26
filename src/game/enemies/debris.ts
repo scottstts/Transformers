@@ -7,6 +7,11 @@ const G = 9.8
 const RESTITUTION = 0.18
 const FRICTION = 0.85
 const PLOUGH = 2.2
+/** A part meeting the sand faster than this (m/s) is heard; the same part is heard again only after LAND_QUIET s. */
+const LAND_SPEED = 0.9
+const LAND_QUIET = 0.08
+/** Landings kept per update (the rest are the same moment, unheard). */
+const LANDINGS = 8
 /** Seconds the pieces lie before they burn away, and the burning away. */
 export const DEBRIS_LIE = 4.0
 export const DEBRIS_FADE = 1.0
@@ -24,6 +29,14 @@ interface Body {
   v: Vector3
   w: Vector3
   asleep: boolean
+  /** age at its last heard landing */
+  landed: number
+}
+
+/** A part hitting the sand this update: which piece, and how fast it came down (m/s). */
+export interface Landing {
+  piece: number
+  speed: number
 }
 
 /**
@@ -42,6 +55,9 @@ export class Debris {
   private readonly bodies: Body[] = []
   private readonly rig: SoldierRig
   age = 0
+  /** the parts that hit the sand during the last `update` (first `landingCount` entries) */
+  readonly landings: Landing[] = Array.from({ length: LANDINGS }, () => ({ piece: 0, speed: 0 }))
+  landingCount = 0
 
   constructor(rig: SoldierRig, pieces: readonly SoldierPiece[]) {
     this.rig = rig
@@ -51,7 +67,7 @@ export class Debris {
       const ix = (m / 3) * (h.y * h.y + h.z * h.z), iy = (m / 3) * (h.x * h.x + h.z * h.z), iz = (m / 3) * (h.x * h.x + h.y * h.y)
       this.bodies.push({
         bone: pc.bone, c: new Vector3(...pc.center), h, mass: m, invI: new Vector3(1 / ix, 1 / iy, 1 / iz),
-        p: new Vector3(), q: new Quaternion(), v: new Vector3(), w: new Vector3(), asleep: false,
+        p: new Vector3(), q: new Quaternion(), v: new Vector3(), w: new Vector3(), asleep: false, landed: -1,
       })
     }
   }
@@ -78,19 +94,22 @@ export class Debris {
       const spin = (3 + Math.random() * 5) * Math.min(2.5, burst) * (0.25 / Math.max(0.12, b.h.length()))
       b.w.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(spin)
       b.asleep = false
+      b.landed = -1
     }
+    this.landingCount = 0
     this.write()
   }
 
   update(dt: number): void {
     this.age += dt
+    this.landingCount = 0
     const steps = dt > 1 / 90 ? 2 : 1
     const h = dt / steps
-    for (let k = 0; k < steps; k++) for (const b of this.bodies) if (!b.asleep) this.step(b, h)
+    for (let k = 0; k < steps; k++) for (let i = 0; i < this.bodies.length; i++) if (!this.bodies[i].asleep) this.step(this.bodies[i], h, i)
     this.write()
   }
 
-  private step(b: Body, dt: number): void {
+  private step(b: Body, dt: number, index: number): void {
     b.v.y -= G * dt
     b.p.addScaledVector(b.v, dt)
     // integrate the orientation
@@ -122,6 +141,15 @@ export class Debris {
     // velocity of the contact point; a normal impulse stops it sinking (with a little bounce)
     const vp = _vp.crossVectors(b.w, r).add(b.v)
     let jn = 0
+    // heard: a real blow into the sand, not a part settling or rocking on it
+    if (-vp.y > LAND_SPEED && this.age - b.landed > LAND_QUIET) {
+      b.landed = this.age
+      if (this.landingCount < LANDINGS) {
+        const l = this.landings[this.landingCount++]
+        l.piece = index
+        l.speed = -vp.y
+      }
+    }
     if (vp.y < 0) {
       const rn = _a.crossVectors(r, UP)
       const k = 1 / b.mass + _b.copy(rn).applyMatrix3(_Iw).cross(r).dot(UP)
@@ -163,6 +191,16 @@ export class Debris {
   /** The centres of the pieces (for effects): the i-th, world. */
   piece(i: number, out: Vector3): Vector3 {
     return out.copy(this.bodies[i % this.bodies.length].p)
+  }
+
+  /** The i-th piece's longest dimension (m) and mass (kg). */
+  size(i: number): number {
+    const h = this.bodies[i].h
+    return 2 * Math.max(h.x, h.y, h.z)
+  }
+
+  mass(i: number): number {
+    return this.bodies[i].mass
   }
 
   get count(): number {

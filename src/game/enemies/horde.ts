@@ -556,6 +556,14 @@ export class Horde {
       const debris = s.debris
       if (debris) {
         debris.update(dt)
+        if (debris.landingCount > 0) {
+          // the parts lie within a few metres of where the soldier stood
+          const dist = this.listener.distanceTo(_v.set(s.x, 0.5, s.z))
+          for (let k = 0; k < debris.landingCount; k++) {
+            const l = debris.landings[k]
+            this.audio.land(l.piece, debris.size(l.piece), debris.mass(l.piece), l.speed, dist)
+          }
+        }
         s.dissolve = Math.max(0, Math.min(1, (debris.age - DEBRIS_LIE) / DEBRIS_FADE))
         s.lights = Math.max(0, s.lights - dt * 3)
         s.blade = Math.max(0, s.blade - dt * 4)
