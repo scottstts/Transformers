@@ -17,7 +17,7 @@ import { wrap } from '../math'
 const ENTRY = 0.12
 const EXIT = 0.22
 /** Movement taking the robot back from the fight: the pose hands back to the gait this fast (s). */
-const RELEASE = 0.16
+const RELEASE = 0.24
 /** Aim assist: cones (rad) round a steered heading and round the robot's own facing, and its range (m). */
 const ASSIST_STEERED = 0.55
 const ASSIST_FACING = 1.0
@@ -64,6 +64,7 @@ export class RobotCombat {
   private readonly player = new MovePlayer()
   private readonly feet = new FootPlanner()
   private readonly moves: readonly CombatMove[]
+  private readonly releaseCues: readonly MoveCue[]
   private readonly frame: CombatFrame
   /** move ground frame: origin (the robot's standing point) and heading */
   private readonly origin = new Vector3()
@@ -111,6 +112,8 @@ export class RobotCombat {
     this.model = model
     this.robotOffset = robotOffset
     this.moves = combat.moveset.moves
+    // Finish dissolving before movement removes the combat overlay entirely.
+    this.releaseCues = (combat.moveset.recoverCues ?? []).map((cue) => cue.cue === 'weapon-out' ? { ...cue, value: 0.18 } : cue)
     const recover = combat.moveset.recover
     this.combo = new ComboController(this.moves, recover)
     this.frame = { weight: 0, values: this.player.values, move: -1, time: 0, state, camera }
@@ -131,22 +134,24 @@ export class RobotCombat {
 
   /** Movement may take the robot back from the fight now (a recovery, or a move whose window has passed its strike). */
   get releasable(): boolean {
-    return !this.special && !this.guarding && !this.loose && this.combo.cancellable
+    return !this.special && !this.guarding && !this.guardHeld && !this.loose && this.combo.cancellable
   }
 
   /**
-   * Movement takes the robot back: the combo ends, the pose hands back to the
+   * Movement takes the robot back: combo progress is remembered, the pose hands back to the
    * gait over RELEASE and the fight gives up the robot at once (the weapon
-   * goes away as in a recovery).
+   * goes away as in a recovery). A prompt attack resumes at the next move.
    */
   release(): void {
     if (!this.releasable) return
-    this.combo.cancel()
+    const turn = this.heading - this.frameState.yaw
+    this.frameState.speed = Math.max(0, this.player.velocity(CH.advance) * Math.cos(turn) - this.player.velocity(CH.strafe) * Math.sin(turn))
+    this.combo.release()
     this.queued.length = 0
     this.hits = null
     this.loose = true
     this.exiting = true
-    this.player.settle(this.combat.overlay.neutral, RELEASE * 1.5, this.combat.moveset.recoverCues)
+    this.player.settle(this.combat.overlay.neutral, this.combat.moveset.recover * SETTLE_SHARE, this.releaseCues, this.player.current?.recovery)
   }
 
   /** The guard pose is up: enemy blows land on the shield. */
@@ -341,7 +346,7 @@ export class RobotCombat {
     } else if (event.type === 'recover') {
       this.hits = null
       this.setGround(state, state.yaw)
-      this.player.settle(this.combat.overlay.neutral, this.combat.moveset.recover * SETTLE_SHARE, this.combat.moveset.recoverCues)
+      this.player.settle(this.combat.overlay.neutral, this.combat.moveset.recover * SETTLE_SHARE, this.combat.moveset.recoverCues, this.player.current?.recovery)
       this.recoverFeet(state)
     }
   }
@@ -352,6 +357,10 @@ export class RobotCombat {
    * soldier near that line; a turn past PIVOT_TURN pivots the feet into it.
    */
   private beginMove(move: CombatMove, state: MotionState, _camera: PerspectiveCamera, aimed: boolean): void {
+    const fromGait = this.loose || this.weight === 0
+    const fromHeading = fromGait ? state.yaw : this.heading
+    const forwardVelocity = fromGait ? state.speed : this.player.velocity(CH.advance)
+    const lateralVelocity = fromGait ? 0 : this.player.velocity(CH.strafe)
     let heading = state.yaw
     if (aimed) {
       const steered = this.steering
@@ -370,7 +379,12 @@ export class RobotCombat {
     v[CH.advance] = 0
     v[CH.strafe] = 0
     v[CH.turn] = (state.yaw - heading) * 180 / Math.PI
-    this.player.start(move, this.combat.overlay.neutral)
+    // Re-express momentum in the new ground frame before the bounded curves
+    // take it up. Turning into an opposing attack brakes rather than backslides.
+    const turn = fromHeading - heading
+    this.player.start(move, this.combat.overlay.neutral,
+      forwardVelocity * Math.cos(turn) - lateralVelocity * Math.sin(turn),
+      forwardVelocity * Math.sin(turn) + lateralVelocity * Math.cos(turn))
     this.nextStep = 0
     this.struck = false
     this.hits = null

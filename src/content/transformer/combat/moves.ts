@@ -18,10 +18,14 @@ export interface CombatMove {
   /**
    * The window (move time) in which a click chains the next move. It opens as
    * the strike's follow-through settles and may run past `duration`, while the
-   * last pose holds; a click before it is ignored, and once it closes the
+   * last pose holds; a click before it is buffered, and once it closes the
    * combo recovers and starts again from the first move.
    */
   chain: readonly [number, number]
+  /** Earliest grounded exit to movement/guard, independently of the next attack. */
+  cancelAt?: number
+  /** Authored release path, overlaid on the ordinary settle when stopping here. */
+  recovery?: Partial<Record<Channel, readonly Key[]>>
   keys: Partial<Record<Channel, readonly Key[]>>
   steps?: readonly Footstep[]
   cues?: readonly MoveCue[]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Matrix4, Quaternion, Vector3 } from 'three/webgpu'
+import { Box3, Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
@@ -158,6 +158,75 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
     expect(combat.active).toBe(false)
   })
 
+  it('settles the finisher hands without a fast joint unwind', () => {
+    const c = make()
+    const bones = ['upperarm.R', 'hand.R', 'upperarm.L', 'hand.L']
+    const previous = bones.map(() => new Quaternion())
+    const q = new Quaternion()
+    let peak = 0
+    let where = ''
+    const exit = clicks[3] + moveset.moves[3].chain[0]
+    runFight(c, clicks, 9, (t) => {
+      bones.forEach((bone, i) => {
+        c.model.node(`bone:${bone}`).getWorldQuaternion(q)
+        const speed = previous[i].angleTo(q) / DT * 180 / Math.PI
+        if (t > exit && speed > peak) { peak = speed; where = `${bone} at ${t.toFixed(3)}` }
+        previous[i].copy(q)
+      })
+    })
+    expect(peak, where).toBeLessThan(480)
+  })
+
+  it.each([
+    { dt: 1 / 30, pause: 0.08 }, { dt: 1 / 120, pause: 0.08 },
+    { dt: 1 / 30, pause: 0.38 }, { dt: 1 / 120, pause: 0.38 },
+  ])('walks between attacks and resumes with its weapon at dt=$dt, pause=$pause', ({ dt, pause }) => {
+    const c = make()
+    const strikes: number[] = []
+    let released = false
+    let resumeAt = Infinity
+    let exits = 0
+    let walked = 0
+    const chest = bodyCore(c, 'bone:chest', 0.15)
+    const head = bodyCore(c, 'bone:head', 0.1)
+    const inverse = new Matrix4(), p = new Vector3()
+    const combat = runFight(c, [0], 12, (t) => {
+      // Include the movement fade and re-entry, which stationary combo tests miss.
+      for (const bone of ['hand.L', 'hand.R']) {
+        const hand = new Vector3().setFromMatrixPosition(c.model.node(`bone:${bone}`).matrixWorld)
+        for (const [box, node] of [[chest, 'bone:chest'], [head, 'bone:head']] as const) {
+          p.copy(hand).applyMatrix4(inverse.copy(c.model.node(node).matrixWorld).invert())
+          expect(box.containsPoint(p), `${bone} in ${node} while repositioning at ${t.toFixed(3)}`).toBe(false)
+        }
+      }
+    }, dt, [], (t, fight, state) => {
+      fight.onStrike = (index) => {
+        strikes.push(index)
+        if (index >= 2) expect(c.combat.effects.weapon!.presence).toBeGreaterThan(0.95)
+      }
+      fight.setSteer({ x: exits % 2 === 0 ? 1 : -1, z: 0 })
+      if (!released && strikes.length > exits && fight.releasable) {
+        fight.release()
+        expect(fight.active).toBe(false)
+        released = true
+        exits++
+        resumeAt = strikes.length < 5 ? t + pause : Infinity
+      }
+      if (released && t < resumeAt) {
+        state.pos.x += dt * 2
+        walked += dt * 2
+      }
+      if (t >= resumeAt) {
+        fight.press()
+        released = false
+        resumeAt = Infinity
+      }
+    })
+    expect(strikes).toEqual([0, 1, 2, 3, 0])
+    expect(walked).toBeGreaterThan(2)
+    expect(combat.active).toBe(false)
+  })
+
   it('encloses the handle in the curled fingers instead of hanging it below the fist', () => {
     const c = make()
     const overlay = c.combat.overlay
@@ -206,9 +275,7 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
 
 describe('truck finisher continuity', () => {
   for (const count of [1, 2, 3]) {
-    // The standalone cleave exit still needs a separately authored recovery.
-    const check = count === 3 ? it.fails : it
-    check(`recovers without joint snaps when stopped after move ${count}`, () => {
+    it(`recovers without joint snaps when stopped after move ${count}`, () => {
       const c = FIGHTERS[0].make()
       const clicks = FIGHTERS[0].clicks.slice(0, count)
       const move = c.combat.moveset.moves[count - 1]

@@ -31,6 +31,8 @@ interface Foot extends FootPlace {
   lift: number
   moving: boolean
   via: KickVia | null
+  fromUp: number
+  fromPitch: number
 }
 
 /** What a foot is doing this frame: its ground place, lift (m) and pitch (rad, + toe down). */
@@ -47,8 +49,8 @@ const place = (): FootPlace => ({ x: 0, z: 0, yaw: 0 })
 export class FootPlanner {
   private clock = 0
   private readonly feet: Record<Side, Foot> = {
-    R: { ...place(), from: place(), to: place(), t0: 0, t1: 0, lift: 0, moving: false, via: null },
-    L: { ...place(), from: place(), to: place(), t0: 0, t1: 0, lift: 0, moving: false, via: null },
+    R: { ...place(), from: place(), to: place(), t0: 0, t1: 0, lift: 0, moving: false, via: null, fromUp: 0, fromPitch: 0 },
+    L: { ...place(), from: place(), to: place(), t0: 0, t1: 0, lift: 0, moving: false, via: null, fromUp: 0, fromPitch: 0 },
   }
   private readonly out: Record<Side, FootSample> = {
     R: { ...place(), up: 0, pitch: 0, skid: 0 },
@@ -69,6 +71,8 @@ export class FootPlanner {
     f.from.x = now.x
     f.from.z = now.z
     f.from.yaw = now.yaw
+    f.fromUp = now.up
+    f.fromPitch = now.pitch
     Object.assign(f.to, to)
     f.t0 = this.clock
     f.t1 = this.clock + Math.max(duration, 1e-3)
@@ -127,6 +131,8 @@ export class FootPlanner {
       o.pitch = 0
       o.skid = Math.hypot(f.to.x - f.from.x, f.to.z - f.from.z) * 6 * u * (1 - u) / (f.t1 - f.t0)
     }
+    o.up += f.fromUp * (1 - k)
+    o.pitch += f.fromPitch * (1 - k)
     return o
   }
 
@@ -144,11 +150,11 @@ export class FootPlanner {
     o.x = a * f.from.x + b * cx + c * f.to.x
     o.z = a * f.from.z + b * cz + c * f.to.z
     const arch = Math.pow(Math.sin(Math.PI * u), 0.6)
-    o.up = via.up * arch
+    o.up = via.up * arch + f.fromUp * (1 - s)
     const turn = (y: number): number => Math.atan2(Math.sin(y), Math.cos(y))
     const yaw = u < 0.5 ? f.from.yaw + turn(via.yaw - f.from.yaw) * smooth(u * 2) : via.yaw + turn(f.to.yaw - via.yaw) * smooth(u * 2 - 1)
     o.yaw = yaw
-    o.pitch = via.point * arch
+    o.pitch = via.point * arch + f.fromPitch * (1 - s)
     o.skid = 0
     return o
   }

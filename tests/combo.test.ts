@@ -31,6 +31,70 @@ function play(clicks: number[], until: number): { moves: number[]; events: Array
 }
 
 describe('click combo', () => {
+  it('remembers the next attack through a short movement exit, then expires', () => {
+    const combo = new ComboController(MOVES, RECOVER)
+    const moves: number[] = []
+    const emit = (e: ComboEvent): void => { if (e.type === 'start') moves.push(e.move) }
+    combo.press()
+    combo.update(0, emit)
+    combo.release() // cannot skip an uncommitted strike
+    expect(combo.active).toBe(true)
+    combo.update(0.7, emit)
+    combo.release()
+    expect(combo.active).toBe(false)
+    combo.update(0.4, emit)
+    combo.press()
+    combo.update(DT, emit)
+    expect(moves).toEqual([0, 1])
+    combo.update(0.75, emit)
+    combo.release()
+    combo.update(0.9, emit)
+    combo.press()
+    combo.update(DT, emit)
+    expect(moves).toEqual([0, 1, 0])
+  })
+
+  it('hard cancellation clears movement continuation', () => {
+    const combo = new ComboController(MOVES, RECOVER)
+    const emit = (): void => undefined
+    combo.press()
+    combo.update(0, emit)
+    combo.update(0.7, emit)
+    combo.release()
+    combo.cancel()
+    combo.press()
+    combo.update(0, emit)
+    expect(combo.move).toBe(0)
+  })
+
+  it('takes buffered input when a frame crosses the entire chain window', () => {
+    const combo = new ComboController([{ duration: 0.5, chain: [0.49, 0.5] }, MOVES[1]], RECOVER)
+    const moves: number[] = []
+    const emit = (e: ComboEvent): void => { if (e.type === 'start') moves.push(e.move) }
+    combo.press()
+    combo.update(0, emit)
+    combo.update(0.48, emit)
+    combo.press()
+    combo.update(1 / 30, emit)
+    expect(moves).toEqual([0, 1])
+  })
+
+  it('movement uses the authored grounded exit and never steals a pending attack', () => {
+    const combo = new ComboController([{ ...MOVES[0], cancelAt: 0.4 }, MOVES[1]], RECOVER)
+    const emit = (): void => undefined
+    combo.press()
+    combo.update(0, emit)
+    combo.update(0.39, emit)
+    expect(combo.cancellable).toBe(false)
+    combo.update(0.02, emit)
+    expect(combo.cancellable).toBe(true)
+    combo.press()
+    expect(combo.cancellable).toBe(false)
+    combo.update(0.02, emit)
+    expect(combo.cancellable).toBe(false)
+    combo.update(0.1, emit)
+    expect(combo.move).toBe(1)
+  })
   it('plays one move per click: once is move 1 only, then back to the stance', () => {
     const { moves, events } = play([0], 3)
     expect(moves).toEqual([0])
@@ -119,6 +183,22 @@ describe('click combo', () => {
 })
 
 describe('keyed channel curves', () => {
+  it('carries compatible entry velocity without exceeding the authored envelope', () => {
+    const c = new Curve(8)
+    c.set(0, [[0.4, 1], [0.8, 2]])
+    const start = c.at(0.2), speed = c.velocity(0.2)
+    c.set(start, [[0.4, 2]], 0, speed)
+    expect(c.velocity(0)).toBeCloseTo(speed)
+    expect((c.at(1e-5) - start) / 1e-5).toBeCloseTo(speed, 3)
+    for (const velocity of [-100, 0, 3, 100]) {
+      c.set(0, [[0.1, 1], [0.5, 1.5]], 0, velocity)
+      for (let t = 0; t < 0.5; t += 0.001) {
+        expect(c.at(t)).toBeGreaterThanOrEqual(0)
+        expect(c.at(t)).toBeLessThanOrEqual(t < 0.1 ? 1 : 1.5)
+        expect(c.velocity(t)).toBeGreaterThanOrEqual(-1e-8)
+      }
+    }
+  })
   it('pass through every key and never overshoot between them', () => {
     const c = new Curve(8)
     const keys: Array<[number, number]> = [[0.2, 10], [0.3, -12], [0.42, -9], [0.72, 6]]

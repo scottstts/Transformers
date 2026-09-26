@@ -3,6 +3,7 @@ import { createMotionState } from '../../src/game/types.ts'
 import { RobotCombat } from '../../src/game/combat/robot-combat.ts'
 import { CameraFx } from '../../src/game/combat/camera-fx.ts'
 import type { Character } from '../../src/content/transformer/character.ts'
+import type { MotionState } from '../../src/game/types.ts'
 
 export const DT = 1 / 60
 
@@ -11,7 +12,7 @@ export const DT = 1 / 60
  * `clicks` are attack presses and `specials` special presses (s). The
  * world's clock runs at the special's tempo, as the session's does.
  */
-export function runFight(c: Character, clicks: number[], until: number, each: (t: number, combat: RobotCombat) => void, dt = DT, specials: number[] = []): RobotCombat {
+export function runFight(c: Character, clicks: number[], until: number, each: (t: number, combat: RobotCombat) => void, dt = DT, specials: number[] = [], control?: (t: number, combat: RobotCombat, state: MotionState) => void): RobotCombat {
   const state = createMotionState()
   state.mode = 'robot'
   state.target = 1
@@ -34,6 +35,7 @@ export function runFight(c: Character, clicks: number[], until: number, each: (t
       combat.startSpecial(state, aim)
     }
     const step = dt * combat.tempo
+    control?.(t, combat, state)
     combat.update(step, state, aim)
     const pose = c.gait.update(step, state.speed, state.yawRate, false, true, null)
     if (combat.poseWeight > 0) pose.air = (pose.air ?? 0) + (combat.air - (pose.air ?? 0)) * combat.poseWeight
