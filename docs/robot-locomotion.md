@@ -16,6 +16,18 @@ Shift switches walking to running. The run is a true run: stance is 36 % of the 
   - Standing still, the weight shifts slowly from leg to leg.
 - **Arms** swing opposite the legs with a small lag and follow through on damped springs (sub-stepped).
 
+## Steering (`game/movement.ts`)
+
+- Camera-relative, answered at once: the turn rate asked is 9 rad/s per radian off the wanted heading (ceiling 9 rad/s walking, 6 running), taken up at 18/s, damped just under critical. Facing the other way from a stand takes about 0.4 s. The old rate (2 rad/s ceiling, 6/s response) stepped slowly round and read as unresponsive.
+- Speed rises at 4.5/s and falls at 7/s; while turning, the speed kept is (cos(angle off) + 0.3) / 1.3, so a sharp turn pivots before it runs.
+- The gait's stepping takes a turn on the spot as at most 2.6 m/s of motion (`TURN_STEP_MAX`): a fast pivot shuffles instead of sprinting in place. The head's turn into a turn is capped at 18°.
+
+## Carriage per robot
+
+Each robot's `GaitStyle` may carry its own carriage for moving, when its stand does not suit locomotion (`track`, `armAbduct`, `runElbow`, `armCross`): the feet's track and the shoulders' abduction as shares of the rig's (blended in with the stride's amplitude, standing keeps the rig's own), the elbow bend at a full run, and the upper arms' inward rotation about their own axis (applied before the swing, so the bent forearms come forward and across the body). The rig reads them from the gait pose (`GaitPose.track`, `abduct`, `armTwist`), and the fight's overlay blends from the same track.
+
+The F1's stand is built wide (feet 0.36 m out against 0.27 m hips, arms splayed 16°). Carried into the stride as it was, the swing foot kicked out and the pumping forearms swung out to the sides: the clown walk. Its style tracks the feet at 0.78 / 0.64 of the stance walking / running, brings the shoulders in to 0.55 / 0.45 of the splay, bends the elbows 72° at a run with 22° of inward rotation, and lifts the feet less at a run (0.44 m). The truck keeps the defaults.
+
 ## Jumping
 
 The timeline takes the forward momentum at take-off (speed over run speed). Timings (anticipation 0.36 s standing to 0.14 s at a full run, recovery 0.42 to 0.28 s) and squat depths shorten with it, so a jump from a run fires almost immediately. Take-off speed and gravity are the same for all: about 1.1 m high, 0.87 s in the air; momentum carries, no steering in the air, and a transformation can't start mid-jump.

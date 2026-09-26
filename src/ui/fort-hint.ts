@@ -1,16 +1,21 @@
-/** Why the player is held at a fort: the car at its perimeter, or the robot against its walls. */
-export type FortHold = 'car' | 'wall' | null
+/**
+ * Why the player is held at a fort: the car at its perimeter, the robot
+ * against its walls, or the robot refused the car form inside its perimeter.
+ */
+export type FortHold = 'car' | 'wall' | 'locked' | null
 
 /**
  * A quiet line at the top of the screen when the player is held at a fort:
- * the car at the perimeter (only the robot can go in), or the robot against
- * the walls (it goes in through a gate). It fades in after a moment of being
- * held (brushing past doesn't flash it) and out when released.
+ * the car at the perimeter (only the robot can go in), the robot against the
+ * walls (it goes in through a gate), or a transformation refused inside. It
+ * fades in after a moment of being held (brushing past doesn't flash it; a
+ * refusal shows at once) and out when released.
  */
 export class FortHint {
   private readonly el: HTMLDivElement
   private readonly car: string
   private readonly wall = '<span>Fort walls</span><i></i><span>go in through a gate</span>'
+  private readonly locked = '<span>Inside the fort</span><i></i><span>no car form until you are out</span>'
   private timer = 0
   private shown: FortHold = null
 
@@ -32,8 +37,8 @@ export class FortHint {
       return
     }
     this.timer = window.setTimeout(() => {
-      this.el.innerHTML = hold === 'car' ? this.car : this.wall
+      this.el.innerHTML = hold === 'car' ? this.car : hold === 'wall' ? this.wall : this.locked
       this.el.classList.add('shown')
-    }, 450)
+    }, hold === 'locked' ? 0 : 450)
   }
 }

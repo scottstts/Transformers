@@ -5,6 +5,8 @@ import type { CircleCollider, SegmentCollider } from '../../game/types';
 import { Forts } from './fort/index.ts';
 import { SHADOW_ONLY_LAYER } from '../../rendering/layers.ts';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
+import { SHADOW_FAR } from '../../content/soldier/horde-renderer.ts';
 
 interface RockItem {
 	x: number; z: number; r: number;
@@ -82,8 +84,13 @@ export function rockGeometry( r, seed, detail = 1 ) {
 
 const ZERO = new THREE.Vector3( 0, 0, 0 );
 
-/** Focus height (m) above which the shadow camera rises with it; a standing robot's focus is below it. */
-const SHADOW_LIFT_FROM = 6;
+/**
+ * The sun's shadows: cascades over the view out to SHADOW_FAR (the soldiers'
+ * shadow range is the same), each a 2048 map, blended across their seams. A
+ * single 32 m box round the focus left everything beyond it unshadowed:
+ * soldiers' and buildings' shadows popped in as they came near.
+ */
+const SHADOW_CASCADES = 3;
 
 export class DesertWorld {
 	scene: THREE.Scene;
@@ -96,6 +103,9 @@ export class DesertWorld {
 	sky: THREE.Mesh;
 	ground: THREE.Mesh;
 	sun: THREE.DirectionalLight;
+	/** the sun's cascaded shadows; their splits follow the view camera's lens */
+	csm: CSMShadowNode;
+	private lens = { fov: 0, aspect: 0 };
 	far: THREE.Group;
 	tiles: RockTile[] = [];
 
@@ -133,13 +143,17 @@ export class DesertWorld {
 		this.sun.castShadow = true;
 		const sc = this.sun.shadow;
 		sc.mapSize.set( 2048, 2048 );
-		const e = 16;
-		sc.camera.left = - e; sc.camera.right = e; sc.camera.top = e; sc.camera.bottom = - e;
-		sc.camera.near = 1; sc.camera.far = 140;
+		sc.camera.near = 1; sc.camera.far = 420;
 		sc.bias = - 0.0004;
 		sc.normalBias = 0.03;
 		sc.radius = 3;
+		// cloned into every cascade: the soldiers' shadow proxies live on this layer
 		sc.camera.layers.enable( SHADOW_ONLY_LAYER );
+		this.csm = new CSMShadowNode( this.sun, { cascades: SHADOW_CASCADES, maxFar: SHADOW_FAR, mode: 'practical', lightMargin: 120 } );
+		this.csm.fade = true;
+		sc.shadowNode = this.csm;
+		this.sun.position.copy( SKY.sunDir ).multiplyScalar( 100 );
+		this.sun.target.position.set( 0, 0, 0 );
 		scene.add( this.sun, this.sun.target );
 
 		const hemi = new THREE.HemisphereLight( 0xcfd8e2, 0x9a7f63, 0.35 );
@@ -265,6 +279,7 @@ export class DesertWorld {
 	update( camera, focus ) {
 
 		this.sky.position.copy( camera.position );
+		this.forts.update( camera );
 		this.far.position.set( camera.position.x, 0, camera.position.z );
 
 		const m = this.instanceMatrix;
@@ -295,14 +310,15 @@ export class DesertWorld {
 
 		}
 
-		// shadow camera follows the focus, snapped to texels to avoid shimmer; a subject high in
-		// the air (a special's leap) takes it up with it, or it would leave the shadow frustum
-		const sc = this.sun.shadow.camera;
-		const texel = ( sc.right - sc.left ) / this.sun.shadow.mapSize.x;
-		const fx = Math.round( focus.x / texel ) * texel, fz = Math.round( focus.z / texel ) * texel;
-		const fy = Math.round( Math.max( 0, focus.y - SHADOW_LIFT_FROM ) / texel ) * texel;
-		this.sun.target.position.set( fx, fy, fz );
-		this.sun.position.set( fx, fy, fz ).addScaledVector( SKY.sunDir, 80 );
+		// the cascades follow the view camera by themselves (snapped to their texels); their splits
+		// are measured from its lens, which the follow camera, the lens kicks and the director change
+		if ( this.csm.camera && ( camera.fov !== this.lens.fov || camera.aspect !== this.lens.aspect ) ) {
+
+			this.lens.fov = camera.fov;
+			this.lens.aspect = camera.aspect;
+			this.csm.updateFrustums();
+
+		}
 
 	}
 

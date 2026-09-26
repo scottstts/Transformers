@@ -47,7 +47,7 @@ export function slam(mix: AudioMix, strength: number, subHz = 48): void {
   noise(ctx, mix.tex.roar, bus, t, 0.9, 'bandpass', 420, 180, 0.01, 0.35 * g, 0.9)
   for (let i = 0; i < 9; i++) {
     const at = t + 0.25 + Math.pow(Math.random(), 1.4) * 1.1
-    noise(ctx, mix.tex.chatter, bus, at, 0.08 + Math.random() * 0.1, 'bandpass', 1300 + Math.random() * 1700, 1200, 0.003, 0.06 * g * (1 - (at - t) * 0.5))
+    noise(ctx, mix.tex.crackle, bus, at, 0.08 + Math.random() * 0.1, 'bandpass', 1600, 1600, 0.003, 0.09 * g * (1 - (at - t) * 0.5), 0, 0.35)
   }
 }
 
@@ -88,14 +88,17 @@ export function voice(mix: AudioMix, level: number, send: number, seconds: numbe
 /**
  * A stretch of a noise texture through a filter sweeping f0 -> f1, with an
  * attack of `attack` s up to `gain` and an exponential fall to the end
- * (`hold` 0..1 keeps it up for that share first).
+ * (`hold` 0..1 keeps it up for that share first). `q` overrides the filter's
+ * Q. A band of noise swept in frequency reads as a synthesized "whoop"
+ * (players heard the soldiers' swept bands as beeps), so short events keep
+ * f0 = f1 and a wide band.
  */
-export function noise(ctx: AudioContext, buffer: AudioBuffer, dest: AudioNode, t: number, dur: number, type: BiquadFilterType, f0: number, f1: number, attack: number, gain: number, hold = 0): void {
+export function noise(ctx: AudioContext, buffer: AudioBuffer, dest: AudioNode, t: number, dur: number, type: BiquadFilterType, f0: number, f1: number, attack: number, gain: number, hold = 0, q = type === 'bandpass' ? 0.8 : 0.5): void {
   const src = ctx.createBufferSource()
   src.buffer = buffer
   const fl = ctx.createBiquadFilter()
   fl.type = type
-  fl.Q.value = type === 'bandpass' ? 0.8 : 0.5
+  fl.Q.value = q
   fl.frequency.setValueAtTime(f0, t)
   fl.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur)
   const g = ctx.createGain()

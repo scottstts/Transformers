@@ -1,10 +1,10 @@
-import { Group, InstancedBufferGeometry, Mesh, StorageBufferAttribute, type BufferGeometry, type Material } from 'three/webgpu'
+import { BufferAttribute, BufferGeometry, Group, InstancedBufferGeometry, Mesh, StorageBufferAttribute, type Material } from 'three/webgpu'
 import type { SoldierAsset } from './asset'
 import { createShadowMaterial, createSoldierMaterials, hordeNodes } from './materials'
 import { SHADOW_ONLY_LAYER } from '../../rendering/layers'
 
 /** Soldiers drawn at most at once (every fort's garrison and its debris). */
-export const HORDE_CAPACITY = 96
+export const HORDE_CAPACITY = 128
 
 /** One soldier to draw this frame: its bone rows (bones x 12 floats, affine world rows) and state. */
 export interface HordeInstance {
@@ -19,12 +19,25 @@ export interface HordeInstance {
 
 /** Detail tiers by distance (m): LOD0 up close, LOD1 across a fort, LOD2 beyond. */
 export const LOD_DISTANCE = [26, 70] as const
-/** Soldiers cast shadows inside this distance of the camera (the sun's shadow box is ~16 m around the focus). */
-const SHADOW_DISTANCE = 42
+/**
+ * Most soldiers drawn at LOD0 and at LOD1: a crowd pressing round the robot
+ * would otherwise put ~85k triangles each on screen; beyond the nearest few
+ * the next tier is indistinguishable in the melee.
+ */
+export const LOD_CAP = [18, 48] as const
+/**
+ * Shadows: the nearest soldiers (within NEAR_SHADOW m, at most NEAR_SHADOW_CAP)
+ * cast from the detailed proxy, every other one within SHADOW_FAR (the sun's
+ * farthest cascade) from a proxy of one box per part (~240 triangles). A
+ * cut-off distance made shadows pop in as soldiers came near.
+ */
+const NEAR_SHADOW = 32
+const NEAR_SHADOW_CAP = 20
+export const SHADOW_FAR = 150
 
 /**
  * The whole horde in a fixed number of draws: one mesh per material slot per
- * detail tier (a run of instances each), plus one shadow proxy. The meshes
+ * detail tier (a run of instances each), plus two shadow proxies. The meshes
  * share two storage buffers: every drawn soldier's bone matrices and its
  * state (materials.ts). The caller culls and sorts; `draw` packs the list
  * tier by tier into the buffers, uploads only the part in use and sets each
@@ -37,8 +50,8 @@ export class HordeRenderer {
   private readonly rows: StorageBufferAttribute
   private readonly state: StorageBufferAttribute
   private readonly tiers: Array<{ meshes: Mesh[]; geometries: InstancedBufferGeometry[] }> = []
-  private readonly shadow: Mesh
-  private readonly shadowGeometry: InstancedBufferGeometry
+  /** the detailed shadow proxy (near) and the box proxy (the rest) */
+  private readonly shadows: Array<{ mesh: Mesh; geometry: InstancedBufferGeometry }> = []
   private readonly counts = [0, 0, 0]
 
   constructor(asset: SoldierAsset) {
@@ -68,26 +81,36 @@ export class HordeRenderer {
       }
       this.tiers.push({ meshes, geometries })
     }
-    this.shadowGeometry = instanced(asset.shadow)
-    this.shadow = new Mesh(this.shadowGeometry, createShadowMaterial(nodes))
-    this.shadow.layers.set(SHADOW_ONLY_LAYER)
-    this.shadow.castShadow = true
-    this.shadow.receiveShadow = false
-    this.shadow.frustumCulled = false
-    this.shadow.matrixAutoUpdate = false
-    this.shadow.visible = false
-    this.object.add(this.shadow)
+    const shadowMaterial = createShadowMaterial(nodes)
+    for (const source of [asset.shadow, pieceBoxes(asset)]) {
+      const geometry = instanced(source)
+      const mesh = new Mesh(geometry, shadowMaterial)
+      mesh.layers.set(SHADOW_ONLY_LAYER)
+      mesh.castShadow = true
+      mesh.receiveShadow = false
+      mesh.frustumCulled = false
+      mesh.matrixAutoUpdate = false
+      mesh.visible = false
+      this.object.add(mesh)
+      this.shadows.push({ mesh, geometry })
+    }
   }
 
-  /** Draw `list` (culled, sorted near to far) this frame. */
-  draw(list: readonly HordeInstance[]): void {
+  /**
+   * Draw `list` this frame: its first `visible` entries are on screen (culled,
+   * sorted near to far); the rest are off screen but may throw a shadow into
+   * view, and only cast.
+   */
+  draw(list: readonly HordeInstance[], visible = list.length): void {
     const n = Math.min(list.length, HORDE_CAPACITY)
+    const shown = Math.min(visible, n)
     const rows = this.rows.array as Float32Array
     const state = this.state.array as Float32Array
     const stride = this.bones * 12
     const counts = this.counts
     counts[0] = counts[1] = counts[2] = 0
-    let shadows = 0
+    let near = 0
+    let far = 0
     for (let i = 0; i < n; i++) {
       const s = list[i]
       rows.set(s.rows, i * stride)
@@ -95,8 +118,12 @@ export class HordeRenderer {
       state[i * 4 + 1] = s.dissolve
       state[i * 4 + 2] = s.lights
       state[i * 4 + 3] = s.blade
-      counts[s.distance < LOD_DISTANCE[0] ? 0 : s.distance < LOD_DISTANCE[1] ? 1 : 2]++
-      if (s.distance < SHADOW_DISTANCE) shadows = i + 1
+      if (i < shown) {
+        // the list is sorted, so the caps keep each tier one consecutive run
+        counts[s.distance < LOD_DISTANCE[0] && counts[0] < LOD_CAP[0] ? 0 : s.distance < LOD_DISTANCE[1] && counts[1] < LOD_CAP[1] ? 1 : 2]++
+        if (s.distance < NEAR_SHADOW && near === i && near < NEAR_SHADOW_CAP) near = i + 1
+      }
+      if (s.distance < SHADOW_FAR) far = i + 1
     }
     if (n > 0) {
       this.rows.clearUpdateRanges()
@@ -118,9 +145,14 @@ export class HordeRenderer {
       }
       base += count
     }
-    this.shadow.visible = shadows > 0
-    this.shadow.userData.base = 0
-    this.shadowGeometry.instanceCount = shadows
+    // near soldiers from the detailed proxy, the rest (farther, or off screen) from the boxes
+    const [detailed, boxes] = this.shadows
+    detailed.mesh.visible = near > 0
+    detailed.mesh.userData.base = 0
+    detailed.geometry.instanceCount = near
+    boxes.mesh.visible = far > near
+    boxes.mesh.userData.base = near
+    boxes.geometry.instanceCount = Math.max(0, far - near)
   }
 
   /** Show every tier and the proxy for a shader compile (with one instance), or hide them again. */
@@ -132,9 +164,38 @@ export class HordeRenderer {
         tier.geometries[k].instanceCount = on ? 1 : 0
       }
     }
-    this.shadow.visible = on
-    this.shadowGeometry.instanceCount = on ? 1 : 0
+    for (const { mesh, geometry } of this.shadows) {
+      mesh.visible = on
+      mesh.userData.base = 0
+      geometry.instanceCount = on ? 1 : 0
+    }
   }
+}
+
+/**
+ * The cheap shadow proxy: every part's box (the debris boxes, in their bones'
+ * frames), 12 triangles each; the blade casts none, as its glow doesn't.
+ */
+function pieceBoxes(asset: SoldierAsset): BufferGeometry {
+  const pos: number[] = []
+  const bone: number[] = []
+  const idx: number[] = []
+  const blade = asset.manifest.bones.findIndex((b) => b.name === 'blade')
+  for (const p of asset.manifest.pieces) {
+    if (p.bone === blade) continue
+    const base = pos.length / 3
+    for (let k = 0; k < 8; k++) {
+      pos.push(p.center[0] + (k & 1 ? p.half[0] : -p.half[0]), p.center[1] + (k & 2 ? p.half[1] : -p.half[1]), p.center[2] + (k & 4 ? p.half[2] : -p.half[2]))
+      bone.push(p.bone)
+    }
+    // faces (a depth pass: winding matters only for culling, kept outward)
+    for (const [a, b, c, d] of [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]]) idx.push(base + a, base + b, base + c, base + a, base + c, base + d)
+  }
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+  g.setAttribute('boneIndex', new BufferAttribute(new Float32Array(bone), 1))
+  g.setIndex(idx)
+  return g
 }
 
 function instanced(source: BufferGeometry): InstancedBufferGeometry {

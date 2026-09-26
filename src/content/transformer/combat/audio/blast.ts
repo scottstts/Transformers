@@ -61,7 +61,7 @@ export function explosion(mix: AudioMix, tuning: ExplosionTuning): void {
     noise(ctx, mix.tex.white, dry, t + 0.3, 3, 'bandpass', 1700, 1100, 0.5, 0.07 * g * debris, 0.35)
     for (let i = 0; i < 26; i++) {
       const at = t + 0.45 + Math.pow(Math.random(), 1.3) * 2.8
-      noise(ctx, mix.tex.chatter, dry, at, 0.06 + Math.random() * 0.12, 'bandpass', 900 + Math.random() * 1900, 1100, 0.003, 0.1 * g * debris * (1.2 - (at - t) * 0.3))
+      noise(ctx, mix.tex.crackle, dry, at, 0.06 + Math.random() * 0.12, 'bandpass', 1500, 1500, 0.003, 0.14 * g * debris * (1.2 - (at - t) * 0.3), 0, 0.35)
     }
     for (let i = 0; i < 7; i++) {
       // heavier slabs: a dull thud each
@@ -109,7 +109,7 @@ export function sandScrape(mix: AudioMix, strength: number): void {
   const bus = voice(mix, 0.22 * Math.min(1.2, strength), 0.3, 0.6)
   noise(ctx, mix.tex.white, bus, t, 0.16, 'bandpass', 1900, 1900, 0.01, 0.35, 0.4)
   noise(ctx, mix.tex.brown, bus, t, 0.14, 'lowpass', 300, 300, 0.01, 0.4)
-  for (let i = 0; i < 3; i++) noise(ctx, mix.tex.chatter, bus, t + Math.random() * 0.12, 0.06, 'bandpass', 1600 + Math.random() * 1600, 1400, 0.002, 0.25)
+  for (let i = 0; i < 3; i++) noise(ctx, mix.tex.crackle, bus, t + Math.random() * 0.12, 0.06, 'bandpass', 2200, 2200, 0.002, 0.3, 0, 0.35)
 }
 
 /** Glass cooling fast: fine ticks of thermal cracking and a faint hiss, for `seconds`. */

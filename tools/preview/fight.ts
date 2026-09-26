@@ -94,12 +94,13 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
     state.yaw = Math.atan2(h.x - c.x, h.z - c.z)
     state.pos.set(c.x - Math.sin(state.yaw) * player.robotOffset, 0, c.z - Math.cos(state.yaw) * player.robotOffset)
   }
+  const gaitMode = process.env.GAIT ?? ''
   const guards = sheet.clicks.filter((c) => c.startsWith('G')).map((c) => c.slice(1).split('-').map(Number) as [number, number])
   const fx = new CameraFx(lens)
   const fight = new RobotCombat(player.combat, player.model, player.robotOffset, state, fx)
   if (horde) {
     const h = horde
-    fight.aimAssist = (x, z, heading) => h.assist(x, z, heading)
+    fight.aimAssist = (x, z, heading, range, cone) => h.assist(x, z, heading, range, cone)
     fight.onHit = (hit) => {
       if (process.env.HITS && hit.sweep < 0) {
         const near = h.nearby(hit.x, hit.z, 12).map((k) => {
@@ -154,7 +155,13 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
     aim.updateMatrixWorld()
     fight.setGuard(guards.some(([a, b]) => t >= a && t < b))
     fight.update(dt, state, aim)
-    const pose = player.gait.update(dt, state.speed, state.yawRate, false, true, null)
+    // GAIT=walk|run: the robot walks (or runs) straight ahead instead of fighting
+    if (gaitMode) {
+      state.speed = gaitMode === 'run' ? player.profile.robot.runSpeed : player.profile.robot.walkSpeed
+      state.pos.x += Math.sin(state.yaw) * state.speed * dt
+      state.pos.z += Math.cos(state.yaw) * state.speed * dt
+    }
+    const pose = player.gait.update(dt, state.speed, state.yawRate, gaitMode === 'run', true, null)
     if (fight.poseWeight > 0) pose.air = (pose.air ?? 0) + (fight.air - (pose.air ?? 0)) * fight.poseWeight
     player.gait.events.length = 0
     player.model.root.position.copy(state.pos)

@@ -4,7 +4,7 @@ import { readSoldier, NO_CONTACT } from './support/assets'
 import { SoldierRig, createSoldierPose } from '../src/content/soldier/rig'
 import { POSES, writePose } from '../src/content/soldier/poses'
 import { Forts, FORT_SITES } from '../src/worlds/desert/fort'
-import { planFort, insideWalls, GATE_WIDTH } from '../src/worlds/desert/fort/plan'
+import { planFort, insideWalls, GATE_WIDTH, YARD } from '../src/worlds/desert/fort/plan'
 import { pushOut } from '../src/game/collide'
 import { goldberg } from '../src/content/transformer/combat/fx/shield'
 import { CarBarrier } from '../src/game/enemies/barrier'
@@ -83,12 +83,33 @@ describe('fort plans', () => {
       }
       expect(plan.barrier).toBeGreaterThan(plan.outer + 10)
       expect(insideWalls(plan, 0, 0)).toBe(true)
-      // nothing blocks the middle of the yard
+      // nothing blocks the yard
       for (const s of plan.segments) {
         const t = Math.max(0, Math.min(1, ((0 - s.ax) * (s.bx - s.ax) + (0 - s.az) * (s.bz - s.az)) / ((s.bx - s.ax) ** 2 + (s.bz - s.az) ** 2 || 1)))
-        expect(Math.hypot(s.ax + (s.bx - s.ax) * t, s.az + (s.bz - s.az) * t)).toBeGreaterThan(9)
+        expect(Math.hypot(s.ax + (s.bx - s.ax) * t, s.az + (s.bz - s.az) * t)).toBeGreaterThan(YARD - 1)
       }
+      for (const c of plan.circles) expect(Math.hypot(c.x, c.z) - c.r).toBeGreaterThan(YARD - 1)
       expect(plan.posts.length).toBeGreaterThanOrEqual(GARRISON)
+    }
+  })
+
+  it('lay every building out inside the walls, give each quadrant its role and leave every post standing free', () => {
+    const contact = { nx: 0, nz: 0, depth: 0 }
+    for (const site of FORT_SITES) {
+      const plan = planFort(site)
+      for (const m of plan.modules) {
+        if (m.kind === 'jersey') continue
+        expect(insideWalls(plan, m.at[0], m.at[1]), `${site.id} ${m.kind}`).toBe(true)
+      }
+      const kinds = new Set(plan.modules.map((m) => m.kind))
+      for (const k of ['hq', 'chu', 'canopy', 'container', 'bund', 'tank', 'helipad', 'radioMast', 'waterTower', 'tower', 'booth'] as const) expect(kinds.has(k), `${site.id} has ${k}`).toBe(true)
+      expect(plan.hangars.length).toBe(2)
+      for (const p of plan.posts) {
+        for (const at of p.beat) {
+          const q = { x: at[0], z: at[1] }
+          expect(pushOut(q, SOLDIER.radius, plan.segments, plan.circles, contact), `${site.id} beat ${at.map((v) => v.toFixed(1))}`).toBeNull()
+        }
+      }
     }
   })
 })
@@ -179,6 +200,22 @@ describe('horde', () => {
     run(6)
     expect(horde.status(target.x, target.z)?.alert).toBe(true)
     expect(horde.nearby(target.x, target.z, 1.5 + SOLDIER.radius + 3).length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('keeps the garrison patrolling and pacing while the robot stays out', () => {
+    const { horde, fort, target, at, run } = make()
+    at(0, fort.plan.barrier + 30)
+    run(1)
+    const soldiers = horde.nearby(fort.plan.site.x, fort.plan.site.z, fort.plan.outer)
+    const start = soldiers.map((k) => [k.x, k.z])
+    let moved = 0
+    for (let t = 0; t < 12; t += 1) {
+      run(1)
+      soldiers.forEach((k, i) => { if (Math.hypot(k.x - start[i][0], k.z - start[i][1]) > 2.5) moved++ })
+    }
+    expect(horde.status(target.x, target.z)?.alert ?? false).toBe(false)
+    // most of the garrison is on the move over those seconds, not standing at its posts
+    expect(moved / (soldiers.length * 12)).toBeGreaterThan(0.5)
   })
 
   it('knocks a soldier back on its wheels, and a heavier blow breaks it apart; the parts are gone five seconds later', () => {

@@ -9,7 +9,7 @@ import type { Debris } from './debris'
 
 /** Soldier tuning: speeds (m/s), accelerations (m/s^2), times (s). */
 export const SOLDIER = {
-  health: 100,
+  health: 70,
   chargeSpeed: 8.5,
   engageSpeed: 3.4,
   accel: 11,

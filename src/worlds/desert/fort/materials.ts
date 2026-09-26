@@ -106,6 +106,105 @@ function gabion(): Material {
   return m
 }
 
+/** Pine boards and plywood: pale, sun-greyed timber with grain along the boards. */
+function wood(): Material {
+  const p = positionWorld
+  const shade = attribute('shade', 'float')
+  const m = new MeshStandardNodeMaterial()
+  const grain = N(vec2(p.x.add(p.z).mul(0.6), p.y.mul(9))).r
+  const tone = mix(color(0x8a7050), color(0xa99171), N(p.xz.mul(0.8).add(p.y.mul(0.5))).g.mul(0.6).add(shade.mul(0.4)))
+  const grey = mix(tone, color(0x8b8478), smoothstep(0.3, 0.8, N(p.xz.mul(0.12)).b).mul(0.5))
+  m.colorNode = mix(grey.mul(grain.mul(0.14).add(0.92)), SAND, dust(0.6))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.84).add(grain.mul(0.1))
+  return m
+}
+
+/** Painted insulated panels (housing units, booths, condensers): off-white to beige by `shade`, dusty, sun-chalked. */
+function prefab(): Material {
+  const p = positionWorld
+  const shade = attribute('shade', 'float')
+  const m = new MeshStandardNodeMaterial()
+  const tone = mix(mix(color(0xc9c4b6), color(0xb5aa92), smoothstep(0.3, 0.45, shade)), color(0x8f8c72), smoothstep(0.7, 0.82, shade))
+  const chalk = N(p.xz.mul(0.05).add(p.y.mul(0.03))).r
+  const streak = smoothstep(0.6, 0.85, N(vec2(p.x.add(p.z).mul(1.3), p.y.mul(0.06))).g)
+  m.colorNode = mix(tone.mul(chalk.mul(0.1).add(0.93)).mul(float(1).sub(streak.mul(0.1))), SAND, dust(0.7))
+  m.metalnessNode = float(0.15)
+  m.roughnessNode = float(0.62).add(chalk.mul(0.12))
+  return m
+}
+
+/** Rendered, painted concrete (the HQ): warm sand-coloured render, faded and stained by run-off from the parapet. */
+function plaster(): Material {
+  const p = positionWorld
+  const m = new MeshStandardNodeMaterial()
+  const blotch = N(p.xz.mul(0.06).add(p.y.mul(0.05))).r
+  const texture = N(vec2(p.x.add(p.z).mul(3.1), p.y.mul(3.1))).b
+  const runoff = smoothstep(0.6, 0.86, N(vec2(p.x.add(p.z.mul(0.7)).mul(1.4), p.y.mul(0.05))).g).mul(smoothstep(0.2, 0.9, normalWorld.y.oneMinus()))
+  const base = mix(color(0xb9a484), color(0xcbb898), blotch).mul(texture.mul(0.08).add(0.96)).mul(float(1).sub(runoff.mul(0.14)))
+  m.colorNode = mix(base, SAND, dust(0.8))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.9)
+  return m
+}
+
+/** Canvas (shade sails): a tan acrylic fabric, the weave only as a faint tone variation. Both sides. */
+function canvas(): Material {
+  const p = positionWorld
+  const shade = attribute('shade', 'float')
+  const m = new MeshStandardNodeMaterial()
+  const tone = mix(color(0xb8a27a), color(0x7d7a5c), smoothstep(0.45, 0.6, shade))
+  m.colorNode = mix(tone.mul(N(p.xz.mul(0.4)).r.mul(0.1).add(0.94)), SAND, dust(0.4))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.92)
+  m.side = DoubleSide
+  return m
+}
+
+/** Moulded polyethylene (tanks, latrines, insulators): matte, a colour by `shade`. */
+function poly(): Material {
+  const p = positionWorld
+  const shade = attribute('shade', 'float')
+  const m = new MeshStandardNodeMaterial()
+  const tone = mix(mix(color(0x2e3a2c), color(0x3b5566), smoothstep(0.3, 0.45, shade)), color(0x6d6a60), smoothstep(0.7, 0.82, shade))
+  m.colorNode = mix(tone.mul(N(p.xz.mul(0.3).add(p.y.mul(0.2))).g.mul(0.1).add(0.95)), SAND, dust(0.5))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.7)
+  return m
+}
+
+/**
+ * Road paint (the helipad's markings, the boom's white bands): a worn white.
+ * Laid a few millimetres over the surface it marks, it is biased toward the
+ * camera so it never fights with it at a distance.
+ */
+function paint(hex: number, worn: boolean): Material {
+  const p = positionWorld
+  const m = new MeshStandardNodeMaterial()
+  const wear = worn ? smoothstep(0.55, 0.8, N(p.xz.mul(1.3)).r) : float(0)
+  m.colorNode = mix(mix(color(hex), color(0x8d877e), wear), SAND, dust(worn ? 0.9 : 0.4))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.7)
+  if (worn) {
+    m.polygonOffset = true
+    m.polygonOffsetFactor = -2
+    m.polygonOffsetUnits = -4
+  }
+  return m
+}
+
+/** Sandbags: woven polypropylene sacks, sun-bleached, each bag its own tone (`shade`). */
+function sandbag(): Material {
+  const p = positionWorld
+  const shade = attribute('shade', 'float')
+  const m = new MeshStandardNodeMaterial()
+  const tone = mix(color(0x8f7c5b), color(0xaa9670), shade)
+  m.colorNode = mix(tone.mul(N(vec2(p.x.add(p.z).mul(5.3), p.y.mul(5.3))).b.mul(0.1).add(0.95)), SAND, dust(0.7))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.95)
+  return m
+}
+
 function std(hex: number, metal: number, rough: number): Material {
   const m = new MeshStandardNodeMaterial()
   m.colorNode = mix(color(hex), SAND, dust(0.5))
@@ -134,7 +233,14 @@ export function createFortMaterials(): Record<string, Material> {
     rubber: std(0x191919, 0, 0.9),
     glass: std(0x0b0d0f, 0.2, 0.08),
     interior,
-    sandbag: std(0x9d8a66, 0, 0.95),
+    sandbag: sandbag(),
+    wood: wood(),
+    prefab: prefab(),
+    plaster: plaster(),
+    canvas: canvas(),
+    poly: poly(),
+    paint: paint(0xdedad0, true),
+    signalRed: paint(0xa3261c, false),
     lamp: emissive(0xfff2d8, 2.2),
     beacon: emissive(0xff3018, 6),
   }

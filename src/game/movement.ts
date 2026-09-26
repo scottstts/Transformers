@@ -5,6 +5,22 @@ import { clamp, damp, easedRange, lerp, wrap } from './math'
 import { GameInput } from './input'
 import type { CharacterProfile, RobotProfile } from '../content/transformer/character'
 
+/**
+ * Robot turning: the turn rate asked per radian off the wanted heading, its
+ * ceiling standing/walking and running (rad/s), and how fast the body takes
+ * it up (1/s). About 0.4 s to face the other way from a stand: the robot
+ * answers the keys at once, as an action game's fighter does, instead of
+ * stepping slowly round. The pair (gain, response) is damped just under
+ * critical, so it settles without swinging past.
+ */
+const TURN_GAIN = 9
+const TURN_MAX: readonly [number, number] = [9, 6]
+const TURN_RESPONSE = 18
+/** Speed response (1/s) speeding up and slowing down, and the share of speed kept while turning (cos of the angle off, shifted). */
+const ACCELERATE = 4.5
+const DECELERATE = 7
+const TURN_SPEED_SHIFT = 0.3
+
 /** Camera-relative robot movement; walking and running (Shift) speeds come from the robot profile. */
 export function updateRobot(state: MotionState, input: GameInput, camera: PerspectiveCamera, dt: number, locked: boolean, robotOffset: number, robot: RobotProfile, airborne = false): void {
   const dir = locked || airborne ? null : input.movementDirection(camera)
@@ -17,12 +33,13 @@ export function updateRobot(state: MotionState, input: GameInput, camera: Perspe
     let targetTurn = 0
     if (dir) {
       const diff = wrap(Math.atan2(dir.x, dir.z) - state.yaw)
-      targetTurn = clamp(diff * 3.5, -(run ? 1.6 : 2), run ? 1.6 : 2)
-      targetSpeed = (run ? robot.runSpeed : robot.walkSpeed) * clamp((Math.cos(diff) + 0.2) / 1.2, 0, 1)
+      const max = run ? TURN_MAX[1] : TURN_MAX[0]
+      targetTurn = clamp(diff * TURN_GAIN, -max, max)
+      targetSpeed = (run ? robot.runSpeed : robot.walkSpeed) * clamp((Math.cos(diff) + TURN_SPEED_SHIFT) / (1 + TURN_SPEED_SHIFT), 0, 1)
     }
-    state.speed = damp(state.speed, targetSpeed, targetSpeed > state.speed ? 1.8 : 4, dt)
+    state.speed = damp(state.speed, targetSpeed, targetSpeed > state.speed ? ACCELERATE : DECELERATE, dt)
     if (Math.abs(state.speed) < 0.02 && !dir) state.speed = 0
-    state.yawRate = damp(state.yawRate, targetTurn, 6, dt)
+    state.yawRate = damp(state.yawRate, targetTurn, TURN_RESPONSE, dt)
   }
   const centerX = state.pos.x + Math.sin(state.yaw) * robotOffset
   const centerZ = state.pos.z + Math.cos(state.yaw) * robotOffset

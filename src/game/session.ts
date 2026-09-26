@@ -16,9 +16,11 @@ import { CameraFx } from './combat/camera-fx'
 import { Director, type DirectorSubject } from './combat/director'
 import { Energy } from './combat/energy'
 import { Lens } from '../rendering/lens'
+import { disableCulling } from '../rendering/warm'
 import type { SoldierAsset } from '../content/soldier/asset'
 import { Horde, type EnemyTarget } from './enemies/horde'
 import { CarBarrier } from './enemies/barrier'
+import type { FortHold } from '../ui/fort-hint'
 
 /** Frames rendered behind the switch cover before the new car is revealed. */
 const SWITCH_SETTLE_FRAMES = 3
@@ -78,10 +80,12 @@ export class GameSession {
   readonly horde: Horde
   private readonly barrier = new CarBarrier()
   private readonly target: EnemyTarget = { x: 0, z: 0, radius: 1, vx: 0, vz: 0, height: 4, heading: 0, guard: 0, present: true }
-  private holding: 'car' | 'wall' | null = null
+  private holding: FortHold = null
   private wallTime = 0
-  /** called when the player is held at a fort (the car at its perimeter, the robot against its walls), or no longer (UI hint) */
-  onFortHold: ((hold: 'car' | 'wall' | null) => void) | null = null
+  /** how long the refusal of the car form inside a fort stays up (s) */
+  private lockedTime = 0
+  /** called when the player is held at a fort (the car at its perimeter, the robot against its walls, the car form refused inside), or no longer (UI hint) */
+  onFortHold: ((hold: FortHold) => void) | null = null
 
   constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: PlayableTransformerAsset, soldiers: SoldierAsset, onFrameError: (error: Error) => void) {
     this.renderer = renderer
@@ -109,6 +113,11 @@ export class GameSession {
 
   selectForm(form: Form): void {
     if (this.jump.active || this.fight.active || this.switching) return
+    // inside a fort's perimeter the robot stays a robot: the car could never have driven in
+    if (form === 'car' && this.state.mode === 'robot' && this.world.forts.within(this.state.pos.x, this.state.pos.z)) {
+      this.lockedTime = 2.4
+      return
+    }
     requestTransformation(this.state, form)
   }
 
@@ -182,12 +191,19 @@ export class GameSession {
     }
   }
 
-  /** Compile and draw every path the scene can use, including the hidden combat weapon and its shadow. */
+  /**
+   * Compile and draw every path the scene can use, including the hidden
+   * combat weapon and its shadow, the soldiers' every tier and the forts
+   * wherever they stand (culling is off for this draw, so the parts of the
+   * world outside the start view, and their shadow casters, are ready before
+   * they first come into sight).
+   */
   async compile(): Promise<void> {
     const effects = this.character.combat.effects
     effects.warm(true)
     this.environment.contactEffects.warm(true)
     this.horde.warm(true)
+    const restoreCulling = disableCulling(this.scene)
     try {
       await this.renderer.compileAsync(this.scene, this.camera)
       // compileAsync prepares pipelines, but a real hidden draw also forces
@@ -195,6 +211,7 @@ export class GameSession {
       this.pipeline.render()
       await this.waitForGpu()
     } finally {
+      restoreCulling()
       effects.warm(false)
       this.environment.contactEffects.warm(false)
       this.horde.warm(false)
@@ -226,7 +243,7 @@ export class GameSession {
       fight = new RobotCombat(character.combat, character.model, character.robotOffset, this.state, this.cameraFx)
       fight.onStrike = (move) => this.energy.strike(move)
       // a blow that catches soldiers bites: a moment of hit-stop on a landed strike
-      fight.aimAssist = (x, z, heading) => this.horde.assist(x, z, heading)
+      fight.aimAssist = (x, z, heading, range, cone) => this.horde.assist(x, z, heading, range, cone)
       fight.onHit = (hit) => {
         const caught = this.horde.hit(hit)
         if (caught > 0 && hit.shape === 'sector') this.cameraFx.hitStop(0.05, 0.18)
@@ -301,13 +318,16 @@ export class GameSession {
   private updateAndRender(): void {
     this.timer.update()
     const frameDt = Math.max(1 / 240, Math.min(this.timer.getDelta(), 1 / 30))
+    // while a car switch loads the world stands still (the fight, the soldiers, their debris): nothing
+    // happens behind the cover that the player could not answer
+    const frozen = this.switching !== null
     // the fight's hit-stop slows the world's clock for a moment; the camera keeps real time
-    this.cameraFx.update(frameDt)
+    this.cameraFx.update(frozen ? 0 : frameDt)
     const state = this.state
     const { model, gait, effects, profile } = this.character
     const fight = this.fight
     // hit-stop and the special's slow motion slow the world's clock; the camera keeps real time
-    const dt = frameDt * this.cameraFx.timeScale * fight.tempo
+    const dt = frozen ? 0 : frameDt * this.cameraFx.timeScale * fight.tempo
     this.cameraFx.updateWorld(dt)
     const previous = advanceTransformation(state, dt, this.character.transformationDuration)
     // a car switch in progress locks the controls, as a transformation does; so does a special's cutscene
@@ -322,6 +342,10 @@ export class GameSession {
     const attack = this.input.consumeAttack() && stance && !this.jump.active && !special
     if (attack) fight.press()
     fight.setGuard(this.input.guarding && stance && !this.jump.active && !special)
+    // the movement keys aim each move of the fight, and take the robot back from it once the combo allows
+    const steer = stance ? this.input.movementDirection(this.camera) : null
+    fight.setSteer(steer)
+    if (steer && !attack && fight.releasable) fight.release()
     if (this.input.consumeJump() && stance && !attack && !fight.active) this.jump.start(Math.abs(state.speed) / profile.robot.runSpeed)
     const jump = this.jump.update(dt)
     fight.update(dt, state, this.camera)
@@ -343,7 +367,10 @@ export class GameSession {
     const walled = resolveCircleCollisions(state, this.world.colliders, this.character.robotOffset, profile, this.world.segments)
     // a robot pushing against a fort's walls for a moment is told where the way in is
     this.wallTime = walled && state.mode === 'robot' && !fight.active ? this.wallTime + frameDt : 0
-    const hold = this.barrier.holding ? 'car' : this.wallTime > 0.6 && this.world.forts.near(state.pos.x, state.pos.z) ? 'wall' : null
+    this.lockedTime = Math.max(0, this.lockedTime - frameDt)
+    const hold: FortHold = this.barrier.holding ? 'car'
+      : this.lockedTime > 0 ? 'locked'
+        : this.wallTime > 0.6 && this.world.forts.near(state.pos.x, state.pos.z) ? 'wall' : null
     if (hold !== this.holding) {
       this.holding = hold
       this.onFortHold?.(hold)
@@ -386,7 +413,8 @@ export class GameSession {
     }
     this.cameraFx.apply(this.camera)
     this.updateTarget(dt)
-    this.horde.update(dt, this.target, this.camera)
+    if (frozen) this.horde.drawFor(this.camera)
+    else this.horde.update(dt, this.target, this.camera)
     this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root))
     effects.shakeCamera(this.camera, dt)
     this.pipeline.render()
