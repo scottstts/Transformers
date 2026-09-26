@@ -18,7 +18,8 @@ import { groundSurface } from './materials.ts';
  *           a glass floor with glowing cracks and radial fissures running out
  *   furrow  a trench of glass left by a white-hot edge dragged through the
  *           sand; it can be reignited later (`reignite`), a heat front running
- *           along it from a point or in from its ends
+ *           along it from a point or in from its ends. A cold edge (heat 0)
+ *           leaves the same trench and berms in plain sand
  *
  * Heat is gone in seconds; the marks themselves fade over LIFE.
  */
@@ -248,8 +249,10 @@ export class ScorchMarks {
 		};
 
 		const w = abs( u ).div( hw ).add( N( positionWorld.xz.mul( 0.7 ) ).r.sub( 0.5 ).mul( 0.5 ) );
-		const glass = float( 1 ).sub( smoothstep( 0.35, 0.65, w ) ).mul( taper );
-		const char = float( 1 ).sub( smoothstep( 1.1, SOOT * 0.85, w ) ).mul( 0.85 ).mul( smoothstep( hw.mul( - 2.5 ), hw.mul( 1.5 ), end ) );
+		// a cold edge (heat 0) only cuts the sand: no glass, no soot
+		const fused = smoothstep( 0.02, 0.2, heat );
+		const glass = float( 1 ).sub( smoothstep( 0.35, 0.65, w ) ).mul( taper ).mul( fused );
+		const char = float( 1 ).sub( smoothstep( 1.1, SOOT * 0.85, w ) ).mul( 0.85 ).mul( smoothstep( hw.mul( - 2.5 ), hw.mul( 1.5 ), end ) ).mul( fused );
 		// molten in patches: hot spots along the trench, where the edge bit deeper
 		const patches = N( vec2( v.mul( 0.45 ), mark.w.mul( 0.13 ) ) ).r.mul( 0.5 ).add( N( vec2( v.mul( 1.7 ), u.mul( 0.8 ) ) ).g.mul( 0.25 ) ).add( 0.45 );
 		const core = exp( w.mul( w ).mul( - 2 ) ).mul( taper ).mul( patches );

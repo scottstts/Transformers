@@ -58,21 +58,23 @@ export const F1_PROFILE: CharacterProfile = {
 /**
  * A long, relaxed walk and an athletic run. The broad soles stay on parallel
  * tracks under the hips; the knees bend forward instead of following the
- * transformation's upward pole. Short run support leaves time for recovery.
+ * transformation's upward pole. Tuned against human joint ranges: a walk
+ * that vaults over near-straight stance legs, and a sprinter's run with short
+ * support, heel recovery and knee drive (docs/robot-locomotion.md).
  */
 export const RACER_GAIT: GaitStyle = {
   stride: [1.575, 3.8],
-  stance: [0.6, 0.28],
-  lift: [0.16, 0.48],
+  stance: [0.6, 0.25],
+  lift: [0.22, 0.7],
   runFlight: 0.06,
   runCompression: 0.05,
-  runCrouch: 0.12,
+  runCrouch: 0.03,
   sway: 0.035,
-  bob: 0.018,
+  bob: 0,
   hipYaw: 4,
   hipList: 2,
   shoulders: 3,
-  armSwing: [20, 34],
+  armSwing: [18, 42],
   heelStrike: [10, 3],
   toeOff: [22, 28],
   heel: 0.43,
@@ -80,12 +82,18 @@ export const RACER_GAIT: GaitStyle = {
   ankle: 0.26,
   jumpCrouch: 0.3,
   jumpTuck: 0.34,
-  track: [0.82, 0.78],
+  track: [0.82, 0.7],
   armAbduct: [0.45, 0.4],
   runElbow: 52,
   armCross: 6,
   kneePoleUp: [1, 0],
-  lean: [0.7, 0.8],
+  lean: [0, 0.3],
+  reach: [0.47, 0.38],
+  kneeFloor: [10, 18],
+  vault: 1,
+  liftWindow: [[0.25, 0.3], [0.25, 0.6]],
+  toeRelease: [0.5, 0.7],
+  armCarry: [8, 14],
 }
 
 export async function loadF1Asset(): Promise<PlayableTransformerAsset> {

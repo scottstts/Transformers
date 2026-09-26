@@ -160,4 +160,37 @@ describe('F1 carriage', () => {
     // Positive shoulder pitch sends the arm back while the same-side foot reaches forward.
     expect(armOpposition / 1440).toBeGreaterThan(2)
   })
+
+  it.each([
+    // walking: near-straight stance, the swing knee folds to about 60 degrees, the hip extends behind
+    { running: false, stanceKnee: [15, 35], swingKnee: 55, thigh: [30, -10] },
+    // running: soft landing, about 45 degrees at mid-stance, heel recovery past 110 and a high knee drive
+    { running: true, stanceKnee: [20, 55], swingKnee: 110, thigh: [60, -15] },
+  ])('moves its legs through human ranges (running $running)', ({ running, stanceKnee, swingKnee, thigh }) => {
+    const gait = new RobotGait(RACER_GAIT)
+    const rig = new RobotRig(data.bones, data.stand, data.dims)
+    const speed = running ? F1_PROFILE.robot.runSpeed : F1_PROFILE.robot.walkSpeed
+    for (let frame = 0; frame < 2400; frame++) gait.update(dt, speed, 0, running, true)
+    const stance = [Infinity, -Infinity]
+    let swing = 0, flexed = -Infinity, extended = Infinity
+    for (let frame = 0; frame < 720; frame++) {
+      const pose = gait.update(dt, speed, 0, running, true)
+      rig.poseLive(pose)
+      const hip = new Vector3().setFromMatrixPosition(rig.world[rig.index['hip.R']])
+      const knee = new Vector3().setFromMatrixPosition(rig.world[rig.index['shin.R']])
+      // thigh angle from vertical, forward positive (forward is -y)
+      const angle = Math.atan2(hip.y - knee.y, hip.z - knee.z) * 180 / Math.PI
+      flexed = Math.max(flexed, angle)
+      extended = Math.min(extended, angle)
+      const bend = 2 * Math.acos(Math.min(1, Math.abs(rig.local[rig.index['shin.R']].q.w))) * 180 / Math.PI
+      const leg = pose.legs.R
+      if (leg.up === 0 && leg.pitch === 0) { stance[0] = Math.min(stance[0], bend); stance[1] = Math.max(stance[1], bend) }
+      else swing = Math.max(swing, bend)
+    }
+    expect(stance[0]).toBeGreaterThan(stanceKnee[0])
+    expect(stance[1]).toBeLessThan(stanceKnee[1])
+    expect(swing).toBeGreaterThan(swingKnee)
+    expect(flexed).toBeGreaterThan(thigh[0])
+    expect(extended).toBeLessThan(thigh[1])
+  })
 })
