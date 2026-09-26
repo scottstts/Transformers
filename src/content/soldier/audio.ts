@@ -1,6 +1,7 @@
 import type { AudioMix } from '../../audio/mix'
 import { noise, voice } from '../transformer/combat/audio/shots'
 import type { HitKind } from '../transformer/combat/hits'
+import { CAN_OBJECTS, CAN_STRIKES, canStrike } from './can-bank'
 
 /**
  * The garrison's sound: small machines, heard under the robot's own. A horde
@@ -19,12 +20,18 @@ import type { HitKind } from '../transformer/combat/hits'
  *   swing   the blade swishing through air: a short soft broadband rush
  *   impact  a blow into a light steel body: a dull knock and the plate
  *           buckling (crackle); a cut adds the hot shear hiss
- *   breakup the body coming apart: a crunching tear, then the parts dropping
- *           into the sand
+ *   breakup the body coming apart: thin sheet metal crinkling as the joints
+ *           give, a soft low push and two parts knocking together
+ *   land    a part hitting the ground (debris.ts reports each one from its
+ *           physics): light, hollow, thin-walled metal, like an empty can
+ *           dropped (can-bank.ts, synthesised against a recording of one),
+ *           and on a hard landing a re-strike or two as it rocks
  *   ignite  a blade lighting: a crackle and a thin hiss
  *
- * Nothing is pitched and no filter moves (fixed, wide filters, level
- * envelopes only). No `roar` texture: it is a jet's roar, and a horde of it
+ * No filter moves (fixed filters, level envelopes only). The only tones are a
+ * struck part's shell modes: a dense cluster of close, beating modes excited
+ * by the contact's own noise, as in the recording. A few clean partials read
+ * as a cartoon "tink". No `roar` texture: it is a jet's roar, and a horde of it
  * sounded like a turbine next to the player. No `chatter` either: its tuned
  * clicks read as robot babble.
  *
@@ -35,6 +42,12 @@ export class SoldierAudio {
   private wheels: { crunch: GainNode; body: GainNode } | null = null
   private blades: GainNode | null = null
   private eventsThisFrame = 0
+  /** landings allowed now: a budget refilled at LAND_RATE per second, so a blast's shower stays a light patter */
+  private landBudget = LAND_BURST
+  private lastTime = 0
+  /** the struck-shell bank, rendered a strike per frame: [object][strike] */
+  private readonly cans: AudioBuffer[][] = Array.from({ length: CAN_OBJECTS }, () => [])
+  private cansReady = 0
 
   constructor(mix: AudioMix) {
     this.mix = mix
@@ -48,6 +61,17 @@ export class SoldierAudio {
     this.eventsThisFrame = 0
     const ctx = this.mix.ctx
     if (!ctx) return
+    this.landBudget = Math.min(LAND_BURST, this.landBudget + (ctx.currentTime - this.lastTime) * LAND_RATE)
+    this.lastTime = ctx.currentTime
+    // one strike a frame (~1-2 ms), so building the bank never stalls a frame
+    if (this.cansReady < CAN_OBJECTS * CAN_STRIKES) {
+      const o = this.cansReady % CAN_OBJECTS, k = Math.floor(this.cansReady / CAN_OBJECTS)
+      const data = canStrike(o, k, ctx.sampleRate)
+      const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate)
+      buffer.copyToChannel(data, 0)
+      this.cans[o][k] = buffer
+      this.cansReady++
+    }
     if (!this.wheels) this.build(ctx)
     const t = ctx.currentTime
     const w = this.wheels!
@@ -121,15 +145,54 @@ export class SoldierAudio {
     const { t, g } = ctx
     const k = Math.min(1.4, strength) * g
     const c = this.mix.ctx!
-    const bus = voice(this.mix, 0.26 * k, 0.3, 2.2)
-    noise(c, this.mix.tex.brown, bus, t, 0.35, 'lowpass', 200, 200, 0.003, 0.8)
-    noise(c, this.mix.tex.crackle, bus, t, 0.45, 'bandpass', 1500, 1500, 0.003, 0.5, 0.15, 0.35)
-    // the parts dropping into the sand: soft thuds, each with a puff of grit
-    for (let i = 0; i < 6; i++) {
-      const at = t + 0.3 + Math.pow(Math.random(), 0.8) * 1.0
-      noise(c, this.mix.tex.brown, bus, at, 0.1, 'lowpass', 260, 260, 0.003, 0.35 * (1 - (at - t) * 0.4))
-      noise(c, this.mix.tex.white, bus, at, 0.07, 'bandpass', 2200, 2200, 0.003, 0.03, 0, 0.35)
+    const bus = voice(this.mix, 0.16 * k, 0.25, 0.8)
+    // a soft push of the body giving way, the sheet crinkling, two parts knocking together
+    noise(c, this.mix.tex.brown, bus, t, 0.18, 'lowpass', 240, 240, 0.004, 0.35)
+    noise(c, this.mix.tex.crackle, bus, t, 0.22, 'bandpass', 3200, 3200, 0.003, 0.4, 0.2, 0.6)
+    for (let i = 0; i < 2; i++) this.strike(bus, t + 0.01 + Math.random() * 0.06, Math.floor(Math.random() * CAN_OBJECTS), 1.1 + Math.random() * 0.3, 0.25, distance)
+  }
+
+  /**
+   * A part of `size` m and `mass` kg hitting the ground at `speed` m/s,
+   * `distance` m away; `piece` picks its shell (the same part always sounds the same).
+   */
+  land(piece: number, size: number, mass: number, speed: number, distance: number): void {
+    const c = this.mix.ctx
+    if (!c || !this.mix.enabled || this.landBudget < 1 || distance > LAND_FAR) return
+    this.landBudget--
+    const t = c.currentTime + 0.005 + distance / 343
+    // light and hollow whatever the part: speed sets the level, mass only a little
+    const e = Math.min(1, (speed / 5) ** 1.4 * (0.7 + 0.3 * Math.min(1, mass / 60)))
+    const bus = voice(this.mix, LAND_LEVEL * e / (1 + distance * 0.08), 0.18, 0.9)
+    // a smaller part is a smaller shell: its modes sit higher (a fixed rate per part, never gliding)
+    const rate = Math.min(1.4, Math.max(0.75, Math.sqrt(0.35 / Math.max(0.1, size))))
+    const object = piece % CAN_OBJECTS
+    this.strike(bus, t, object, rate, 1, distance)
+    // a hard landing rocks on its rim: a re-strike or two, closer together and lighter
+    let at = t, gap = 0.06 + 0.03 * Math.random()
+    for (let i = 0; i < 2 && e > 0.3 + 0.3 * i; i++) {
+      at += gap
+      gap *= 0.6
+      this.strike(bus, at, object, rate, (0.45 - 0.2 * i) * (0.7 + 0.3 * Math.random()), distance)
     }
+  }
+
+  /** One strike of a shell into `bus`, dulled with distance (a fixed low-pass). */
+  private strike(bus: AudioNode, t: number, object: number, rate: number, level: number, distance: number): void {
+    const strikes = this.cans[object]
+    if (!strikes.length) return
+    const c = this.mix.ctx!
+    const src = c.createBufferSource()
+    src.buffer = strikes[Math.floor(Math.random() * strikes.length)]
+    src.playbackRate.value = rate
+    const dull = c.createBiquadFilter()
+    dull.type = 'lowpass'
+    dull.frequency.value = 16000 / (1 + distance * 0.1)
+    dull.Q.value = 0.5
+    const g = c.createGain()
+    g.gain.value = level
+    src.connect(dull).connect(g).connect(bus)
+    src.start(t)
   }
 
   ignite(distance: number): void {
@@ -150,3 +213,10 @@ export class SoldierAudio {
     return { t: ctx.currentTime + 0.005 + distance / 343, g: 1 / (1 + distance * 0.08) }
   }
 }
+
+/** Landings heard per second, and at once; beyond this distance (m) a landing is not heard. */
+const LAND_RATE = 24
+const LAND_BURST = 8
+const LAND_FAR = 70
+/** A landing at full speed (the bank's strikes peak at 0.9). */
+const LAND_LEVEL = 0.07

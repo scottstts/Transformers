@@ -49,7 +49,13 @@ The target is a musou brawler (One Piece: Pirate Warriors 3): crowds go down fas
 - Events are one-shots capped at 6 per frame, delayed and dulled by distance.
 - The soldiers are small machines heard under the robot's own sound: quiet, close-up textures (a soft sand crunch, a faint electrical crackle), levels saturating with the crowd (a horde is a denser texture, not a louder one), at most 4 events a frame.
 - No `roar` texture: it is a jet's roar, and the blades' loop built on it, summed over the horde with a loud wheel rumble, sounded like a turbine next to the player.
-- Nothing is pitched and no filter moves: every filter is fixed and wide, only levels are shaped. The first voice used the `chatter` texture (clicks that ring resonators at random pitches) for the wheels' grit and swept noise bands for swings, ignitions and impacts; a crowd of them read as robot "beep-boop" babble. The guard's sounds (heard when soldiers strike) follow the same rule, and so do the robots' debris sprinkles.
+- Nothing is pitched and no filter moves: every filter is fixed and wide, only levels are shaped. The first voice used the `chatter` texture (clicks that ring resonators at random pitches) for the wheels' grit and swept noise bands for swings, ignitions and impacts; a crowd of them read as robot "beep-boop" babble. The guard's sounds (heard when soldiers strike) follow the same rule, and so do the robots' debris sprinkles. The one exception is the breakup's metal (below).
+- **Breaking apart and parts landing** should sound like light, hollow, thin-walled metal: an empty soda can dropped, not heavy plate. The first version (a crunching tear, then randomly timed low thuds) was rejected.
+  - `debris.ts` reports each part's real touchdowns (`Debris.landings`: which piece and how fast; faster than 0.9 m/s, and at most once per 0.08 s per part), so bounces and tumbles are heard when they happen and parts at rest are silent.
+  - Each touchdown (`SoldierAudio.land`) plays a pre-rendered strike from `can-bank.ts`: a dense cluster of close, beating shell modes excited by a noisy micro-contact crunch, plus a weak hollow body mode. A first version built from a few clean sine partials sounded cartoonish. A recording of a real can drop was the reference for its character, not for exact matching. A hard landing adds one or two lighter re-strikes as the part rocks. Each part keeps one shell, played at a fixed rate by size (smaller is higher).
+  - Speed sets the level; mass only shades it (a heavy torso still sounds light and hollow). Distance lowers and dulls it with a fixed low-pass. The bank (6 shells × 4 strikes) renders one strike a frame (about 2 ms) once audio starts.
+  - A budget of 24 landings a second (bursts of 8) keeps a blast's shower a light patter. Landings beyond 70 m are not played.
+  - The breakup itself is a light metallic crinkle with a soft low push and a couple of ticks.
 
 ## Tools and tests
 
