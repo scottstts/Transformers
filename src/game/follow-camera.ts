@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Vector3, type Object3D } from 'three/webgpu'
+import { PerspectiveCamera, Raycaster, Vector3, type Object3D } from 'three/webgpu'
 import type { MotionState } from './types'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
 import type { CameraProfile } from '../content/transformer/character'
@@ -25,6 +25,8 @@ const SIDE_HALF_SPAN = 3.4
  * the view swinging round with its nose.
  */
 const TRAVEL_FOLLOW = 0.65
+/** Space between the camera and the first surface, including room for camera reactions. */
+const CAMERA_CLEARANCE = 0.7
 
 export class FollowCamera {
   private readonly camera: PerspectiveCamera
@@ -40,8 +42,14 @@ export class FollowCamera {
   private lastLook = -10
   private initialized = false
   private radius: number
+  private clearRadius: number
+  private recovering = false
+  private obstacles: Object3D[] = []
+  private readonly raycaster = new Raycaster()
+  private readonly viewDirection = new Vector3()
   private readonly target = new Vector3()
   private readonly position = new Vector3()
+  private readonly placedPosition = new Vector3()
   private readonly localFocus = new Vector3()
   private readonly focus = new Vector3()
   private readonly onPointerDown = (): void => { this.activate() }
@@ -82,6 +90,7 @@ export class FollowCamera {
     this.framingFrom = { ...framing }
     this.framingTo = framing
     this.radius = framing.carDistance
+    this.clearRadius = this.radius
     this.yaw = initialYaw + Math.PI
     canvas.addEventListener('pointerdown', this.onPointerDown)
     document.addEventListener('pointerlockchange', this.onPointerLockChange)
@@ -110,6 +119,11 @@ export class FollowCamera {
     Object.assign(this.framingFrom, this.framing)
     this.framingTo = framing
     this.framingGlide = 0
+  }
+
+  /** Static world geometry that can block the normal follow view. */
+  setObstacles(obstacles: readonly Object3D[]): void {
+    this.obstacles = [...obstacles]
   }
 
   /**
@@ -173,6 +187,7 @@ export class FollowCamera {
     if (!this.initialized) {
       this.target.copy(focus)
       this.radius = distance
+      this.clearRadius = distance
       this.initialized = true
     } else {
       this.target.lerp(focus, 1 - Math.exp(-dt * 8))
@@ -185,13 +200,48 @@ export class FollowCamera {
       this.target.y + Math.sin(pitch) * this.radius,
       this.target.z + Math.cos(this.yaw) * Math.cos(pitch) * this.radius,
     )
+    if (this.cinematic || !this.obstacles.length) {
+      this.clearRadius = this.radius
+      this.recovering = false
+    } else {
+      const safe = this.unobstructedDistance(this.position)
+      // Pull in on the blocking frame; only the return to the normal orbit is eased.
+      if (safe < this.radius - 0.001) {
+        this.clearRadius = Math.min(damp(this.clearRadius, this.radius, 5, dt), safe)
+        this.recovering = true
+      } else if (this.recovering) {
+        this.clearRadius = Math.min(this.radius, damp(this.clearRadius, this.radius, 5, dt))
+        if (this.radius - this.clearRadius < 0.001) this.recovering = false
+      } else this.clearRadius = this.radius
+      this.position.lerp(this.target, 1 - this.clearRadius / this.radius)
+    }
     this.camera.position.copy(this.position)
+    this.placedPosition.copy(this.position)
     this.camera.lookAt(this.target)
     const fov = lerp(42, 48, clamp(Math.hypot(state.speed, state.lateral) / 40, 0, 1) * (1 - k))
     if (this.camera.fov !== fov) {
       this.camera.fov = fov
       this.camera.updateProjectionMatrix()
     }
+  }
+
+  /** Keep a camera reaction from pushing the final view into a nearby wall. */
+  clearObstruction(): void {
+    if (this.cinematic || !this.obstacles.length || this.camera.position.distanceToSquared(this.placedPosition) < 1e-8) return
+    const distance = this.camera.position.distanceTo(this.target)
+    if (distance <= 0) return
+    const safe = this.unobstructedDistance(this.camera.position)
+    if (safe < distance) this.camera.position.lerp(this.target, 1 - safe / distance)
+  }
+
+  private unobstructedDistance(position: Vector3): number {
+    const distance = this.viewDirection.subVectors(position, this.target).length()
+    if (!this.obstacles.length || distance <= 0) return distance
+    this.raycaster.set(this.target, this.viewDirection.multiplyScalar(1 / distance))
+    this.raycaster.near = 0.01
+    this.raycaster.far = distance
+    const hit = this.raycaster.intersectObjects(this.obstacles, false)[0]
+    return hit ? Math.max(0, hit.distance - CAMERA_CLEARANCE) : distance
   }
 
   private glideFraming(dt: number): void {

@@ -1,4 +1,4 @@
-import { Vector3, type Camera, type Group, type Material, type Mesh, type Scene } from 'three/webgpu'
+import { DoubleSide, Mesh, MeshBasicMaterial, Vector3, type Camera, type Group, type Material, type Scene } from 'three/webgpu'
 import type { CircleCollider, SegmentCollider } from '../../../game/types'
 import { ColliderGrid } from '../../../game/collide'
 import { buildFort } from './build'
@@ -30,6 +30,8 @@ export interface Fort {
 
 /** Detail geometry (slab loops, razor wire, clutter) is drawn within this distance of its bounds (m). */
 const DETAIL_FAR = 120
+/** Ray queries need both sides of a wall, without changing its visible material. */
+const CAMERA_RAY_MATERIAL = new MeshBasicMaterial({ side: DoubleSide })
 
 /**
  * The desert's fortress (plan.ts): built once at start, static geometry (one
@@ -40,6 +42,8 @@ const DETAIL_FAR = 120
  */
 export class Forts {
   readonly list: Fort[] = []
+  /** Solid fort meshes used to keep the normal camera clear of walls and buildings. */
+  readonly cameraMeshes: Mesh[] = []
   private readonly detail: Array<{ mesh: Mesh; centre: Vector3; radius: number }> = []
   readonly circles: CircleCollider[] = []
   readonly segments: SegmentCollider[] = []
@@ -55,6 +59,13 @@ export class Forts {
       const plan = planFort(site)
       const { group, triangles, detail } = buildFort(plan, this.materials)
       scene.add(group)
+      for (const child of group.children) {
+        if (!(child instanceof Mesh) || child.name.endsWith('d')) continue
+        const obstacle = new Mesh(child.geometry, CAMERA_RAY_MATERIAL)
+        obstacle.matrixAutoUpdate = false
+        obstacle.matrixWorld.copy(child.matrixWorld)
+        this.cameraMeshes.push(obstacle)
+      }
       for (const mesh of detail) {
         const sphere = mesh.geometry.boundingSphere!
         this.detail.push({ mesh, centre: sphere.center.clone().applyMatrix4(group.matrixWorld), radius: sphere.radius })

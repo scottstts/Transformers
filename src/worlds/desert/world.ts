@@ -108,6 +108,7 @@ export class DesertWorld {
 	private lens = { fov: 0, aspect: 0 };
 	far: THREE.Group;
 	tiles: RockTile[] = [];
+	readonly cameraObstacles: THREE.Object3D[] = [];
 
 	constructor( scene: THREE.Scene ) {
 
@@ -135,6 +136,7 @@ export class DesertWorld {
 		this.buildMountains();
 		this.buildRocks();
 		this.forts = new Forts( scene );
+		this.cameraObstacles.push( ...this.forts.cameraMeshes, ...this.tiles.filter( ( tile ) => tile.collide ).map( ( tile ) => tile.mesh ) );
 		this.colliders.push( ...this.forts.circles );
 		this.segments.push( ...this.forts.segments );
 
@@ -304,6 +306,7 @@ export class DesertWorld {
 
 				} );
 				t.mesh.instanceMatrix.needsUpdate = true;
+				t.mesh.boundingSphere = null;
 
 			}
 
