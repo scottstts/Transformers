@@ -292,10 +292,13 @@ export class DesertWorld {
 			if ( moved ) {
 
 				t.last.set( focus.x, focus.z );
+				let changed = false;
 				t.items.forEach( ( it, i ) => {
 
 					const x = it.x + t.tile * Math.round( ( focus.x - it.x ) / t.tile );
 					const z = it.z + t.tile * Math.round( ( focus.z - it.z ) / t.tile );
+					if ( it.wx === x && it.wz === z ) return;
+					changed = true;
 					it.wx = x; it.wz = z;
 					// nothing of the scatter lies inside a fort's grounds (its boulders would stand in the walls)
 					const cleared = this.cleared( x, z, it.r );
@@ -305,8 +308,10 @@ export class DesertWorld {
 					t.mesh.setMatrixAt( i, m );
 
 				} );
-				t.mesh.instanceMatrix.needsUpdate = true;
-				t.mesh.boundingSphere = null;
+				if ( changed ) {
+					t.mesh.instanceMatrix.needsUpdate = true;
+					t.mesh.boundingSphere = null;
+				}
 
 			}
 

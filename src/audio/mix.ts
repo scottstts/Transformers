@@ -14,13 +14,13 @@ const AIR_MUFFLED = 520
 /**
  * The game's one audio context and mix, shared by every character's voices.
  *
- * Created on the first user interaction (browsers keep audio suspended until
- * then). Everything goes through a bus compressor, a gentle air lowpass and an
+ * Prepared during entry loading (browsers keep audio suspended until the
+ * first user interaction). Everything goes through a bus compressor, a gentle air lowpass and an
  * outdoor space: a ground reflection, sparse early reflections and a short
  * dark tail (open desert, nothing to reverberate against for long). Source
  * textures (noise, chatter, roar, crackle) are rendered once here.
  *
- * Voices build their graphs lazily: `ctx` is null until the first `resume()`.
+ * Voices can build their silent graphs during loading; `resume()` starts playback.
  */
 export class AudioMix {
   ctx: AudioContext | null = null
@@ -45,7 +45,12 @@ export class AudioMix {
     return !this.muted
   }
 
-  /** Called on user interaction: creates the context on first use and resumes it. */
+  /** Build the shared graph and source textures while the entry screen is up. */
+  prepare(): void {
+    this.init()
+  }
+
+  /** Called on user interaction: resumes the prepared context, or creates it if needed. */
   resume(): void {
     if (this.init() && this.ctx?.state === 'suspended') void this.ctx.resume()
   }

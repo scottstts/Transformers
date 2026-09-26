@@ -269,6 +269,10 @@ export class Fighter implements CombatEffects {
     this.voice.dispose()
   }
 
+  prepareAudio(): void {
+    this.voice.update(0)
+  }
+
   protected formWeapon(seconds: number): void {
     if (this.presenceTarget === 1 && this.weapon && this.weapon.presence >= 0.999) return
     this.presenceTarget = 1

@@ -8,7 +8,7 @@ const VOICE_BUDGET = 12
 /**
  * The transformation as one machine (see machine.ts): the hydraulic power unit
  * runs while it transforms and every exported mechanism event drives the
- * actuator it describes. The graph is built on first use, once the shared
+ * actuator it describes. The graph is prepared during loading when the shared
  * audio context exists.
  */
 export class TransformationSound {
@@ -26,6 +26,10 @@ export class TransformationSound {
     if (!this.mix.ctx) return null
     if (!this.voices) this.voices = new MachineVoices(this.mix, this.tuning)
     return this.voices
+  }
+
+  prepare(): void {
+    void this.machine
   }
 
   /** The machine powers up at the start of a transformation (either way). */

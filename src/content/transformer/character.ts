@@ -75,6 +75,8 @@ export interface CharacterProfile {
 
 /** A character's sound, synthesized on the game's shared mix. */
 export interface CharacterAudio {
+  /** Build silent continuous voices during loading. */
+  prepare(): void
   /** the machine powers up at the start of a transformation (either way) */
   power(): void
   /** per frame: the transformation is running */

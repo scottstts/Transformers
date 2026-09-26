@@ -63,6 +63,16 @@ export class SoldierAudio {
     this.mix = mix
   }
 
+  /** Render the finite strike bank while the entry screen still covers play. */
+  prepare(): void {
+    const ctx = this.mix.ctx
+    if (!ctx) return
+    while (this.cansReady < CAN_OBJECTS * CAN_STRIKES || this.blowsReady < BLOW_KINDS.length * HIT_VARIANTS) {
+      this.renderNextTake(ctx)
+    }
+    if (!this.wheels) this.build(ctx)
+  }
+
   /**
    * Per frame: `rolling` (sum of speed / distance terms, ~1 is one soldier
    * charging close by), `lit` (lit blades weighted by distance).
@@ -73,7 +83,19 @@ export class SoldierAudio {
     if (!ctx) return
     this.landBudget = Math.min(LAND_BURST, this.landBudget + (ctx.currentTime - this.lastTime) * LAND_RATE)
     this.lastTime = ctx.currentTime
-    // one strike a frame (~1-2 ms), so building the bank never stalls a frame
+    // Keep the incremental fallback if audio was unavailable during loading.
+    this.renderNextTake(ctx)
+    if (!this.wheels) this.build(ctx)
+    const t = ctx.currentTime
+    const w = this.wheels!
+    // saturating: a crowd is a denser texture, not a louder one
+    const roll = rolling / (1 + rolling)
+    w.crunch.gain.setTargetAtTime(0.035 * roll, t, 0.1)
+    w.body.gain.setTargetAtTime(0.045 * roll, t, 0.1)
+    this.blades!.gain.setTargetAtTime(0.03 * (lit / (1 + lit)), t, 0.2)
+  }
+
+  private renderNextTake(ctx: AudioContext): void {
     if (this.cansReady < CAN_OBJECTS * CAN_STRIKES) {
       const o = this.cansReady % CAN_OBJECTS, k = Math.floor(this.cansReady / CAN_OBJECTS)
       const data = canStrike(o, k, ctx.sampleRate)
@@ -90,14 +112,6 @@ export class SoldierAudio {
       this.blows[kind].push(buffer)
       this.blowsReady++
     }
-    if (!this.wheels) this.build(ctx)
-    const t = ctx.currentTime
-    const w = this.wheels!
-    // saturating: a crowd is a denser texture, not a louder one
-    const roll = rolling / (1 + rolling)
-    w.crunch.gain.setTargetAtTime(0.035 * roll, t, 0.1)
-    w.body.gain.setTargetAtTime(0.045 * roll, t, 0.1)
-    this.blades!.gain.setTargetAtTime(0.03 * (lit / (1 + lit)), t, 0.2)
   }
 
   private build(ctx: AudioContext): void {
