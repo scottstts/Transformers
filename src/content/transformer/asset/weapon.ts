@@ -4,7 +4,8 @@ import { decodeGeometry, type DecodedMesh } from './loader'
 /**
  * A combat weapon exported from blender/weapons_build (`public/models/<name>.{json,bin}`):
  * one rigid body in the weapon frame (+z along the haft or blade toward the
- * head, +x the cutting edge's direction, the main hand's grip at the origin),
+ * head, +x the cutting edge's direction, the main hand's grip at the origin;
+ * a gun: +z along the barrels, +x its top, the pistol grip at the origin),
  * stored with the characters' mesh encoding.
  */
 export interface WeaponManifest {
@@ -20,6 +21,8 @@ export interface WeaponManifest {
   extent: [number, number]
   /** farthest point from the haft axis (m) */
   radius: number
+  /** a gun's muzzles by name (weapon frame, m): where its rounds leave the bores along +z */
+  muzzles?: Record<string, [number, number, number]>
 }
 
 export interface WeaponAsset {

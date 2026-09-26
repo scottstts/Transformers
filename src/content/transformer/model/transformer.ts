@@ -1,4 +1,5 @@
-import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material } from 'three/webgpu'
+import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material, type Node } from 'three/webgpu'
+import { Fn, attribute, mix, normalGeometry, normalLocal, normalize, positionGeometry, uniform } from 'three/tsl'
 import type { TransformerAsset } from '../asset/loader'
 import { supportPoints } from '../asset/loader'
 import type { NodeKind, RigDims } from '../asset/format'
@@ -18,6 +19,15 @@ import { RobotRig, type GaitPose, type RigOverlay } from './rig'
  * Node matrices are composed here (flattened, parents first) in the authoring
  * frame (x = robot left, -y = forward, z = up); one fixed rotation puts the
  * model into three.js's y-up, +z-forward space.
+ *
+ * Optional parts of the container (the semi uses them):
+ *  - a world-hosted node (parent -1, not a bone) can be `carried` by a bone
+ *    once it has docked on it: while the skeleton is live it keeps its baked
+ *    place relative to that bone, so it follows the gait;
+ *  - a `trailer` node swings with its subtree about its hitch by
+ *    `articulation` in car form;
+ *  - meshes with a second shape (`morphPosition` / `morphNormal`) blend into
+ *    it by the asset's per-frame morph weight, in the vertex stage.
  */
 
 type Side = 'R' | 'L'
@@ -31,7 +41,8 @@ export interface Sole {
 }
 
 export interface Contacts {
-  wheels: Array<{ p: Vector3; front: boolean }>
+  /** `trailer`: the wheel rides the trailer, not the car's own axles */
+  wheels: Array<{ p: Vector3; front: boolean; trailer: boolean }>
   feet: Record<Side, Vector3>
 }
 
@@ -50,6 +61,10 @@ export interface TransformerOptions {
   footNodes: string[]
   /** T at which the skeleton starts blending into the live gait */
   gaitBlendFrom?: number
+  /** world-hosted nodes and the bone node that carries each once the skeleton is live (`asm:van0` -> `bone:chest`) */
+  carried?: Record<string, string>
+  /** the node that swings about its hitch (authoring frame, m) by `articulation` in car form */
+  trailer?: { node: string; hitch: [number, number, number] }
 }
 
 export class TransformerModel {
@@ -64,6 +79,8 @@ export class TransformerModel {
   lift = 0
   /** a pose laid over the live gait at T = 1 (a fighting move), owned by the combat system */
   overlay: RigOverlay | null = null
+  /** trailer yaw against the car (rad, + to the left), owned by the session; only in car form */
+  articulation = 0
   readonly dims: RigDims
   readonly duration: number
 
@@ -86,6 +103,14 @@ export class TransformerModel {
   private readonly liftTrack: Float32Array
   private readonly frames: number
   private readonly gaitBlendFrom: number
+  /** carried nodes: node -> its carrying bone node; the carrying bones' baked chains */
+  private readonly carrier: Int32Array
+  private readonly bakedChain: Uint8Array
+  private readonly bakedWorld: Matrix4[]
+  private readonly trailerNode: number
+  private readonly hitch = new Vector3()
+  private readonly morphTrack?: Float32Array
+  private readonly morphWeight = uniform(0)
 
   constructor(asset: TransformerAsset, materials: Record<string, Material>, options: TransformerOptions) {
     const { manifest } = asset
@@ -105,6 +130,13 @@ export class TransformerModel {
     this.parent = new Int32Array(count)
     this.kind = manifest.nodes.map((n) => n.kind)
     this.world = manifest.nodes.map(() => new Matrix4())
+    this.morphTrack = asset.morph
+    const morphed = new Map<Material, Material>()
+    const shaped = (base: Material): Material => {
+      let m = morphed.get(base)
+      if (!m) morphed.set(base, m = morphMaterial(base, this.morphWeight))
+      return m
+    }
     const byName = this.byName
     manifest.nodes.forEach((record, i) => {
       byName[record.name] = i
@@ -113,7 +145,8 @@ export class TransformerModel {
       node.name = record.name
       node.matrixAutoUpdate = false
       for (const { material, geometry } of asset.meshes[i]) {
-        const m = materials[material] ?? materials.plastic
+        const base = materials[material] ?? materials.plastic
+        const m = geometry.hasAttribute('morphPosition') ? shaped(base) : base
         const mesh = new Mesh(geometry, m)
         mesh.matrixAutoUpdate = false
         const radius = geometry.boundingSphere?.radius ?? 0
@@ -133,7 +166,24 @@ export class TransformerModel {
     this.footNode = { L: this.index('bone:foot.L'), R: this.index('bone:foot.R') }
     this.frontWheel = new Uint8Array(count)
     for (const w of this.wheels) this.frontWheel[w.node] = w.front ? 1 : 0
-    this.contactPoints = { wheels: this.wheels.map((w) => ({ p: new Vector3(), front: w.front })), feet: { L: new Vector3(), R: new Vector3() } }
+
+    this.carrier = new Int32Array(count).fill(-1)
+    this.bakedChain = new Uint8Array(count)
+    this.bakedWorld = manifest.nodes.map(() => new Matrix4())
+    for (const [name, bone] of Object.entries(options.carried ?? {})) {
+      const i = this.index(name)
+      const b = this.index(bone)
+      if (this.parent[i] >= 0 || this.kind[i] === 'bone' || this.kind[b] !== 'bone') throw new Error(`${this.label}: ${name} cannot be carried by ${bone}`)
+      this.carrier[i] = b
+      for (let p = b; p >= 0; p = this.parent[p]) this.bakedChain[p] = 1
+    }
+    this.trailerNode = options.trailer ? this.index(options.trailer.node) : -1
+    if (options.trailer) this.hitch.set(...options.trailer.hitch)
+    const underTrailer = (i: number): boolean => {
+      for (let p = i; p >= 0; p = this.parent[p]) if (p === this.trailerNode) return true
+      return false
+    }
+    this.contactPoints = { wheels: this.wheels.map((w) => ({ p: new Vector3(), front: w.front, trailer: underTrailer(w.node) })), feet: { L: new Vector3(), R: new Vector3() } }
 
     this.rig = new RobotRig(manifest.rig.bones, manifest.rig.stand, manifest.rig.dims)
     this.boneOf = new Int32Array(count).fill(-1)
@@ -163,6 +213,9 @@ export class TransformerModel {
     const gw = gait ? smooth(MathUtils.clamp((T - this.gaitBlendFrom) / (1 - this.gaitBlendFrom), 0, 1)) : 0
     if (gw > 0 && gait) this.rig.poseLive(gait, this.overlay)
     const carW = 1 - smooth(MathUtils.clamp(T / CAR_FADE, 0, 1))
+    if (this.morphTrack) this.morphWeight.value = this.morphTrack[f0] + (this.morphTrack[f0 + 1] - this.morphTrack[f0]) * a
+    const swing = this.articulation * carW
+    if (swing !== 0) _hitch.makeTranslation(this.hitch).multiply(_m1.makeRotationZ(swing)).multiply(_m2.makeTranslation(-this.hitch.x, -this.hitch.y, -this.hitch.z))
 
     const count = this.nodes.length
     const stride = count * 7
@@ -174,6 +227,13 @@ export class TransformerModel {
       _q.set(tr[o0 + 3], tr[o0 + 4], tr[o0 + 5], tr[o0 + 6])
       _q1.set(tr[o1 + 3], tr[o1 + 4], tr[o1 + 5], tr[o1 + 6])
       _q.slerp(_q1, a)
+      if (this.bakedChain[i]) {
+        // the baked pose of a carrying bone's chain, before the live skeleton takes it
+        const baked = _m.compose(_t, _q, ONE)
+        const p = this.parent[i]
+        if (p < 0) this.bakedWorld[i].copy(baked)
+        else this.bakedWorld[i].multiplyMatrices(this.bakedWorld[p], baked)
+      }
       const bone = this.boneOf[i]
       if (gw > 0 && bone >= 0) {
         if (this.parent[i] < 0) {
@@ -203,8 +263,15 @@ export class TransformerModel {
         local.multiply(_m1.makeRotationX(this.spin))
       }
       const p = this.parent[i]
-      if (p < 0) this.world[i].copy(local)
-      else this.world[i].multiplyMatrices(this.world[p], local)
+      if (p >= 0) this.world[i].multiplyMatrices(this.world[p], local)
+      else {
+        const carrier = this.carrier[i]
+        if (gw > 0 && carrier >= 0) {
+          // keeps its baked place on the carrying bone, which the gait now moves
+          this.world[i].copy(this.world[carrier]).multiply(_m1.copy(this.bakedWorld[carrier]).invert()).multiply(local)
+        } else this.world[i].copy(local)
+        if (swing !== 0 && i === this.trailerNode) this.world[i].premultiply(_hitch)
+      }
     }
 
     // ground: baked contact through the transformation, live foot contact at the stand
@@ -288,6 +355,12 @@ export class TransformerModel {
     return out
   }
 
+  /** The trailer's heading on the ground (game space, unit), or the car's without one (after the last pose). */
+  trailerForward(out: Vector3): Vector3 {
+    const frame = this.trailerNode >= 0 ? this.nodes[this.trailerNode].matrixWorld : this.frame.matrixWorld
+    return out.set(0, -1, 0).transformDirection(frame).setY(0).normalize()
+  }
+
   /** World-space contact points for dust and footstep effects. */
   contacts(): Contacts {
     const out = this.contactPoints
@@ -302,8 +375,25 @@ export class TransformerModel {
   }
 }
 
+/**
+ * A copy of `base` that blends each vertex into the mesh's second shape by
+ * `weight`: position and normal, in the vertex stage (shadows included, as
+ * they draw with the material's position node).
+ */
+function morphMaterial(base: Material, weight: Node<'float'>): Material {
+  const m = base.clone() as Material & { positionNode: Node | null }
+  const shape = attribute('morphPosition', 'vec3')
+  const bend = attribute('morphNormal', 'vec3')
+  m.positionNode = Fn(() => {
+    normalLocal.assign(normalize(mix(normalGeometry, bend, weight)))
+    return mix(positionGeometry, shape, weight)
+  })()
+  return m
+}
+
 const ONE = new Vector3(1, 1, 1)
 const _IDENTITY_Q = new Quaternion()
+const _hitch = new Matrix4()
 const _t = new Vector3()
 const _t1 = new Vector3()
 const _s = new Vector3()

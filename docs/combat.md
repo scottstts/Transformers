@@ -1,6 +1,6 @@
 # Robot combat
 
-In robot form a left click (or the touch attack button) fights. Each robot has a four-move combo that climbs in intensity; its own powers take part in it (the truck's lift jets, the racer's power unit). Each landed blow (a move's `strike` time) charges the energy for the robot's special, a cinematic move on the same machinery (specials.md). The game side is `src/game/combat/`; the shared runtime is `src/content/transformer/combat/`; each character's moves and effects are `src/content/<character>/combat/`.
+In robot form a left click (or the touch attack button) fights. Each robot has a four-move combo that climbs in intensity; its own powers take part in it (the truck's lift jets, the racer's power unit, the Semi's gun). Each landed blow (a move's `strike` time) charges the energy for the robot's special, a cinematic move on the same machinery (specials.md). The game side is `src/game/combat/`; the shared runtime is `src/content/transformer/combat/`; each character's moves and effects are `src/content/<character>/combat/`.
 
 ## The combo (`game/combat/combo.ts`)
 
@@ -23,6 +23,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - Two-bone IK solves each arm.
   - Handle grips use a separate finger curl from punching fists, with thumb opposition. The handle axis sits inside the curled finger loop, rather than below a fully closed fist.
 - **Weapon:**
+  - A gun is held by pistol grips (`CombatBuild.pistol`): the grip runs across the fist, the barrels leave past the knuckles, the top faces the index finger. The same weapon channels place it; `w.pitch` 90 with `w.roll` 180 aims the barrels level ahead, top up.
   - It is placed in the body frame: the heading, at the pelvis, from the main shoulder's rest place. The torso's twist and lean don't turn it.
   - In the chest frame (the first attempt), 60° of twist plus 46° of lean compounded with the weapon's own angles, and a cleave ended behind the robot. In the body frame, the authored arc is the arc on screen, and the arms and torso follow it.
   - The main hand is solved to the grip; the off hand solves onto the off grip where the weapon actually is.
@@ -41,7 +42,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - A planted foot the body outruns rises onto its toe, pivoting about the sole's toe edge, instead of floating.
 - **Aim (steering):** each move, chained or not, aims where the player steers as it starts: the movement keys or stick, camera-relative, else the way the robot faces (not the camera). Aim assist then turns it onto the nearest standing soldier within 8 m and 0.55 rad of a steered heading (1.0 rad of the facing). A move may turn the robot all the way round: the root turn settles in the move's first 0.2 s and, past 20°, both feet pivot into the new heading (0.12 / 0.17 s steps, the farther foot first). The old 40° / 26° limits made holding S behind a combo do nothing.
 - **Movement takes the robot back** (`RobotCombat.release`, `ComboController.cancellable`): during recovery or at the move's grounded exit, holding a direction gives the gait ownership immediately. The pose hands back over 0.24 s (`active` is false while `loose`), and the weapon dissolves in 0.18 s before the overlay disappears. A click, guard or special re-plants the feet where the model shows them. Continuation is independent of this visual fade. Finishers can reform their weapon after a movement gap; an already formed weapon does not replay its forging sound.
-- **Forward travel:** every move gains ground, including the jab and roundhouse. Completed move distances are 0.85 / 1.0 / 1.4 / 8.7 m for the truck and 0.6 / 0.75 / 1.05 / 10.3 m for the F1. Chaining early keeps the distance already travelled; recovery keeps that world position. Wind-ups load the pose without reversing root travel. Foot placements must be tuned alongside root distances.
+- **Forward travel:** every move gains ground, including the jab and roundhouse. Completed move distances are 0.85 / 1.0 / 1.4 / 8.7 m for the truck, 0.6 / 0.75 / 1.05 / 10.3 m for the F1 and 1.2 / 1.0 / 0.6 / 1.4 m for the Semi (its gun moves stand and fire: a step in, a lunge). Chaining early keeps the distance already travelled; recovery keeps that world position. Wind-ups load the pose without reversing root travel. Foot placements must be tuned alongside root distances.
 - **Timing:** hips lead, spine follows, and chest follows through the strike. Punches keep a small elbow bend and rebound into guard instead of locking at full extension. The earliest attack links are 0.42 / 0.54 / 0.92 / 2.15 s for the truck and 0.28 / 0.66 / 0.68 / 1.64 s for F1. Grounded movement exits are 0.44 / 0.56 / 0.98 / 2.15 s and 0.30 / 0.66 / 0.74 / 1.58 s respectively. The roundhouse must finish its kicking-foot landing before releasing movement. F1's draw-cut transfers weight onto the striking side with hips, spine and chest turning in sequence; its dash finishes dissolving the sword before the loop window.
 - **Truck cleave:** rear-hip compression and lateral weight shift precede hip rotation; the spine follows, then the chest, then the axe head. The lead foot lands before impact, and the rear foot catches the follow-through. The head accelerates from the loaded shoulder through the diagonal cut and remains low afterwards; raising it straight back to an upright guard would erase the impression of weight. The free arm counterbalances the swing. A dedicated `recovery` channel path holds the low weapon frame during dissolution, releases the main grip, and unwinds the wrist over the remaining recovery instead of dragging all channels straight to zero.
 - **Truck finisher:** the charge takes 2.95 s, with the slam at 1.28 s and the loop/movement boundary at 2.15 s. The shorter drive feeds a side-offset overhead raise; the pelvis starts the downward effort before the spine and chest.
@@ -55,6 +56,8 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 
 ## Weapons (`weapon.ts`; geometry: weapons.md)
 
+- The Semi's gun is held one-handed, braced along the forearm like an arm cannon. The robot's shoulders stand 3.2 m apart against 2.7 m arms, so the left hand can't reach the foregrip in front of the body (it would need about 3.4-3.9 m). Its `w.two` stays 0 and the free arm balances or guards.
+
 - The weapon hangs off the main hand's node at the grip. It exists only while a move wants it.
 - **Forming:** a front runs out from the grip toward both ends, with a noise-ragged edge. The metal glows at the front and cools behind it, and the materials discard beyond it, so nothing is blended or sorted. Dissolving runs the same front back into the hand, tip first.
 - **Timing:** a weapon forms only once the hand is where the weapon should be. Forming earlier swept the half-formed weapon through the shoulder.
@@ -62,6 +65,8 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 - **Looks:**
   - The truck's axe forms from blue plasma (its jets' plasma). Its light-bar strip flares with swing speed.
   - The racer's sword forms from white-hot metal as it is drawn from the left hip, the draw becoming the slash. Sword draws are horizontal yaw sweeps: going through upright whipped the blade over the shoulder and through the torso.
+  - The Semi's gun forms from the coils' violet discharge. Its coils (`glow`) glow with their charge.
+- **No trail for a gun:** `FighterStyle.trail` is optional; the Semi has none (a swung gun is not an edge).
 - **Materials:** each weapon has forged copies of its character's materials. Compiling skips invisible objects, so the session warms the weapon, trail and sparks during boot and first-time car switches. Warmup forces the complete weapon and its cast-shadow path visible under the loading cover and submits real hidden frames, so shader pipelines and geometry uploads are complete before play resumes.
 
 ## Guard
@@ -93,6 +98,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - camera: `kick`, `shake`, `punch`, `pull`, `stop`;
   - `servo` (a joint drive on the character's machine voice);
   - character cues: `boost` (the truck's jets), `ers` (the racer's power unit).
+- **Gun cues** (Semi, `semi/combat/gunnery.ts`): `fire` (1/0), `charge` (0..1 the coils), `fuse` (m: the next cannon shot bursts in the air that far out if it meets nothing first), `cannon` (strength); `gust` is a kick's blast of air throwing the sand ahead.
 - **Trail:** the smear a fast edge leaves on film. It is a faint additive ribbon between the cutting edge's ends over about 0.1 s, sub-sampled between frames, and only above swing speed. A bright opaque sheet was rejected as unrealistic.
 - **Sparks and embers:** one instanced pool. Flight (linear drag plus gravity, stopped on the sand) is evaluated in the vertex stage from birth data, so a burst uploads only its slots.
 - **Light:** one point light per fighter lights the forming weapon. It stays in the scene at zero, like the thruster light, so the light count and the shaders never change.
@@ -107,6 +113,11 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - **Slam:** ground pressure, thump, sand thrown up and raining back.
   - **Fighting footfalls** plant the foot (`plantFoot`: dust, footprint, shake at the fighting style's share of a running step) and play the character's own footfall at the move's step strength.
   - The robot's side has no percussive "hit"; a blow landing on soldiers sounds from the soldiers' side (enemies.md, Sound: the blows).
+- **The Semi's gun** is synthesised from two recordings (`ref_sounds/`, never shipped): `tools/gun-model.mjs` fits spectral-envelope models (28 third-octave bands over time, `audio/spectral.ts`, the method of the soldiers' blows) and writes `semi/audio/gun-models.ts`.
+  - **Machine gun:** one period of the burst from a shot's onset, averaged over the recording's inner shots. It carries the previous shots' tails as the recording does, so its takes tile at the recorded rate (677 rounds a minute, 88.6 ms). The takes may not stretch in time, or the burst would drift off its rate. Rounds are scheduled at their offset within the frame so frame timing never makes the burst stutter. Slow motion stretches the gaps, never the rounds. A tail take rings on when it stops.
+  - **Cannon:** the fitted cannon shot, delayed (343 m/s) and dulled by its distance. A burst's own explosion layers the shared `explosion` on it.
+  - **Coils charging:** a transformer's hum (brown noise through narrow bands at 100 and 200 Hz, not an oscillator) and corona crackle; levels only.
+  - The takes render once, about 150 ms, under the loading cover.
 
 ## The moves
 
@@ -115,6 +126,14 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   2. A pivoting left hook (rear foot through).
   3. A rear-leg load with the axe forming over the right shoulder, then a hip-driven diagonal cleave into a long step. The free arm counterbalances it and the axe settles into a low carry.
   4. The thruster charge: the lift jets fire straight back (a combat override of `Thrusters`, the same plume and rocket voice), the feet plough about 7 m, a leap with an overhead raise beside the helmet, and a one-handed chop, the whole body hinged forward, that cuts into the sand; it drags the axe back out as it stands and carries it low at the hip while it dissolves.
+- **Semi** (kicks from seven metres up, then the gun; data in `semi/combat/`):
+  1. A push kick: the right knee chambers to hip height and the sole drives straight out, the body leaning back over the left leg; a gust of sand thrown ahead.
+  2. A turning side kick: the hips turn right on the pivoting right foot and the left heel drives out at a soldier's head height, the torso leaning away, the eyes on the target.
+  3. The sweep: the gun forms as the right arm comes to the hip; a braced wide step, then the machine gun swept from right to left across the front (±38°, barrels 20° down: the rounds strike the crowd pressing in, and the sand about 11 m out). The torso turns with it and the left arm is out against the recoil.
+  4. The cannon: a long lunge, the gun raised straight out from the shoulder and aimed 38° down, the coils charge, the blast. The gun bucks up, the body rocks back over the rear leg and the ground about 10 m ahead goes up; its hit is the whole half circle ahead (20 m), thrown as any blow is. The smoking gun comes down to the hip and dissolves.
+  - **Rounds are seen, not traced for damage.** Every round is a tracer from the rotary muzzle along the posed barrels, with a little scatter, to whatever it strikes: the first soldier's body along it (`CombatFrame.probe`, `Horde.ray`: a sphere about each chest, which follows a soldier thrown into the air), the sand, or nothing within 90 m. Rounds are slowed to 420 m/s so they read as streaks. Each has a muzzle flash and its light, a casing thrown from the port, and every second one a wisp of smoke. The damage is the move's authored strikes: every soldier in the half circle ahead (22 m) is hit round by round (11 strikes of 11) and pushed straight back from the robot, out along the arc (`StrikeHit.outward`: radial like a blast, without a blast's damage falloff). A run of narrow strikes following the aim picked out too few targets.
+  - **The cannon's slug** leaves its ionised channel hanging along the whole path (a lingering tracer). It bursts on the first body, on the sand (a crater, surge and thrown crust) or at its fuse in the air.
+  - **Guard:** the right forearm across the chest like a bar, the left fist up by the face.
 - **Ferrari F1** (fast and light):
   1. A snap jab.
   2. A pivoting roundhouse, the support foot on its ball.

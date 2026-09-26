@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { Matrix4, Vector3 } from 'three/webgpu'
 import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
+import { createSemi } from '../src/content/semi/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CH, CHANNEL_NAMES, LEG } from '../src/content/transformer/combat/pose.ts'
 import { MAX_KEYS } from '../src/content/transformer/combat/moves.ts'
+import { Curve } from '../src/content/transformer/combat/curves.ts'
+import type { SpecialMove } from '../src/content/transformer/combat/special.ts'
 import type { Character } from '../src/content/transformer/character.ts'
 import { NO_CONTACT, readAsset, readWeapon } from './support/assets.ts'
 import { bodyCore, runFight } from './support/fight.ts'
@@ -34,7 +37,24 @@ const FIGHTERS: Fighter[] = [
     apex: 0,
     travel: 12,
   },
+  {
+    name: 'semi',
+    make: () => createSemi({ ...readAsset('semi'), weapon: readWeapon('semi-gun') }, NO_CONTACT, new AudioMix()),
+    midCombo: [0, 0.6],
+    apex: 0,
+    // it walks five metres in and stamps
+    travel: 4,
+  },
 ]
+
+/** The special's length in real time (s): its slow motion stretches it. */
+function realDuration(special: SpecialMove): number {
+  const tempo = new Curve(33)
+  tempo.set(1, special.tempo)
+  let real = 0
+  for (let t = 0; t < special.move.duration; t += 0.001) real += 0.001 / Math.max(0.01, tempo.at(t))
+  return real
+}
 
 describe.each(FIGHTERS)('$name special', ({ make, midCombo, apex, travel }) => {
   const character = make()
@@ -90,7 +110,7 @@ describe.each(FIGHTERS)('$name special', ({ make, midCombo, apex, travel }) => {
     let highest = 0
     let farthest = 0
     // slow motion stretches the special in real time
-    const combat = runFight(c, clicks, at + move.duration * 1.6 + 3, (t, fight) => {
+    const combat = runFight(c, clicks, at + realDuration(special) + 3, (t, fight) => {
       for (const node of c.model.root.children[0].children) expect(Number.isFinite(node.matrixWorld.elements[12])).toBe(true)
       if (fight.cinematic && !began) {
         began = true
@@ -139,9 +159,10 @@ describe.each(FIGHTERS)('$name special', ({ make, midCombo, apex, travel }) => {
   it('runs its tempo only while it plays', () => {
     const c = make()
     const rates: number[] = []
-    const combat = runFight(c, [], move.duration + 2, (_t, fight) => { if (fight.cinematic) rates.push(fight.tempo) }, 1 / 60, [0])
+    const combat = runFight(c, [], realDuration(special) + 2, (_t, fight) => { if (fight.cinematic) rates.push(fight.tempo) }, 1 / 60, [0])
     expect(Math.min(...rates)).toBeLessThan(0.5)
     expect(Math.max(...rates)).toBeCloseTo(1, 3)
     expect(combat.tempo).toBe(1)
+    expect(combat.cinematic).toBe(false)
   })
 })

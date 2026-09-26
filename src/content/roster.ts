@@ -4,6 +4,7 @@ import type { PlayableTransformerAsset } from './transformer/asset/loader'
 import type { Character } from './transformer/character'
 import { CYBERTRUCK_LABEL, CYBERTRUCK_WEAPON, createCybertruck, loadCybertruckAsset } from './cybertruck'
 import { F1_LABEL, F1_WEAPON, createF1, loadF1Asset } from './ferrari-f1'
+import { SEMI_LABEL, SEMI_WEAPON, createSemi, loadSemiAsset } from './semi'
 
 /** A playable car: how to fetch its asset and build it, and how the vehicle menu presents it. */
 export interface RosterEntry {
@@ -37,6 +38,15 @@ export const ROSTER: readonly RosterEntry[] = [
     weapon: F1_WEAPON,
     load: loadF1Asset,
     create: createF1,
+  },
+  {
+    id: 'semi',
+    label: SEMI_LABEL,
+    accent: '#e8641a',
+    special: '#b39cff',
+    weapon: SEMI_WEAPON,
+    load: loadSemiAsset,
+    create: createSemi,
   },
 ]
 

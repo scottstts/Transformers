@@ -46,9 +46,11 @@ const HINTS: Record<HintMode, string> = {
  * Tab opens it over the locked pointer (mouse look and game keys pause;
  * Escape still releases the pointer, as browsers require, leaving the menu open
  * for the mouse); the arrow keys, the arrow buttons, a horizontal swipe or a
- * click on a neighbouring name swipe to the next car, which is swapped in live
- * behind the panel. Tab, Escape, Enter or the backdrop closes it and returns
- * to play. On touch screens a tap on the pill opens it.
+ * click on a neighbouring name only move the selection. Enter (or a click or
+ * tap on the centred name) confirms it: that car is swapped in behind the
+ * panel, or, if it is the one already driven, the menu just closes. Tab,
+ * Escape or the backdrop closes it without switching. On touch screens a tap
+ * on the pill opens it.
  */
 export class VehicleMenu {
   private readonly host: VehicleHost
@@ -89,7 +91,10 @@ export class VehicleMenu {
     if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
       event.preventDefault()
       if (!event.repeat) this.swipe(event.code === 'ArrowLeft' ? -1 : 1)
-    } else if (event.code === 'Escape' || event.code === 'Enter') {
+    } else if (event.code === 'Enter') {
+      event.preventDefault()
+      this.confirm()
+    } else if (event.code === 'Escape') {
       event.preventDefault()
       if (!this.loading) this.close(true)
     }
@@ -136,7 +141,7 @@ export class VehicleMenu {
       name.className = 'garage-name'
       name.textContent = entry.label
       name.tabIndex = -1
-      name.addEventListener('click', () => { if (i !== this.index) this.swipe(i - this.index) })
+      name.addEventListener('click', () => { if (i !== this.index) this.swipe(i - this.index); else this.confirm() })
       this.track.append(name)
       this.names.push(name)
     })
@@ -256,21 +261,28 @@ export class VehicleMenu {
     return Math.max(0, this.host.roster.findIndex((entry) => entry.id === this.host.current()))
   }
 
-  /**
-   * Move the carousel by `dir` cars and swap that car in. A swipe while a car
-   * loads retargets: the running switch goes on to the car now in the centre.
-   */
+  /** Move the selection by `dir` cars (nothing loads until it is confirmed). */
   private swipe(dir: number): void {
-    if (!this.open) return
+    if (!this.open || this.loading) return
     const target = Math.min(this.host.roster.length - 1, Math.max(0, this.index + dir))
     if (target === this.index) {
       this.nudge(dir)
       return
     }
     this.index = target
-    this.status.textContent = ''
+    // nothing loads until the choice is confirmed: say how
+    this.status.textContent = target === this.currentIndex() ? '' : this.host.touch ? 'Tap the name to switch' : 'Enter to switch'
     this.render(true)
-    void this.settle()
+  }
+
+  /** Confirm the centred car: switch to it, or close if it is already the one driven. */
+  private confirm(): void {
+    if (!this.open || this.loading) return
+    if (this.host.roster[this.index].id === this.host.current()) this.close(true)
+    else {
+      this.status.textContent = ''
+      void this.settle()
+    }
   }
 
   /**

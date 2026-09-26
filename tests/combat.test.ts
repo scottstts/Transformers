@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Box3, Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
+import { createSemi } from '../src/content/semi/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CH, CHANNEL_NAMES } from '../src/content/transformer/combat/pose.ts'
 import type { Character } from '../src/content/transformer/character.ts'
@@ -13,6 +14,8 @@ interface Fighter {
   make: () => Character
   /** clicks that chain all four moves (s) */
   clicks: number[]
+  /** the least ground each move gains (m) */
+  travel: [number, number, number, number]
 }
 
 const FIGHTERS: Fighter[] = [
@@ -20,15 +23,24 @@ const FIGHTERS: Fighter[] = [
     name: 'cybertruck',
     make: () => createCybertruck({ ...readAsset('cybertruck'), weapon: readWeapon('cybertruck-axe') }, NO_CONTACT, new AudioMix()),
     clicks: [0, 0.6, 1.35, 2.5],
+    travel: [0.4, 0.5, 0.85, 8],
   },
   {
     name: 'ferrari-f1',
     make: () => createF1({ ...readAsset('ferrari-f1'), weapon: readWeapon('ferrari-f1-sword') }, NO_CONTACT, new AudioMix()),
     clicks: [0, 0.45, 1.3, 2.4],
+    travel: [0.4, 0.5, 0.85, 8],
+  },
+  {
+    name: 'semi',
+    make: () => createSemi({ ...readAsset('semi'), weapon: readWeapon('semi-gun') }, NO_CONTACT, new AudioMix()),
+    clicks: [0, 0.6, 1.4, 3.3],
+    // the gun's moves stand and fire: the sweep steps in, the cannon lunges
+    travel: [0.9, 0.7, 0.4, 1.1],
   },
 ]
 
-describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
+describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel }) => {
   const character = make()
   const { moveset } = character.combat
 
@@ -269,7 +281,7 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
       advances[index] += delta
       previous = position
     }, dt)
-    advances.forEach((distance, i) => expect(distance, `move ${i + 1} travel`).toBeGreaterThan([0.4, 0.5, 0.85, 8][i]))
+    advances.forEach((distance, i) => expect(distance, `move ${i + 1} travel`).toBeGreaterThan(travel[i]))
   })
 })
 

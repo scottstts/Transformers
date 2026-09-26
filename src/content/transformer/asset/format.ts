@@ -1,6 +1,7 @@
 /**
  * Manifest of a transformer asset exported from its Blender build
- * (blender/cybertruck_build/ctb/export.py, blender/ferrari-f1_build/f1b/export.py). All coordinates are in the
+ * (blender/cybertruck_build/ctb/export.py, blender/ferrari-f1_build/f1b/export.py,
+ * blender/semi_build/smb/export.py). All coordinates are in the
  * authoring frame: x = robot left, -y = forward, z = up; the model converts
  * to three.js space with a single rotation.
  */
@@ -20,6 +21,15 @@ export interface MeshRecord {
   normal: number
   index: number
   index32: boolean
+  /**
+   * Optional second shape (panel tailoring, semi): positions quantized over
+   * their own box and octahedral normals, blended in by the manifest's
+   * per-frame `morph` weight.
+   */
+  morphMin?: [number, number, number]
+  morphMax?: [number, number, number]
+  morphPosition?: number
+  morphNormal?: number
 }
 
 export interface NodeRecord {
@@ -85,4 +95,6 @@ export interface TransformerManifest {
   rig: { bones: RigBone[]; stand: Record<string, [number, number, number, number, number, number, number]>; dims: RigDims }
   events: MechanismEvent[]
   triangles: number
+  /** Optional per-frame weight (float32) of the meshes' second shape. */
+  morph?: number
 }

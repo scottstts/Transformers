@@ -12,7 +12,7 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 
 - Top left, a strip of 12 skewed cells in a small glass plate (the entry button's chamfer), lit from the left like shift lights. There is no text. The cells read one registered custom property (`--level`), so a change is one style write and CSS animates it.
 - A gain flashes the strip. Full lights the diamond core, glows and runs a shine along the strip. Spending discharges it.
-- It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange). It dims when the robot is not standing, and hides during the cutscene and the menu.
+- It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange, the Semi's coil violet). It dims when the robot is not standing, and hides during the cutscene and the menu.
 - Touch: the corner meter is hidden, and the energy shows only on the special button, which sits left of attack in the same row. Its rim is a conic ring of the same level, and it glows while ready. The desktop hint pill adds "F special" only while the meter is full.
 - Letterbox bars (`CinemaBars`) slide in on `body.cinematic`, sized toward 2.39:1 and capped at 12 % of the height. The garage pill and touch controls hide under the same class.
 
@@ -59,6 +59,7 @@ A special's hits are far bigger than the combo's (`hits.ts`, enemies.md). They a
 
 - **Skyfall**: the launch blows everything within 10 m flat. The impact kills everything within 22 m of the crater.
 - **Red Line**: each cut marks what it passes through (70 damage) and the hairpins throw what they skid into. At the flick, the blast at the ring's centre (13.5 m) takes the rest, and whatever the cuts emptied beyond it breaks with it.
+- **Juggernaut**: nothing is hit on the walk in. The stamp throws everything within 26 m of the robot straight up (lift 15). The barrage's strikes (every 0.45 s, all round, 30 m) re-launch whoever they catch (lift 5.5): a falling body's upward speed is reset (`Soldier.impact`), so they are juggled; spaced closer, the resets made them climb instead of hang. The finale's burst (32 m) is the last blow and breaks everything at once.
 
 Soldiers cannot reach the robot during the cutscene (the target is absent).
 
@@ -68,6 +69,15 @@ Soldiers cannot reach the robot during the cutscene (the target is absent).
 - Beats: the face in the visor light, the load and ignition, a launch filmed low from outside its own dust, the apex hung in slow motion and filmed from below against the sky, the dive filmed from well off to the side (from the landing site the trail foreshortened to a blob), the impact wide and high enough to see the glass, the kneel, the rise, handback behind.
 - The weapon reuses the charge's raise beside the helmet and its slam, which are proven clear of the body. The axe overcharges (`Weapon.charge`): the forging emission runs toward the head, churning, the light bar burns, and the fighter's light holds on (`Fighter.charged`).
 - The impact centres the crater between the knee and the axe head, so the robot kneels in its glass. Its sound arrives late by distance (explosion at 21 m).
+
+## Juggernaut (Semi)
+
+- A calm walk into the crowd, then the gun. Beats: the face as the eyes and the chest's light bar blaze and the air brakes vent; the walk, five metres, filmed long and low as it comes at the lens and then tracked alongside, the colour draining; the stamp, filmed wide and low from the side; the gun forming; the barrage in slow motion (tempo 0.5); a push-in on the coils charging full; the finale's burst filling the sky, filmed wide from the side, the robot skidding back from the recoil; the hero pose with the smoking gun raised upright beside its head as the pieces and embers rain down; handback behind.
+- **The walk** is four unhurried strides (about 2.8 m/s): upright, chest out, head level, the fists hanging and barely swinging opposite the legs, each heavy footfall shaking the frame. It replaced a charge, which read as silly and did not fit the character: the Semi is sure of itself.
+- **The stamp:** the right knee comes up to the hip as the body rears back, and the foot is driven down beside the left. The ground heaves all round: a surge rolling out, cracks run out from the foot (cold furrows), a ring of sand thrown outward, crust flung up. A 0.3 tempo dip holds the moment. It replaced a rising double blow at the crowd ahead, which read badly.
+- **The barrage turns a full circle** on the spot (the `turn` channel, eased), pivoting in short steps that keep the feet under the hips, because the stamp throws soldiers up all round it. While it fires the gun seeks (`seek` cue, `Gunnery.seek`): each round aims at a body in the air within 35° of the barrels (`CombatFrame.airborne`, `Horde.airborne`), and each cannon shot at the body nearest their line, bursting on it. So every body in the air is seen being hit as the turn sweeps the gun past it.
+- The finale adds its own light, lens flash and an explosion heard from the wide shot's distance on top of the burst. Embers and burning fragments rain out of it for 5 s.
+- Real length: about 13 s for 8.8 s of special time. `tests/special.test.ts` measures each special's real length from its tempo curve instead of assuming one.
 
 ## Red Line (Ferrari F1)
 

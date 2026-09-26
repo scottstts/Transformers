@@ -32,6 +32,8 @@ export interface StrikeHit {
   damage: number
   knock: number
   lift: number
+  /** thrown straight out from the robot (along the sector's curve) rather than along its heading */
+  outward?: boolean
 }
 
 export interface SweepHit {
@@ -90,7 +92,7 @@ export interface HitEvent {
   motion: number
   /** a sweep's identity: a soldier takes each sweep once */
   sweep: number
-  /** thrown outward from the centre (blasts) rather than along the heading */
+  /** thrown outward from the centre (blasts, outward strikes) rather than along the heading; a circle's damage also falls off with distance */
   radial: boolean
   /** the special: everything reacts bigger, and its blows before the last cannot destroy (enemies.md) */
   special: boolean

@@ -1,7 +1,7 @@
 import type { Vector3 } from 'three/webgpu'
 import type { MotionState } from './types'
 import { clamp, damp, easedRange } from './math'
-import type { DriveProfile } from '../content/transformer/character'
+import type { DriveProfile, TrailerProfile } from '../content/transformer/character'
 
 /**
  * Car handling: a dynamic single-track (bicycle) model. The body carries
@@ -105,9 +105,12 @@ export function updateCar(state: MotionState, input: CarControls, dt: number, lo
   let ay = 0
   for (let i = 0; i < steps; i++) {
     step(state, car, throttle, locked, h)
+    if (car.trailer) trail(state, car.trailer, h)
     ax += state.longAccel
     ay += state.latAccel
   }
+  // a transformation straightens the trailer as the car form fades
+  if (car.trailer && state.progress > 0) state.articulation = damp(state.articulation, 0, 6, dt)
   ax /= steps
   ay /= steps
   if (!throttle && Math.abs(state.speed) < 0.05 && Math.abs(state.lateral) < 0.05) {
@@ -128,6 +131,20 @@ export function updateCar(state: MotionState, input: CarControls, dt: number, lo
   state.rollV += ((targetRoll - state.roll) * 60 - state.rollV * 9) * dt
   state.pitch += state.pitchV * dt
   state.roll += state.rollV * dt
+}
+
+/**
+ * The trailer follows its hitch: its axle rolls without sliding, so its yaw
+ * rate is the hitch's velocity across it over the hitch-to-axle length. It
+ * swings out behind a turn and in again, and jack-knifes in reverse against
+ * its stop, as a real one does.
+ */
+function trail(state: MotionState, trailer: TrailerProfile, h: number): void {
+  const g = state.articulation
+  const r = state.yawRate
+  const across = -state.speed * Math.sin(g) + (state.lateral + r * trailer.hitch) * Math.cos(g)
+  const turn = across / trailer.length - r
+  state.articulation = clamp(g + turn * h, -trailer.limit, trailer.limit)
 }
 
 function step(state: MotionState, car: DriveProfile, throttle: number, locked: boolean, h: number): void {

@@ -3,6 +3,7 @@ import { Quaternion, Vector3 } from 'three/webgpu'
 import { createF1, F1_PROFILE, RACER_GAIT } from '../src/content/ferrari-f1/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck/index.ts'
+import { SEMI_GAIT, SEMI_PROFILE } from '../src/content/semi/index.ts'
 import { HEAVY_GAIT, RobotGait } from '../src/content/transformer/animation/gait.ts'
 import { RobotRig } from '../src/content/transformer/model/rig.ts'
 import { NO_CONTACT, readAsset } from './support/assets.ts'
@@ -10,6 +11,8 @@ import { NO_CONTACT, readAsset } from './support/assets.ts'
 const cases = [
   { name: 'ferrari-f1', style: RACER_GAIT, speeds: [F1_PROFILE.robot.walkSpeed, F1_PROFILE.robot.runSpeed], steps: [1.575, 3.8], cadence: [3.2 / 1.05, 7.8 / 1.9] },
   { name: 'cybertruck', style: HEAVY_GAIT, speeds: [CYBERTRUCK_PROFILE.robot.walkSpeed, CYBERTRUCK_PROFILE.robot.runSpeed], steps: [2.025, 4.6], cadence: [3.4 / 1.35, 7.5 / 2.3] },
+  // the Semi steps at a slower cadence than the pickup: strides scale with the legs, speeds with their square root
+  { name: 'semi', style: SEMI_GAIT, speeds: [SEMI_PROFILE.robot.walkSpeed, SEMI_PROFILE.robot.runSpeed], steps: [2.75, 5.6], cadence: [5.9 / 2.75, 17 / 5.6] },
 ]
 const dt = 1 / 240
 const sides = ['L', 'R'] as const

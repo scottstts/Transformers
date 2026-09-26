@@ -20,6 +20,8 @@ The robots were designed first, as robots, and the car was worked back around th
 
 **The Ferrari F1.** This one is a Formula 1 car in Scuderia red, an entirely different kind of machine. It's low, lean, and packed tight with struts and carriers that unfold its bodywork into something much taller than you'd expect.
 
+**The Semi.** A Tesla Semi pulling a white 28-foot van, and the biggest robot of the three: seven metres tall. The cab's nose becomes its chest and the doors its forearm shields, and the robot kneels up and stands out of the cab. The van unhitches on its own jacks, rolls back, telescopes shut and locks onto the robot's back as a backpack. It fights with its feet, then with a gun: a machine gun and a coil cannon in one.
+
 Each one has its own voice, and the sounds are meant to feel like real recordings of heavy machinery: servos, hydraulics, metal settling under load. They aren't cartoon clanks.
 
 ## The desert

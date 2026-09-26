@@ -15,11 +15,17 @@ export interface TyreWidths {
  * patch is, how it moves over the ground and how fast its tread slides, handed
  * to the world's surface (tracks, dust, grit). Contacts are reused, nothing is
  * allocated per frame.
+ *
+ * A trailer's tyres are not on the car's body: their motion is measured from
+ * where they were last frame, headed along the trailer, and only sideways
+ * sliding counts (they roll free).
  */
 export class Tyres {
   private readonly bot: TransformerModel
   private readonly widths: TyreWidths
   private readonly contacts: TyreContact[] = []
+  /** last frame's contact points of the trailer's tyres (NaN before the first) */
+  private readonly last: Vector3[] = []
   /** fastest tread slide over the ground last frame (m/s), rear and front */
   slideRear = 0
   slideFront = 0
@@ -38,10 +44,23 @@ export class Tyres {
       const c = this.contacts[k] ??= { point: new Vector3(), heading: new Vector3(), velocity: new Vector3(), slide: new Vector3(), width: 0 }
       c.point.copy(wheel.p)
       c.width = wheel.front ? this.widths.front : this.widths.rear
-      const slide = contactMotion(state, c.point, wheel.front, c.velocity, c.slide, c.heading)
+      const slide = wheel.trailer ? this.trailing(k, c, dt) : contactMotion(state, c.point, wheel.front, c.velocity, c.slide, c.heading)
       if (wheel.front) this.slideFront = Math.max(this.slideFront, slide)
       else this.slideRear = Math.max(this.slideRear, slide)
       surface.tyre(k, c, dt)
     }
+  }
+
+  /** A trailer tyre: its velocity from its last place, headed along the trailer; returns its sideways slide (m/s). */
+  private trailing(k: number, c: TyreContact, dt: number): number {
+    const last = this.last[k] ??= new Vector3(NaN, 0, 0)
+    this.bot.trailerForward(c.heading)
+    if (Number.isNaN(last.x) || dt <= 0) c.velocity.set(0, 0, 0)
+    else c.velocity.subVectors(c.point, last).divideScalar(dt).setY(0)
+    last.copy(c.point)
+    // tyre left = heading turned 90 degrees to the left: (hz, -hx)
+    const lat = c.velocity.x * c.heading.z - c.velocity.z * c.heading.x
+    c.slide.set(c.heading.z * lat, 0, -c.heading.x * lat)
+    return Math.abs(lat)
   }
 }

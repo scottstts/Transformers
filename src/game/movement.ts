@@ -3,7 +3,7 @@ import type { CircleCollider, Form, MotionState, SegmentCollider } from './types
 import { pushOut, type Contact } from './collide'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
 import { GameInput } from './input'
-import type { CharacterProfile, RobotProfile } from '../content/transformer/character'
+import type { CharacterProfile, RobotProfile, TrailerProfile } from '../content/transformer/character'
 
 /**
  * Robot turning: the turn rate asked per radian off the wanted heading, its
@@ -63,8 +63,10 @@ export function updateRobot(state: MotionState, input: GameInput, camera: Perspe
 }
 
 /** Push the body out of rocks and walls; returns true when it is against a wall (a segment). */
-export function resolveCircleCollisions(state: MotionState, colliders: CircleCollider[], robotOffset: number, profile: Pick<CharacterProfile, 'carRadius' | 'robotRadius'>, segments: readonly SegmentCollider[] = []): boolean {
+export function resolveCircleCollisions(state: MotionState, colliders: CircleCollider[], robotOffset: number, profile: Pick<CharacterProfile, 'carRadius' | 'robotRadius' | 'carBody'> & { drive?: Pick<CharacterProfile['drive'], 'trailer'> }, segments: readonly SegmentCollider[] = []): boolean {
   const transition = easedRange(state.progress, 0.3, 0.7)
+  // a long rig in car form: a chain of circles along the car, and along its trailer as it swings
+  if (transition === 0 && profile.carBody) return resolveBody(state, colliders, profile.carBody, profile.drive?.trailer, segments)
   const offset = robotOffset * transition
   const radius = lerp(profile.carRadius, profile.robotRadius, transition)
   const forwardX = Math.sin(state.yaw)
@@ -79,11 +81,7 @@ export function resolveCircleCollisions(state: MotionState, colliders: CircleCol
       walled = true
       state.pos.x = _p.x - forwardX * offset
       state.pos.z = _p.z - forwardZ * offset
-      // the velocity into the wall is lost; along it, it scrapes
-      const vx = forwardX * state.speed, vz = forwardZ * state.speed
-      const into = vx * c.nx + vz * c.nz
-      if (into < 0) state.speed *= Math.max(0, 1 - Math.min(1, -into / Math.max(Math.abs(state.speed), 1e-3)) * 0.9)
-      state.lateral *= 0.5
+      scrape(state, c, forwardX, forwardZ)
     }
   }
   for (const collider of colliders) {
@@ -99,6 +97,74 @@ export function resolveCircleCollisions(state: MotionState, colliders: CircleCol
       state.speed *= 0.5
       state.lateral *= 0.5
     }
+  }
+  return walled
+}
+
+/** The velocity into a wall is lost; along it, it scrapes. */
+function scrape(state: MotionState, c: Contact, forwardX: number, forwardZ: number): void {
+  const vx = forwardX * state.speed, vz = forwardZ * state.speed
+  const into = vx * c.nx + vz * c.nz
+  if (into < 0) state.speed *= Math.max(0, 1 - Math.min(1, -into / Math.max(Math.abs(state.speed), 1e-3)) * 0.9)
+  state.lateral *= 0.5
+}
+
+/**
+ * A long car's body as circles: stations along the car (ahead of its origin)
+ * and along its trailer behind the hitch, turned by the articulation. Each
+ * circle pushes the whole car out of what it overlaps.
+ */
+function resolveBody(state: MotionState, colliders: CircleCollider[], body: ReadonlyArray<readonly [number, number]>, trailer: TrailerProfile | undefined, segments: readonly SegmentCollider[]): boolean {
+  const fx = Math.sin(state.yaw), fz = Math.cos(state.yaw)
+  const trailerYaw = state.yaw + state.articulation
+  const tx = Math.sin(trailerYaw), tz = Math.cos(trailerYaw)
+  let walled = false
+  let struck = false
+  const count = body.length + (trailer?.circles.length ?? 0)
+  for (let k = 0; k < count; k++) {
+    let cx: number, cz: number, r: number
+    if (k < body.length) {
+      const [station, radius] = body[k]
+      cx = state.pos.x + fx * station
+      cz = state.pos.z + fz * station
+      r = radius
+    } else {
+      const [behind, radius] = trailer!.circles[k - body.length]
+      cx = state.pos.x + fx * trailer!.hitch - tx * behind
+      cz = state.pos.z + fz * trailer!.hitch - tz * behind
+      r = radius
+    }
+    if (segments.length) {
+      _p.x = cx
+      _p.z = cz
+      const c = pushOut(_p, r, segments, [], _contact)
+      if (c) {
+        walled = true
+        state.pos.x += _p.x - cx
+        state.pos.z += _p.z - cz
+        cx = _p.x
+        cz = _p.z
+        scrape(state, c, fx, fz)
+      }
+    }
+    for (const collider of colliders) {
+      if (collider.r <= 0) continue
+      const dx = cx - collider.x, dz = cz - collider.z
+      const distance = Math.hypot(dx, dz)
+      const minimum = collider.r + r
+      if (distance < minimum && distance > 1e-4) {
+        const push = minimum - distance
+        state.pos.x += dx / distance * push
+        state.pos.z += dz / distance * push
+        cx += dx / distance * push
+        cz += dz / distance * push
+        struck = true
+      }
+    }
+  }
+  if (struck) {
+    state.speed *= 0.5
+    state.lateral *= 0.5
   }
   return walled
 }

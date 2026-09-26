@@ -102,7 +102,7 @@ body:not(.ready) .garage { opacity: 0; visibility: hidden; }
 .garage-track.nudge-prev { animation: garage-nudge-prev 0.32s ease-out; }
 .garage-track.nudge-next { animation: garage-nudge-next 0.32s ease-out; }
 .garage-name { flex: 0 0 var(--item); padding: 10px 0 14px; border: 0; background: none; color: inherit; font: 600 21px/1.2 system-ui, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; white-space: nowrap; cursor: pointer; opacity: 0.26; transform: scale(0.8); transition: opacity 0.42s ease, transform 0.42s cubic-bezier(0.22, 0.8, 0.24, 1); }
-.garage-name.centre { opacity: 1; transform: none; cursor: default; }
+.garage-name.centre { opacity: 1; transform: none; cursor: pointer; }
 .garage-name:focus-visible { outline: none; }
 /* the accent rule under the centred name; it shimmers while that car loads */
 .garage-view::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 44px; height: 2px; border-radius: 2px; background: var(--accent); transform: translateX(-50%); transition: background-color 0.42s ease, width 0.42s ease; }

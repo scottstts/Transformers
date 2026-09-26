@@ -20,7 +20,8 @@ import { armourStruck, guardBlocked, guardDrop, guardRaise } from './audio/guard
 
 /** A character's fighting look and sound. */
 export interface FighterStyle {
-  trail: TrailStyle
+  /** the smear a fast cutting edge leaves; none for a weapon without one (a gun) */
+  trail?: TrailStyle
   swing: SwingTuning
   forge: ForgeTuning
   /** sparks of the weapon forming and going: 0 hot metal, 1 plasma */
@@ -76,7 +77,7 @@ export class Fighter implements CombatEffects {
   protected readonly blast = new BlastLight()
   /** heat shimmer over whatever the special makes hot */
   protected readonly haze = new HeatHaze()
-  protected readonly trail: SwingTrail
+  protected readonly trail: SwingTrail | null
   /** the guard's energy shield */
   protected readonly shield: Shield
   protected readonly voice: SwingVoice
@@ -111,13 +112,14 @@ export class Fighter implements CombatEffects {
     this.mix = mix
     this.weapon = weapon
     this.style = style
-    this.trail = new SwingTrail(style.trail)
+    this.trail = style.trail ? new SwingTrail(style.trail) : null
     this.voice = new SwingVoice(mix, style.swing)
     // kept in the scene at zero: the light count, and so every shader, never changes
     this.light = new PointLight(style.light, 0, 14, 2)
     // the shield encloses the robot's own parts, fitted as it moves
     this.shield = new Shield(style.shield, model.node('bone:pelvis'), model.root)
-    this.object.add(this.sparks.mesh, this.trail.mesh, this.light, this.billows.mesh, this.blast.light, this.haze.mesh, this.shield.mesh)
+    this.object.add(this.sparks.mesh, this.light, this.billows.mesh, this.blast.light, this.haze.mesh, this.shield.mesh)
+    if (this.trail) this.object.add(this.trail.mesh)
     this.tracked = ['hand.R', 'hand.L', 'foot.R', 'foot.L'].map((b) => model.node(`bone:${b}`))
     this.lastPos = this.tracked.map(() => new Vector3())
     if (weapon) weapon.attach(model.node('bone:hand.R'))
@@ -174,18 +176,20 @@ export class Fighter implements CombatEffects {
       if (w.presence > 0) {
         w.worldEdge(this.edgeBase, this.edgeTip)
         if (before === 0) {
-          this.trail.reset()
+          this.trail?.reset()
           this.lastTip.copy(this.edgeTip)
         }
         this.swingSpeed = Math.max(this.swingSpeed, dt > 0 ? this.edgeTip.distanceTo(this.lastTip) / dt : 0)
         this.lastTip.copy(this.edgeTip)
-        this.trail.strength = w.presence * w.presence
-        this.trail.update(dt, this.edgeBase, this.edgeTip)
+        if (this.trail) {
+          this.trail.strength = w.presence * w.presence
+          this.trail.update(dt, this.edgeBase, this.edgeTip)
+        }
         if (this.style.cut) this.groundCut(frame.state.yaw)
         // forming: sparks shed along the front, light from the hand
         if (w.presence < 1 && w.presence > 0 && this.presenceTarget !== w.presence) this.shed(w.presence, dt)
       } else {
-        this.trail.reset()
+        this.trail?.reset()
         this.endCut()
       }
       const forming = w.presence > 0 && w.presence < 1
@@ -215,7 +219,7 @@ export class Fighter implements CombatEffects {
       this.weapon.presence = 0
       this.weapon.update(0)
     }
-    this.trail.reset()
+    this.trail?.reset()
     this.light.intensity = 0
     this.lightLevel = 0
     this.blast.reset()
@@ -226,7 +230,7 @@ export class Fighter implements CombatEffects {
 
   warm(on: boolean): void {
     this.weapon?.warm(on)
-    this.trail.mesh.visible = on
+    if (this.trail) this.trail.mesh.visible = on
     this.sparks.mesh.visible = on
     this.billows.warm(on)
     this.haze.warm(on)

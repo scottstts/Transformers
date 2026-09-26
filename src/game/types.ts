@@ -36,6 +36,8 @@ export interface MotionState {
   /** body acceleration from the tyres (m/s^2): forward, and sideways (+ left) */
   longAccel: number
   latAccel: number
+  /** a trailer's yaw against the car (rad, + to the left); 0 without one */
+  articulation: number
   pitch: number
   roll: number
   pitchV: number
@@ -48,7 +50,7 @@ export function createMotionState(): MotionState {
     mode: 'car', target: 0, progress: 0,
     pos: new Vector3(), yaw: 0.6, speed: 0, lateral: 0, yawRate: 0,
     steer: 0, steerInput: 0, hands: 0, spin: 0, throttle: 0, boost: false, release: 0, slip: 0, drift: 0,
-    slideFront: 0, slideRear: 0, spinFront: 0, spinRear: 0, longAccel: 0, latAccel: 0,
+    slideFront: 0, slideRear: 0, spinFront: 0, spinRear: 0, longAccel: 0, latAccel: 0, articulation: 0,
     pitch: 0, roll: 0, pitchV: 0, rollV: 0, accel: 0,
   }
 }

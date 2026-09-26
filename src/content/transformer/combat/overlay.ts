@@ -22,6 +22,12 @@ export interface CombatBuild {
   offGrip: [number, number, number]
   /** sole: heel and toe edges behind / ahead of the ankle, ankle height (m), as the gait style has them */
   sole: { heel: number; toe: number; ankle: number }
+  /**
+   * The weapon is held by pistol grips (a gun): its grips run across the
+   * fist, its barrels (weapon +z) leave past the knuckles and its top
+   * (weapon +x) faces the index finger. Default: a haft through the fist.
+   */
+  pistol?: boolean
 }
 
 /**
@@ -31,7 +37,13 @@ export interface CombatBuild {
  */
 const GRIP_ROT = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
   new Vector3(0, 0, -1), new Vector3(1, 0, 0), new Vector3(0, -1, 0)))
-const GRIP_ROT_INV = GRIP_ROT.clone().invert()
+/**
+ * A pistol grip in a hand's frame: the barrels (weapon +z) leave past the
+ * knuckles (hand -z), the top (weapon +x) faces the index finger (hand -y).
+ * The right palm faces the gun's left side, the left palm its right side.
+ */
+const PISTOL_ROT = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
+  new Vector3(0, -1, 0), new Vector3(-1, 0, 0), new Vector3(0, 0, -1)))
 /** The weapon's rest in the chest frame: upright, the edge facing forward. */
 const WEAPON_REST = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
   new Vector3(0, -1, 0), new Vector3(1, 0, 0), new Vector3(0, 0, 1)))
@@ -77,6 +89,9 @@ export class CombatOverlay implements RigOverlay {
   private readonly gaitQ: Quaternion[]
   private readonly gripOffset: Record<Side, Vector3>
   private readonly offGrip: Vector3
+  /** weapon axes in the hand's frame (GRIP_ROT or PISTOL_ROT), and back */
+  private readonly gripRot: Quaternion
+  private readonly gripRotInv: Quaternion
   /** Continuous quaternion branch while a hand takes/releases the weapon. */
   private readonly wristDelta: Record<Side, Quaternion> = { R: new Quaternion(), L: new Quaternion() }
   private readonly wristWeight: Record<Side, number> = { R: 0, L: 0 }
@@ -114,7 +129,9 @@ export class CombatOverlay implements RigOverlay {
     this.gaitQ = rig.local.map(() => new Quaternion())
     this.gripOffset = { R: new Vector3(...build.grip), L: new Vector3(-build.grip[0], build.grip[1], build.grip[2]) }
     this.offGrip = new Vector3(...build.offGrip)
-    this.grip.compose(this.gripOffset[build.main], GRIP_ROT, _one)
+    this.gripRot = (build.pistol ? PISTOL_ROT : GRIP_ROT).clone()
+    this.gripRotInv = this.gripRot.clone().invert()
+    this.grip.compose(this.gripOffset[build.main], this.gripRot, _one)
     this.measureNeutral(rig)
   }
 
@@ -220,7 +237,7 @@ export class CombatOverlay implements RigOverlay {
           .multiply(_q3.setFromAxisAngle(_x, deg(v[WEAPON + 4])))
           .multiply(_q2.setFromAxisAngle(_z, sgn * deg(v[WEAPON + 5])))
           .multiply(WEAPON_REST)
-        handQ.copy(weaponQ).multiply(GRIP_ROT_INV)
+        handQ.copy(weaponQ).multiply(this.gripRotInv)
         at.sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
         // A two-handed weapon must fit both arms. Project its wrist target
         // into their shared reach before solving either arm; otherwise the
@@ -243,7 +260,7 @@ export class CombatOverlay implements RigOverlay {
         target.lerp(at, hold)
       } else {
         this.weapon.decompose(_vw, _qw, _s)
-        handQ.copy(_qw).multiply(GRIP_ROT_INV)
+        handQ.copy(_qw).multiply(this.gripRotInv)
         const at = _vw.add(_v0.copy(this.offGrip).applyQuaternion(_qw)).sub(_v1.copy(this.gripOffset[side]).applyQuaternion(handQ))
         target.lerp(at, hold)
       }

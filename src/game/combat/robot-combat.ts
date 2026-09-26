@@ -80,6 +80,15 @@ export class RobotCombat {
   aimAssist: ((x: number, z: number, heading: number, range: number, cone: number) => number) | null = null
   /** a blow, sweep or blast of the current move reaches the world (hits.ts) */
   onHit: ((hit: HitEvent) => void) | null = null
+  /** how far along a ray the first enemy's body stands (a gun's rounds stop there), if anything can be hit */
+  set probe(probe: CombatFrame['probe']) {
+    this.frame.probe = probe
+  }
+
+  /** the enemies' bodies in the air round a point (a gun seeking them), if anything can be hit */
+  set airborne(airborne: CombatFrame['airborne']) {
+    this.frame.airborne = airborne
+  }
   /** the current move's hits and how far through them the move is */
   private hits: MoveHits | null = null
   private nextStrike = 0
@@ -118,7 +127,7 @@ export class RobotCombat {
     this.releaseCues = (combat.moveset.recoverCues ?? []).map((cue) => cue.cue === 'weapon-out' ? { ...cue, value: 0.18 } : cue)
     const recover = combat.moveset.recover
     this.combo = new ComboController(this.moves, recover)
-    this.frame = { weight: 0, values: this.player.values, move: -1, time: 0, state, camera }
+    this.frame = { weight: 0, values: this.player.values, move: -1, time: 0, state, camera, probe: null, airborne: null }
     this.frameState = state
     this.player.reset(combat.overlay.neutral)
   }
@@ -444,7 +453,7 @@ export class RobotCombat {
       e.shape = 'sector'; e.kind = s.kind; e.x = d.x; e.z = d.z
       e.heading = state.yaw + ((s.aim ?? 0) * Math.PI) / 180
       e.reach = s.reach; e.arc = (s.arc * Math.PI) / 180
-      e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.sweep = -1; e.radial = false
+      e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.sweep = -1; e.radial = s.outward ?? false
       e.final = e.special && s.t === this.finalAt
       sink(e)
     }

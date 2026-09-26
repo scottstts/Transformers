@@ -285,6 +285,8 @@ export class GameSession {
       fight.onStrike = (move) => this.energy.strike(move)
       // a blow that catches soldiers bites: a moment of hit-stop on a landed strike
       fight.aimAssist = (x, z, heading, range, cone) => this.horde.assist(x, z, heading, range, cone)
+      fight.probe = (from, dir, range) => this.horde.ray(from, dir, range)
+      fight.airborne = (at, range, out) => this.horde.airborne(at, range, out)
       fight.onHit = (hit) => {
         const caught = this.horde.hit(hit)
         if (caught > 0 && hit.shape === 'sector') this.cameraFx.hitStop(0.05, 0.18)
@@ -351,6 +353,8 @@ export class GameSession {
       state.pos.z += Math.cos(state.yaw) * shift
     }
     state.speed = Math.min(state.speed, next.profile.drive.maxSpeed)
+    // a trailer is the new car's own: it starts in line
+    state.articulation = 0
     this.character = next
     this.fight = this.fightFor(next)
     this.stage(next)
@@ -432,6 +436,7 @@ export class GameSession {
 
     model.steer = state.steer
     model.spin = state.spin
+    model.articulation = state.articulation
     const pivot = profile.drive.pivotHeight
     const vibration = Math.sin(performance.now() * 0.013) * 0.004 * Math.min(Math.abs(state.speed) / 20, 1)
     this.suspensionEuler.set(state.pitch, 0, state.roll)

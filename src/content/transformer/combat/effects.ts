@@ -39,6 +39,14 @@ export interface CombatFrame {
   time: number
   state: MotionState
   camera: CombatCamera
+  /**
+   * How far along a ray (world, `dir` unit) the first enemy's body stands,
+   * within `range` m, else Infinity (a gun's rounds stop there); absent where
+   * nothing can be hit.
+   */
+  probe: ((from: Vector3, dir: Vector3, range: number) => number) | null
+  /** The bodies of enemies thrown into the air within `range` m of `at`, into `out`; returns how many (absent where there are none). */
+  airborne: ((at: Vector3, range: number, out: Vector3[]) => number) | null
 }
 
 /** A character's fighting effects: its weapon, particles, sound and camera cues. */

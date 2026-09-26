@@ -28,6 +28,9 @@ const SLASH_CONE = 1.05
 const SIM_NEAR = 90
 const SIM_MID = 200
 const DRAW_FAR = 460
+/** A soldier's body for a ray (the gun's rounds): a sphere this big about this height over its feet (m). */
+const BODY_RADIUS = 1.1
+const BODY_HEIGHT = 1.6
 /** How far a soldier's shadow can reach from it across the sand (m): a 3 m body under a sun 25 degrees up. */
 const SHADOW_REACH = 7
 /** Health bars: drawn within BAR_FAR m, fading out from BAR_FADE; their anchor above the head bone (m). */
@@ -249,7 +252,7 @@ export class Horde {
           const f = 1 - 0.55 * Math.pow(Math.min(1, d / e.reach), 2)
           dirX = rx; dirZ = rz
           knock *= f
-          damage *= Math.min(1, 0.4 + 0.6 * (1 - d / e.reach) * 1.6)
+          if (e.shape === 'circle') damage *= Math.min(1, 0.4 + 0.6 * (1 - d / e.reach) * 1.6)
         } else if (e.shape === 'circle') {
           // ploughed through: along the motion and out of the path
           const side = Math.sign(dx * hz - dz * hx) || 1
@@ -313,6 +316,49 @@ export class Horde {
       }
     }
     return best
+  }
+
+  /**
+   * How far along a ray (world, `dir` unit) the first living soldier's body
+   * stands, within `range` m, or Infinity: the gun's rounds and shells stop
+   * where they strike one. A body is a sphere about its chest (it follows a
+   * soldier thrown into the air).
+   */
+  ray(from: Vector3, dir: Vector3, range: number): number {
+    let best = Infinity
+    const r = BODY_RADIUS
+    for (const g of this.garrisons) {
+      for (const s of g.soldiers) {
+        if (!s.alive) continue
+        const rx = s.x - from.x, ry = s.y + BODY_HEIGHT - from.y, rz = s.z - from.z
+        const t = rx * dir.x + ry * dir.y + rz * dir.z
+        if (t < 0 || t > range + r) continue
+        const d2 = rx * rx + ry * ry + rz * rz - t * t
+        if (d2 >= r * r) continue
+        const hit = t - Math.sqrt(r * r - d2)
+        if (hit < best && hit <= range) best = Math.max(0, hit)
+      }
+    }
+    return best
+  }
+
+  /**
+   * The bodies (chest points) of the living soldiers thrown into the air
+   * within `range` m of `at`, written into `out` (as many as it holds);
+   * returns how many (a gun seeking targets in the air).
+   */
+  airborne(at: Vector3, range: number, out: Vector3[]): number {
+    let n = 0
+    for (const g of this.garrisons) {
+      for (const s of g.soldiers) {
+        if (n >= out.length) return n
+        if (!s.alive || s.mode !== 'air') continue
+        const y = s.y + BODY_HEIGHT
+        if (Math.hypot(s.x - at.x, y - at.y, s.z - at.z) > range) continue
+        out[n++].set(s.x, y, s.z)
+      }
+    }
+    return n
   }
 
   /** The living soldiers within `radius` of (x, z) (tools and tests). */

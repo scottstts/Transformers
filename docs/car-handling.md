@@ -29,6 +29,14 @@ Details that mattered:
 
 Releasing Shift restores the rear over ~0.25 s and the same hands catch the slide: it straightens in about half a second with a couple of degrees of overshoot.
 
+## Trailer (the Semi's van)
+
+`DriveProfile.trailer` hitches a trailer behind the car and `MotionState.articulation` holds its yaw against the car (+ left). It follows kinematically, inside the fixed sub-steps: its axle rolls without sliding, so its yaw rate is the hitch's velocity across it over the hitch-to-axle length. It swings behind a turn and in again, and jack-knifes against its stop in reverse, as a real one does. It does not load the car's dynamics.
+
+- The stop is small (±0.19 rad): the pup's front wall clears the cab's extenders by 25 cm. In a tight turn it sits on the stop and is dragged, and its tyres show the scrub (they are measured from their own motion, `Tyres`).
+- A transformation straightens it: the articulation eases to zero once the progress leaves 0, while the model fades it out with the car state.
+- Collision in car form is a chain of circles along the car and along the trailer at its articulation (`movement.ts`); a single radius let the van pass through rocks.
+
 ## What the rest of the game reads
 
 `MotionState` carries per-axle tread slide (`slideFront/Rear`, sideways) and `spinFront/Rear` (wheelspin backwards, lock forwards), `drift` (smoothed 0..1) and the tyre accelerations. `contactMotion` turns them into each contact patch's ground velocity and tread slide vector (`Tyres` in `transformer/tyres.ts` feeds the world's `ContactEffects.tyre`). Body roll uses the true lateral acceleration. `speed` is still forward speed; the transformation waits for the whole velocity (forward and sideways) to settle.

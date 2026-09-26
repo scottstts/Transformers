@@ -17,7 +17,7 @@ const MAX_EVENT_MOVE = 400
 const FRAMING_GLIDE = 1.2
 /** Orbit pitch (rad) of the opening broadside shot: low, close to eye height beside the car. */
 const SIDE_PITCH = 0.07
-/** Half the span (m) the opening broadside keeps in frame: half a car length plus a margin. */
+/** Half the span (m) the opening broadside keeps in frame: half a car length plus a margin (a profile may set its own). */
 const SIDE_HALF_SPAN = 3.4
 /**
  * Share of the car's slip angle the drive follow swings toward its travel: a
@@ -166,7 +166,7 @@ export class FollowCamera {
 
   focusPoint(state: MotionState, root: Object3D): Vector3 {
     const k = easedRange(state.progress, 0.1, 0.75)
-    this.localFocus.set(0, lerp(this.framing.carFocus, this.framing.robotFocus, k), lerp(0, this.robotOffset, k))
+    this.localFocus.set(0, lerp(this.framing.carFocus, this.framing.robotFocus, k), lerp(this.framing.carAhead ?? 0, this.robotOffset, k))
     return this.focus.copy(this.localFocus).applyMatrix4(root.matrixWorld)
   }
 
@@ -182,7 +182,7 @@ export class FollowCamera {
     if (this.broadside && (Math.abs(state.speed) > 0.3 || state.progress > 0)) this.broadside = false
     let distance = lerp(this.framing.carDistance, this.framing.robotDistance, k)
     // on a narrow (portrait) screen the broadside backs off until the whole car fits across
-    if (this.broadside) distance = Math.max(distance, SIDE_HALF_SPAN / (Math.tan(this.camera.fov * Math.PI / 360) * this.camera.aspect))
+    if (this.broadside) distance = Math.max(distance, (this.framing.carHalfLength ?? SIDE_HALF_SPAN) / (Math.tan(this.camera.fov * Math.PI / 360) * this.camera.aspect))
     const focus = this.focusPoint(state, root)
     if (!this.initialized) {
       this.target.copy(focus)
@@ -254,6 +254,8 @@ export class FollowCamera {
     f.robotDistance = lerp(a.robotDistance, b.robotDistance, u)
     f.carFocus = lerp(a.carFocus, b.carFocus, u)
     f.robotFocus = lerp(a.robotFocus, b.robotFocus, u)
+    f.carAhead = lerp(a.carAhead ?? 0, b.carAhead ?? 0, u)
+    f.carHalfLength = lerp(a.carHalfLength ?? SIDE_HALF_SPAN, b.carHalfLength ?? SIDE_HALF_SPAN, u)
   }
 
   dispose(): void {

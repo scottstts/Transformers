@@ -16,16 +16,25 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 - top speeds with the F1 profile;
 - the gearbox shifting up through all eight gears and back inside the rev range.
 
+`tests/semi.test.ts` runs the same asset, playback, orientation, wheel-contact, handover and locomotion checks for the Semi. It also checks:
+- the tailored meshes' second shape (bounds enclose both, the weight runs 0 to 1);
+- the van swinging about the kingpin in car form (its tyres on the ground) and not once it transforms;
+- the van riding the chest while the robot walks;
+- the trailer swinging within its stop through a turn and straightening after;
+- the rig's collision circles keeping the van out of a boulder.
+
 `tests/desert-world.test.ts` checks tyre-track ribbon continuity and restarts.
 
-`tests/special.test.ts` checks, for both robots, that the special is well-formed (keys, cues, steps, shots and tempo inside it) and, played from the stance and cutting into a combo at 120 Hz, that it stays finite, keeps wrists, haft and edge out of the body cores, keeps the planted feet on the ground, flies and travels as far as it should, and hands back to the gait with the weapon gone. `tests/energy.test.ts` checks that three full combos fill the meter and two do not, and that it is spent whole. `tests/director.test.ts` checks the special frame's axes, hard cuts, the handback reaching the follow camera, the handback orbiting instead of passing through the robot, and the camera floor.
+`tests/special.test.ts` checks, for every robot (each run as long as its tempo curve makes it in real time), that the special is well-formed (keys, cues, steps, shots and tempo inside it) and, played from the stance and cutting into a combo at 120 Hz, that it stays finite, keeps wrists, haft and edge out of the body cores, keeps the planted feet on the ground, flies and travels as far as it should, and hands back to the gait with the weapon gone. `tests/energy.test.ts` checks that three full combos fill the meter and two do not, and that it is spent whole. `tests/director.test.ts` checks the special frame's axes, hard cuts, the handback reaching the follow camera, the handback orbiting instead of passing through the robot, and the camera floor.
 
-`tests/combo.test.ts` checks the click combo (one click one move, chaining only inside the window, early clicks ignored, a late click restarting from move 1, nothing after move 4) and that keyed curves pass their keys without overshoot. `tests/combat.test.ts` checks, for both robots:
+`node tools/gun-model.mjs <machine_gun.mp3> <cannon.mp3>` refits the Semi's gun sounds from the two recordings (`--compare` prints a take's band-envelope error against them: about 3 dB for the shot and 4 dB for the cannon).
+
+`tests/combo.test.ts` checks the click combo (one click one move, chaining only inside the window, early clicks ignored, a late click restarting from move 1, nothing after move 4) and that keyed curves pass their keys without overshoot. `tests/combat.test.ts` checks, for every robot:
 - four well-formed moves;
 - that neutral channels reproduce the gait's stance (a seamless hand-back);
 - normal/early/late chains and recovery after move 3 at 120 Hz: ground contact, wrists, full formed haft/pommel and cutting edge outside conservative body cores, off-hand grip contact, weapon cleanup and return to gait;
 - handle axes enclosed by curled fingers, with the thumbs nearby;
-- forward displacement on every move at 30/120 Hz, without losing ground during recovery;
+- forward displacement on every move at 30/120 Hz (each robot's own least distances), without losing ground during recovery;
 - a single click playing move 1 only.
 - truck finisher arm-joint speed bounds at 30/60/120 Hz and the two unarmed recovery exits; the standalone move-3 recovery continuity case is an expected failure pending its own authored exit.
 

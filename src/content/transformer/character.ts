@@ -49,6 +49,23 @@ export interface DriveProfile {
   rollLimit: number
   /** height of the body's pitch / roll pivot above the ground (m) */
   pivotHeight: number
+  /** a trailer riding a hitch behind the car (the semi's van) */
+  trailer?: TrailerProfile
+}
+
+/**
+ * A trailer on a hitch: it follows the car kinematically (its axle rolls
+ * without sliding), yawing against the car by the articulation.
+ */
+export interface TrailerProfile {
+  /** hitch station ahead of the car origin (m; negative behind it) */
+  hitch: number
+  /** hitch to the trailer axle (m) */
+  length: number
+  /** articulation stop either way (rad): the trailer's nose meets the cab */
+  limit: number
+  /** the trailer's collision circles: distance behind the hitch and radius (m) */
+  circles: ReadonlyArray<readonly [number, number]>
 }
 
 export interface RobotProfile {
@@ -62,6 +79,10 @@ export interface CameraProfile {
   /** height of the camera's focus above the ground (m) */
   carFocus: number
   robotFocus: number
+  /** the car's focus station ahead of its origin (m; a long rig is framed about its middle), default 0 */
+  carAhead?: number
+  /** half the car's length (m): how much the opening broadside keeps in frame, default 3.4 */
+  carHalfLength?: number
 }
 
 export interface CharacterProfile {
@@ -71,6 +92,8 @@ export interface CharacterProfile {
   /** collision radius against scenery, car and robot form (m) */
   carRadius: number
   robotRadius: number
+  /** a long car's collision circles instead of the one `carRadius` at its origin: station ahead of it and radius (m) */
+  carBody?: ReadonlyArray<readonly [number, number]>
 }
 
 /** A character's sound, synthesized on the game's shared mix. */
