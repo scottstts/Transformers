@@ -25,8 +25,10 @@ def tyre_profile():
             tread.append((R - 0.014, h - 0.001))
             tread.append((R - 0.014, marks[k + 1] + 0.001))
     prof = side + tread[1:-1] + [(x, -h) for x, h in reversed(side)]
-    prof.append((BEAD - 0.006, -0.100))
-    prof.append((BEAD - 0.006, 0.100))
+    # the bead seat sits inside the rim's barrel (whose inner face is at BEAD - 0.006):
+    # at the same radius the two faces z-fought
+    prof.append((BEAD + 0.002, -0.100))
+    prof.append((BEAD + 0.002, 0.100))
     prof.append(prof[0])
     return prof
 
