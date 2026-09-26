@@ -24,6 +24,48 @@ const controls = (driveThrottle: number, driveSteering: number, driftHeld: boole
 const slipAngle = (s: MotionState): number => Math.atan2(s.lateral, Math.max(Math.abs(s.speed), 0.5))
 
 describe.each(CARS)('%s handling', (_, car) => {
+
+  it('keeps a zero-dt switch frame frozen and finite', () => {
+    const state = createMotionState()
+    state.speed = 0
+    state.lateral = 0
+    state.yawRate = 0
+    state.longAccel = 0
+    state.latAccel = 0
+    state.slideFront = 0
+    state.slideRear = 0
+    state.spinFront = 0
+    state.spinRear = 0
+    const before = {
+      x: state.pos.x,
+      z: state.pos.z,
+      yaw: state.yaw,
+      speed: state.speed,
+      lateral: state.lateral,
+      yawRate: state.yawRate,
+      spin: state.spin,
+    }
+
+    updateCar(state, controls(0, 0, false), 0, true, car)
+
+    expect({
+      x: state.pos.x,
+      z: state.pos.z,
+      yaw: state.yaw,
+      speed: state.speed,
+      lateral: state.lateral,
+      yawRate: state.yawRate,
+      spin: state.spin,
+    }).toEqual(before)
+    for (const value of [
+      state.speed, state.lateral, state.yawRate, state.steer, state.steerInput,
+      state.hands, state.spin, state.release, state.slip, state.drift,
+      state.slideFront, state.slideRear, state.spinFront, state.spinRear,
+      state.longAccel, state.latAccel, state.pitch, state.roll,
+      state.pitchV, state.rollV, state.accel,
+    ]) expect(Number.isFinite(value)).toBe(true)
+  })
+
   it('corners on its tyres without Shift: no slide, no drift', () => {
     let widest = 0
     drive(car, 20, 3, () => controls(1, -1, false), 60, (s) => {

@@ -2,6 +2,8 @@
 
 `src/game/car-dynamics.ts` is a dynamic single-track model shared by every car: forward speed, lateral velocity and yaw rate, per-axle tyre forces under load transfer (and downforce for the F1). The car origin is its centre of mass (both assets have it mid-wheelbase; `frontAxle` in the drive profile places the axles). Sub-steps are fixed at 1/300 s, so handling is frame-rate independent (tested). `tools/drift-lab.mjs` prints telemetry for scripted inputs (hold, neutral, exit, countersteer, donut, handbrake, high-speed entry) and is how the values were tuned.
 
+A frame with `dt <= 0` is a true simulation freeze (used while a character switch is hidden): control-facing throttle/boost state may be refreshed, but the tyre integrator and all motion state stay untouched. This is required because the tyre stop-distance math divides by the integration step and must never be entered with a zero step.
+
 ## Two regimes, one key
 
 - **Aids on (no Shift):** traction control and ABS. The profile's `accel` / `brake` are delivered exactly as tuned, no wheel spins or locks, and only part of that load comes off cornering grip. A physically capped model braked at ~1.2 g instead of the tuned 18 m/s² and made the F1 wheelspin off the line, which changed the established feel; the aids keep it.
