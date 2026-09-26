@@ -24,8 +24,10 @@ dist-ssr
 *.sw?
 
 ref_images
+ref_sounds
 ref
 *.blend
 __pycache__
 renders
 preview-out
+tasks
