@@ -152,20 +152,31 @@ export class GameSession {
     return this.switching
   }
 
+  /** A cached car can replace the current one without a loading frame. */
+  canSwitchInstantly(entry: RosterEntry): boolean {
+    return this.switching === null && this.canSwitch && this.built.has(entry.id)
+  }
+
   /**
    * Swap in another car where the current one stands, in the same form. Its
    * asset downloads once; its shaders compile against this scene's lighting.
-   * While it loads, controls are locked and the audio output is held silent
-   * (the UI covers the screen). The swap then happens behind that cover, and
-   * the promise resolves only once the GPU has finished the new car's first
-   * frames (first-use uploads and pipelines), so picture and sound return
-   * together. Asked mid-transformation, mid-jump or mid-special it waits for
+   * A first-use load locks controls and holds audio silent behind the UI cover.
+   * Its promise resolves once the GPU finishes the new car's first frames
+   * (uploads and pipelines), so picture and sound return together. Cached
+   * cars swap without that delay. Asked mid-transformation, mid-jump or mid-special it waits for
    * that to finish (the world runs on meanwhile) rather than refusing:
    * refusing made the menu look broken until the right moment was hit.
    */
   async switchCharacter(entry: RosterEntry): Promise<boolean> {
     if (entry.id === this.character.id) return true
     if (this.switching) return false
+    const cached = this.built.get(entry.id)
+    if (cached && this.canSwitch) {
+      cached.effects.audio.prepare()
+      cached.combat.effects.prepareAudio()
+      this.swap(cached)
+      return true
+    }
     this.switching = entry.id
     // (the world is frozen while a switch loads, so what it waits for must end first)
     this.waiting = true
@@ -174,14 +185,23 @@ export class GameSession {
     } finally {
       this.waiting = false
     }
-    this.audio.hold(true)
     try {
-      let next = this.built.get(entry.id)
-      if (!next) {
+      if (cached) {
+        cached.effects.audio.prepare()
+        cached.combat.effects.prepareAudio()
+        this.swap(cached)
+        return true
+      }
+      this.audio.hold(true)
+      try {
         const asset = await loadRosterAsset(entry)
-        next = entry.create(asset, this.environment.contactEffects, this.audio)
+        const next = entry.create(asset, this.environment.contactEffects, this.audio)
         this.stage(next)
+        next.effects.audio.prepare()
+        next.combat.effects.prepareAudio()
         next.combat.effects.warm(true)
+        const restoreModelCulling = disableCulling(next.model.root)
+        const restoreEffectsCulling = disableCulling(next.effects.object)
         try {
           await this.renderer.compileAsync(next.model.root, this.camera, this.scene)
           await this.renderer.compileAsync(next.effects.object, this.camera, this.scene)
@@ -192,16 +212,24 @@ export class GameSession {
           await this.settleFrames(SWITCH_SETTLE_FRAMES)
           return true
         } finally {
+          restoreEffectsCulling()
+          restoreModelCulling()
           next.combat.effects.warm(false)
         }
+      } finally {
+        this.audio.hold(false)
       }
-      this.swap(next)
-      await this.settleFrames(SWITCH_SETTLE_FRAMES)
-      return true
     } finally {
       this.switching = null
-      this.audio.hold(false)
     }
+  }
+
+  /** Move first-use sound synthesis and voice setup under entry loading. */
+  prepareAudio(): void {
+    this.audio.prepare()
+    this.character.effects.audio.prepare()
+    this.character.combat.effects.prepareAudio()
+    this.horde.prepareAudio()
   }
 
   /**

@@ -43,6 +43,8 @@ export interface CombatFrame {
 
 /** A character's fighting effects: its weapon, particles, sound and camera cues. */
 export interface CombatEffects {
+  /** Build the silent combat voice during loading. */
+  prepareAudio(): void
   /** the weapon the fighter forms in its hand, if it has one */
   readonly weapon: Weapon | null
   /** a combo begins (from the stance) */

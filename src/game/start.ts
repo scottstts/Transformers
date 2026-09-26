@@ -29,6 +29,8 @@ export async function startGame(setStage: (stage: string) => void): Promise<Game
     const soldiers = await host.observe(soldierLoad)
     setStage('Building game world')
     const session = new GameSession(host.renderer, sizingCamera, entry, asset, soldiers, (error) => host.fail(error))
+    setStage('Preparing audio')
+    session.prepareAudio()
     setStage('Compiling shaders')
     await host.observe(session.compile())
     setStage('Rendering first frame')
@@ -78,6 +80,7 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
     touch,
     roster: ROSTER,
     current: () => session.character.id,
+    canSwitchInstantly: (entry) => session.canSwitchInstantly(entry),
     get playing() { return touch || session.cameraRig.locked },
     get standing() { return session.standingRobot },
     get specialReady() { return session.specialReady },

@@ -5,6 +5,7 @@ export interface VehicleHost {
   readonly roster: readonly RosterEntry[]
   current(): string
   switchTo(entry: RosterEntry): Promise<boolean>
+  canSwitchInstantly(entry: RosterEntry): boolean
   /** return to play (pointer lock), from a user gesture */
   resume(): void
   /** pause / restore mouse look while the menu sits over the locked pointer */
@@ -311,7 +312,7 @@ export class VehicleMenu {
     this.track.classList.toggle('still', !animate)
     this.track.style.setProperty('--i', String(i))
     this.panel.style.setProperty('--accent', this.host.roster[i].accent)
-    const loading = this.loading && i !== current
+    const loading = this.loading && i !== current && !this.host.canSwitchInstantly(this.host.roster[i])
     this.panel.classList.toggle('loading', loading)
     this.root.classList.toggle('busy', loading)
     if (loading) this.coverName.textContent = this.host.roster[i].label

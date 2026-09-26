@@ -58,6 +58,12 @@ export class CybertruckAudio implements CharacterAudio {
     return true
   }
 
+  prepare(): void {
+    this.machine.prepare()
+    this.tyres.update(0)
+    void this.live
+  }
+
   /* ------------------------------------------------------ transformation */
 
   power(): void {

@@ -139,6 +139,10 @@ export class Horde {
     }
   }
 
+  prepareAudio(): void {
+    this.audio.prepare()
+  }
+
   /** How many soldiers are alive in the district of (x, z), and whether it is fighting; null outside every fortress. */
   status(x: number, z: number): { alive: number; alert: boolean } | null {
     for (const { fort, garrisons } of this.strongholds) {

@@ -60,6 +60,12 @@ export class F1Audio implements CharacterAudio {
     this.tyres = new TyreVoice(mix, RACER_TYRES)
   }
 
+  prepare(): void {
+    this.machine.prepare()
+    this.tyres.update(0)
+    this.engine.update(0, 0, 0, false, false)
+  }
+
   power(): void {
     this.machine.power()
   }
