@@ -90,6 +90,12 @@ export function updateCar(state: MotionState, input: CarControls, dt: number, lo
   const loose = !locked && input.driftHeld
   state.throttle = throttle
   state.boost = loose && throttle > 0
+
+  // A character switch deliberately freezes the world with dt = 0. Do not
+  // enter the tyre integrator in that state: its stop-distance terms divide
+  // by the sub-step duration and 0 / 0 at rest would poison motion/audio with NaN.
+  if (!Number.isFinite(dt) || dt <= 0) return
+
   state.release = damp(state.release, loose ? 1 : 0, loose ? RELEASE_RATE : REGRIP_RATE, dt)
   state.steerInput = damp(state.steerInput, locked ? 0 : -input.driveSteering, STEER_RATE, dt)
 
