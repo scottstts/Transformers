@@ -1,7 +1,7 @@
 """Preview materials of the weapons. A weapon's slots are its character's slots
 (src/content/<character>/materials.ts) plus the weapon's own:
 
-  glow   the axe's light-bar strip (emissive, driven by the weapon in game)
+  glow   the axe's light-bar strip, the gun's capacitor coils (emissive, driven in game)
   blade  the sword's polished blade steel
 
 Blender materials are named `<weapon>.<slot>`; the exporter writes the slot."""
@@ -17,6 +17,21 @@ SLOTS = {
         'mech': (0x3b3f44, 0.9, 0.42, None, 0, 0.0),
         'rubber': (0x141414, 0.0, 0.9, None, 0, 0.0),
         'glow': (0xdff0ff, 0.0, 0.3, 0xdff0ff, 8.0, 0.0),
+    },
+    'gun': {
+        'paint': (0xe9ebea, 0.0, 0.30, None, 0, 1.0),
+        'trim': (0x0c0d0e, 0.0, 0.34, None, 0, 1.0),
+        'blackMatte': (0x151617, 0.0, 0.72, None, 0, 0.0),
+        'glass': (0x07090b, 0.0, 0.04, None, 0, 1.0),
+        'graphite': (0x24272b, 0.8, 0.40, None, 0, 0.0),
+        'darkSteel': (0x55595e, 1.0, 0.30, None, 0, 0.0),
+        'steel': (0x8e9296, 1.0, 0.38, None, 0, 0.0),
+        'chrome': (0xe0e3e6, 1.0, 0.08, None, 0, 0.0),
+        'mech': (0x383c42, 0.9, 0.42, None, 0, 0.0),
+        'rubber': (0x161617, 0.0, 0.88, None, 0, 0.0),
+        'orange': (0xe8641a, 0.0, 0.4, None, 0, 1.0),
+        'lamp': (0xf4f7ff, 0.0, 0.2, 0xf4f7ff, 12.0, 0.0),
+        'glow': (0xbfe6ff, 0.0, 0.3, 0xbfe6ff, 8.0, 0.0),
     },
     'sword': {
         'blade': (0xc9ccd0, 1.0, 0.16, None, 0, 0.0),
