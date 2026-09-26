@@ -107,6 +107,8 @@ def node_local(sc, a, W, N):
 
 def apply(sc, T):
     """Pose the Blender scene (empties) at T, lift included."""
+    from . import robot_fit
+    robot_fit.apply(sc, T)
     objs, W, N, lift = object_worlds(sc, T)
     for n in sc.skel.names:
         p = sc.skel.parent[n]
@@ -181,6 +183,8 @@ def bake(sc, step=1, warp=True):
         _keys(a.node, frames, node_m[name])
     for o, mats in list(stow_m.items()) + list(carry_m.items()):
         _keys(o, frames, mats)
+    from . import robot_fit
+    robot_fit.keyframes(sc, frames)
     scn = bpy.context.scene
     scn.frame_start, scn.frame_end = 0, FRAMES
     scn.frame_set(0)

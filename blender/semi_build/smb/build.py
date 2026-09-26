@@ -45,7 +45,7 @@ def robot_structure(coll):
 
 def full():
     """Truck + robot structure + mechanisms in one scene, car assemblies riding their hosts."""
-    from . import assemble, carrier, choreo
+    from . import assemble, carrier, choreo, robot_fit
     car_only()
     root = kit.collection('SEMI')
     rc = kit.collection('ROBOT', root)
@@ -56,12 +56,13 @@ def full():
     sc = assemble.Scene(root)
     sc.attach_structure(robot_structure(rc))
     sc.attach_car()
+    STATE['scene'] = sc
+    robot_fit.build(sc)
     sc.carriers = carrier.expand(choreo.carriers())
     carrier.size_all(sc, sc.carriers)
     cc = kit.collection('CARRIER', rc)
     for s in sc.carriers:
         s.build(cc)
-    STATE['scene'] = sc
     return sc
 
 

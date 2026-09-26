@@ -13,6 +13,8 @@ from .kit import V
 from .rkit import Part
 from .shape import lathe
 from .rcommon import ram, items
+from .robot_panels import shield
+from .robot_head import plate
 
 CHEST_W = 2.06          # chest core width (inside the clip's 2.5 m)
 CHEST_BACK = -0.62      # back face (f)
@@ -57,6 +59,11 @@ def spine():
     for s in (1, -1):
         for f in (0.20, -0.38):
             items(p, ram((s * 0.44, f, -0.12), (s * 0.40, f, top + 0.10), 0.05, 0.024))
+        # Exposed oblique ribs bridge the narrow waist to the broad chest.
+        for k in range(3):
+            z=0.02+k*0.115
+            p.add(plate([(s*0.32,0.39,z),(s*0.61,0.29,z+0.10),
+                         (s*0.66,0.27,z+0.16),(s*0.36,0.41,z+0.06)],0.055),'darkSteel')
     # the white V plate under the chest (concept): two layered chevrons
     a = Part('R.spine.plate')
     v1 = [(-0.52, 0.44), (0.52, 0.44), (0.40, 0.18), (0.0, -0.18), (-0.40, 0.18)]
@@ -87,6 +94,14 @@ def chest():
     # vertebral ridge
     p.add(rkit.plate_f([(-0.10, -0.02), (0.10, -0.02), (0.08, 1.22), (-0.08, 1.22)], CHEST_BACK - 0.05, CHEST_BACK + 0.05, 0.02), 'darkSteel')
     a = Part('R.chest.armor')
+    # White clavicular surround above the dark windshield pectoral.
+    for s in (-1,1):
+        a.add(plate([(s*0.04,0.87,1.35),(s*0.55,0.83,1.47),
+                     (s*1.05,0.63,1.51),(s*1.16,0.58,1.29),
+                     (s*0.87,0.73,1.30),(s*0.04,0.895,1.29)],0.055),'paint')
+        a.add(plate([(s*0.58,0.815,1.43),(s*0.84,0.73,1.455),
+                     (s*0.83,0.739,1.42),(s*0.58,0.826,1.395)],0.015),'graphite')
+        a.add(rkit.cylinder((s*0.96,0.686,1.386),0.022,0.015,'f',12),'darkSteel')
     # trapezius plates over the top, behind the clip, sloping up to the collar
     for s in (1, -1):
         trap = [(s * 0.34, -0.50), (s * 0.96, -0.46), (s * 1.02, 0.22), (s * 0.34, 0.26)]

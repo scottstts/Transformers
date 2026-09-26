@@ -50,14 +50,16 @@ class Strut:
         return u * u * (3 - 2 * u)
 
     def ends(self, W, N, T=None):
+        from .robot_fit import attachment
         A = W[self.bone] @ self.anchor
-        B = N[self.target] @ self.attach
+        B = attachment(W,N,self.target,self.attach,T)
         k = 1.0 if T is None else self.reach(T)
         return A, A.lerp(B, k)
 
-    def aim(self, W, N):
+    def aim(self, W, N, T=None):
         """Strut direction: always toward the part (stable while retracted)."""
-        d = N[self.target] @ self.attach - W[self.bone] @ self.anchor
+        from .robot_fit import attachment
+        d = attachment(W,N,self.target,self.attach,T) - W[self.bone] @ self.anchor
         return d.normalized() if d.length > 1e-6 else Vector((0.0, 0.0, 1.0))
 
     def size(self, samples):
@@ -102,7 +104,7 @@ class Strut:
         """{object: world matrix} spanning anchor -> attach."""
         A, B = self.ends(W, N, T)
         e = (B - A).length
-        z = self.aim(W, N)
+        z = self.aim(W, N, T)
         x = W[self.bone].to_3x3() @ self.ref
         x = x - z * x.dot(z)
         if x.length < 1e-6:
@@ -216,12 +218,13 @@ class Jack(Strut):
         super().__init__(name, None, (0, 0, 0), target, attach, r=r, stages=stages, window=window, engage=engage, snap=False)
 
     def ends(self, W, N, T=None):
-        A = N[self.target] @ self.attach
+        from .robot_fit import attachment
+        A = attachment(W,N,self.target,self.attach,T)
         G = Vector((A.x, A.y, CASTOR))          # the castor below the leg stands on z = 0
         k = 1.0 if T is None else self.reach(T)
         return A, A.lerp(G, k)
 
-    def aim(self, W, N):
+    def aim(self, W, N, T=None):
         return Vector((0.0, 0.0, -1.0))
 
     def size(self, samples):

@@ -17,6 +17,9 @@ from .mech import move, rot, fit
 
 # object base name -> [step specs] (bone-local coordinates, windows in T)
 SPECS = {
+    # The new shoulder shields nest inside the cab, then rise after the roof
+    # fairings have opened. The robot endpoint remains the authored design.
+    'R.clav.pauldron': [move((0.0, -0.30, -1.15), (0.24, 0.58))],
 }
 
 

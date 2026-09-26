@@ -2,6 +2,7 @@
 liners and mirrors. Names are the car parts the transformation program moves
 (side parts end in .L / .R)."""
 import math
+import bmesh
 from mathutils import Vector, Matrix
 from . import kit, rkit, body, dims as D
 from .body import P, normal, region_grid, level, v_at_z, u_at_s, u_at_x, panel
@@ -72,21 +73,26 @@ def build(coll):
         return u_at_x(v, lerp(0.70, xa - 0.02, t ** 0.9))
     mk('hood', L['lb1'], L['ws'], lambda v: -hood_edge(v), hood_edge, 'paint', 40, 18)
     # fenders: headlight corner round to the door, light bar up to the sill (windshield base at the corner)
-    sided('lightcorner', L['lb0'], L['lb1'], const(0.86), side_s(D.FA_S), 'paint', 16, 1, gap=0.003)
+    sided('lightcorner', L['lb0'], L['lb1'], const(0.86), side_s(D.FA_S), 'paint', 16, 1, gap=0.003, cut=True)
 
     def fender_ua(v):
         return hood_edge(v) if v <= L['ws'] else U_A
-    sided('fender', L['lb1'], L['sill'], fender_ua, side_s(D.DOOR_S[0]), 'paint', 30, 22, cut=True)
+    sided('fender', L['lb1'], L['sill'], fender_ua, side_s(D.DOOR_S[0]), 'paint', 48, 40, cut=True)
+    # Close the rear quadrant between the wheel arch and the front door.
+    # The bumper ends at the axle station; the upper fender starts above the
+    # light strip, so this curved triangular return needs its own surface.
+    sided('archReturn', L['skirt'], L['lb1'], side_s(D.FA_S), side_s(D.DOOR_S[0]),
+          'paint', 18, 10, cut=True)
     # ---------------------------------------------------------------- glass band
     mk('windshield', L['ws'], L['gt'], const(-U_A), const(U_A), 'glass', 60, 26, thick=0.012, offset=-GLASS_IN, gap=0.004)
     uA1 = lambda v: U_A + body._du(U_A, v, PILLAR)
     sided('apillar', L['ws'], L['gt'], const(U_A), uA1, 'trim', 2, 26, thick=0.018, gap=0.004)
     sided('qglass', L['sill'], L['gt'], uA1, side_s(D.DOOR_S[0]), 'glass', 16, 12, thick=0.012, offset=-GLASS_IN, gap=0.004)
     # ---------------------------------------------------------------- doors and side
-    sided('door', L['skirt'], L['sill'], side_s(D.DOOR_S[0]), side_s(D.DOOR_S[1]), 'paint', 14, 14)
+    sided('door', L['skirt'], L['sill'], side_s(D.DOOR_S[0]), side_s(D.DOOR_S[1]), 'paint', 36, 40)
     sided('doorGlass', L['sill'], L['gt'], side_s(D.DOOR_S[0]), side_s(D.DOOR_S[1]), 'glass', 12, 10, thick=0.012,
           offset=-GLASS_IN, gap=0.004, ugap=(0.012, 0.030))
-    sided('quarter', L['skirt'], L['gt'], side_s(D.DOOR_S[1]), side_s(D.QUARTER_S), 'paint', 14, 22)
+    sided('quarter', L['skirt'], L['gt'], side_s(D.DOOR_S[1]), side_s(D.QUARTER_S), 'paint', 28, 64)
     sided('extender', L['skirt'], L['gt'], side_s(D.QUARTER_S), const(2.0), 'paint', 10, 22)
     sided('rearwall', L['skirt'], L['gt'], const(2.0), const(4.0), 'paint', 20, 22)
     # ---------------------------------------------------------------- skirts
@@ -94,17 +100,45 @@ def build(coll):
     sided('skirt', L['low'], L['skirt'], side_s(D.DOOR_S[1]), const(2.0), 'blackMatte', 20, 6)
     sided('skirtRear', L['low'], L['skirt'], const(2.0), const(4.0), 'blackMatte', 12, 6)
     # ---------------------------------------------------------------- roof fairing
-    split = lambda v: u_split(v, FAIRING_SPLIT)
-    v_top = v_at_s(FAIRING_SPLIT)
-    sided('fairing', L['gt'], 1.0, split, const(4.0), 'paint', 80, 44, vgap=(GAP, 0.0), ugap=(GAP, 0.004))
-    sided('fairingF', L['gt'], v_top, const(0.0), split, 'paint', 40, 30, vgap=(GAP, GAP), ugap=(0.004, GAP))
     for S, s in (('L', 1), ('R', -1)):
+        parts.update(fairing_panels(coll,s))
         parts['roofcap.' + S] = roof_cap(coll, s)
     # ---------------------------------------------------------------- details
     parts.update(arch_liners(coll))
     parts.update(markers(coll, L))
     parts.update(mirrors(coll, L))
     return parts
+
+
+def fairing_panels(coll,side):
+    """Cut both roof pieces from ONE sampled skin along parallel seam planes.
+
+    Independent parameter grids used to miss the exact point where the
+    transverse split met the centreline, leaving a tapered triangular gap.
+    Plane cuts share the same surface and preserve a constant physical gap.
+    """
+    grid=region_grid(v_at_z(D.GLASS_TOP_Z),1.0,const(0),const(4),128,120,
+                     gap=GAP,vgap=(GAP,0.0),ugap=(0.004,0.004))
+    mesh=body.shell(grid,SKIN)
+    if side<0:
+        mesh=kit.mirror_x(mesh)
+    out={}
+    for front,name in ((False,'fairing'),(True,'fairingF')):
+        bm=bmesh.new()
+        vs=[bm.verts.new(v) for v in mesh[0]]
+        for face in mesh[1]: bm.faces.new([vs[i] for i in face])
+        cut_y=FAIRING_SPLIT-D.S0+(-GAP/2 if front else GAP/2)
+        result=bmesh.ops.bisect_plane(bm,geom=list(bm.verts)+list(bm.edges)+list(bm.faces),
+                                     dist=1e-7,plane_co=(0,cut_y,0),plane_no=(0,1,0),
+                                     clear_inner=not front,clear_outer=front)
+        rim=[e for e in result['geom_cut'] if isinstance(e,bmesh.types.BMEdge) and e.is_boundary]
+        if rim: bmesh.ops.holes_fill(bm,edges=rim,sides=0)
+        bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces))
+        full=name+('.L' if side>0 else '.R')
+        o=kit.obj_from_bm(full,bm,['paint'],coll)
+        kit.finish(o,0.002,2,35)
+        out[full]=o
+    return out
 
 
 def roof_cap(coll, side, thick=SKIN):

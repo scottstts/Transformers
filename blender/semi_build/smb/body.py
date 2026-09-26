@@ -19,7 +19,7 @@ surface normal and shrunk by half a seam gap on every edge.
 import math
 from mathutils import Vector
 from . import kit, dims as D
-from .shape import lerp, curve1, spline2
+from .shape import lerp, curve1, spline2, smooth01
 from .kit import V
 
 # centreline profile (s, z): bumper face, light bar, hood, windshield, glass top, fairing
@@ -119,16 +119,41 @@ def outline_point(u, v):
     return x, s, z
 
 
+def side_swage(x, s, z):
+    """Raised aerodynamic shoulder pressed into the cab's own side skin.
+
+    A broad lower blend rises to a tighter upper highlight, then tapers to a
+    trailing point across the door/quarter seam. Every panel samples the
+    same surface so the contour continues cleanly through those seams.
+    """
+    t=(s-0.60)/3.35
+    if not 0.0<t<1.0 or not 0.85<z<1.65:
+        return 0.0
+    swell=math.sin(math.pi*t)
+    ridge=1.17+0.20*math.sin(t*math.pi/2)
+    width=(0.30 if z<ridge else 0.19)*swell**0.55
+    q=abs(z-ridge)/max(width,0.001)
+    if q>=1.0:
+        return 0.0
+    side=smooth01((x/_W(z)-0.76)/0.23)
+    return 0.075*swell**0.85*(1-q*q)**2*side
+
+
 def P(u, v):
     """Surface point (Blender space); u < 0 is the right side."""
     x, s, z = outline_point(abs(u), v)
+    x += side_swage(x,s,z)
     return V(x if u >= 0 else -x, D.f(s), z)
 
 
 def normal(u, v, h=1e-4):
     pu = P(u + h, v) - P(u - h, v)
     pv = P(u, v + h) - P(u, v - h)
-    n = pu.cross(pv) if u >= 0 else pv.cross(pu)
+    # u runs continuously from the right side through the nose to the left.
+    # Its derivative already mirrors: reversing this cross product on the
+    # right made the inner skin protrude OUTWARD by one panel thickness,
+    # producing the raised lip/misalignment at the roof's centre seam.
+    n = pu.cross(pv)
     n.normalize()
     return n
 

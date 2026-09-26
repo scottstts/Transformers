@@ -45,6 +45,10 @@ def sided():
     A['thighPlate'] = dict(host='thigh', parts=['quarter', 'skirt'], steps=[
         dock(c=(0.50, 0.0, -0.92), rot=(0, 0, 0), at=(0.14, 0.44))])
     A['thighBack'] = dict(host='@thighPlate', parts=['extender'], steps=[move((-0.03, 0.72, 0.0), (0.10, 0.22))])
+    # Front road wheels become hip rotors, as in the robot reference.
+    A['hipWheel'] = dict(host='thigh', parts=['wheelF'], steps=[
+        move((0.22,0,0.04),(0.05,0.16)),
+        dock(c=(0.61,-0.10,-0.27),rot=(0,0,0),at=(0.28,0.65))])
     # back wall -> back plates
     A['rearwall'] = dict(host='chest', parts=['rearwall', 'skirtRear'], steps=[
         dock(c=(0.62, -0.80, 0.40), rot=(0, 0, 0), at=(0.06, 0.26))])
@@ -57,8 +61,9 @@ def sided():
 
 
 CLIP = ['valence', 'bumper', 'lightbar', 'lightcorner.L', 'lightcorner.R', 'hood', 'fender.L', 'fender.R',
+        'archReturn.L', 'archReturn.R',
         'windshield', 'apillar.L', 'apillar.R', 'qglass.L', 'qglass.R', 'archLiner.L', 'archLiner.R', 'markers',
-        'mirror.L', 'mirror.R', 'frontAxle', 'wheelF.L', 'wheelF.R']
+        'mirror.L', 'mirror.R', 'frontAxle']
 
 
 def singles():

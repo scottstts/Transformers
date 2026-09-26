@@ -19,7 +19,7 @@ from mathutils import Vector, Matrix, Quaternion, Euler
 from .kit import V
 from . import dims as D
 
-STANCE_X = 0.80                 # ankle spacing in the stand (heavy, wider than the hips)
+STANCE_X = 1.04                 # planted hero stance, clear inner-leg negative space
 STAND_S = 4.35                  # standing station (pelvis over the ankles)
 STAND_CROUCH = 0.07
 
