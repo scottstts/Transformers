@@ -249,6 +249,7 @@ export class Fighter implements CombatEffects {
   }
 
   protected formWeapon(seconds: number): void {
+    if (this.presenceTarget === 1 && this.weapon && this.weapon.presence >= 0.999) return
     this.presenceTarget = 1
     this.presenceRate = 1 / Math.max(0.05, seconds)
     forge(this.mix, this.style.forge, seconds)

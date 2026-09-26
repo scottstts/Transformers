@@ -23,7 +23,7 @@ export class Curve {
   }
 
   /** Start at `start` (t = 0) and pass through `keys` (strictly later times). */
-  set(start: number, keys: readonly Key[] | undefined, hold = 0): void {
+  set(start: number, keys: readonly Key[] | undefined, hold = 0, velocity = 0): void {
     const n = 1 + (keys?.length ?? 0)
     if (n > this.t.length) throw new Error(`curve holds ${this.t.length} keys, got ${n}`)
     this.t[0] = 0
@@ -39,16 +39,39 @@ export class Curve {
       this.n = 2
     } else this.n = n
     this.slopes()
+    this.entryVelocity(velocity)
   }
 
   /** Ease from `start` to `target` by `at` (s), then hold. */
-  settle(start: number, target: number, at: number): void {
+  settle(start: number, target: number, at: number, velocity = 0): void {
     this.t[0] = 0
     this.v[0] = start
     this.t[1] = at
     this.v[1] = target
     this.n = 2
     this.slopes()
+    this.entryVelocity(velocity)
+  }
+
+  /** Carry compatible momentum, bounded by the monotone Hermite slope circle. */
+  private entryVelocity(velocity: number): void {
+    if (this.n < 2) return
+    const slope = (this.v[1] - this.v[0]) / (this.t[1] - this.t[0])
+    if (velocity * slope <= 0) return
+    const other = this.m[1] / slope
+    const limit = Math.abs(slope) * Math.sqrt(Math.max(0, 9 - other * other))
+    this.m[0] = Math.sign(slope) * Math.min(Math.abs(velocity), limit)
+  }
+
+  /** Analytic channel velocity; no frame-rate-dependent finite difference. */
+  velocity(x: number): number {
+    if (this.n < 2 || x < 0 || x >= this.end) return 0
+    let i = 0
+    while (x > this.t[i + 1]) i++
+    const h = this.t[i + 1] - this.t[i]
+    const s = (x - this.t[i]) / h
+    return (6 * s * s - 6 * s) * (this.v[i] - this.v[i + 1]) / h
+      + (3 * s * s - 4 * s + 1) * this.m[i] + (3 * s * s - 2 * s) * this.m[i + 1]
   }
 
   at(x: number): number {

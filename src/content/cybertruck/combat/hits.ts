@@ -15,8 +15,8 @@ export const CYBERTRUCK_HITS: CombatHits = {
     { strikes: [{ t: 0.41, kind: 'blunt', reach: 4.4, arc: 150, aim: 12, damage: 65, knock: 10, lift: 1.6 }] },
     { strikes: [{ t: 0.72, kind: 'cut', reach: 5.8, arc: 170, aim: -12, damage: 130, knock: 9, lift: 2.6 }] },
     {
-      sweeps: [{ t0: 0.34, t1: 0.88, kind: 'blunt', radius: 3.3, ahead: 1.3, damage: 60, knock: 17, lift: 4 }],
-      blasts: [{ t: 1.58, kind: 'blast', at: [0, 10.1], radius: 8.5, damage: 160, knock: 15, lift: 8 }],
+      sweeps: [{ t0: 0.26, t1: 0.62, kind: 'blunt', radius: 3.3, ahead: 1.3, damage: 60, knock: 17, lift: 4 }],
+      blasts: [{ t: 1.28, kind: 'blast', at: [0, 10.1], radius: 8.5, damage: 160, knock: 15, lift: 8 }],
     },
   ],
   special: {
