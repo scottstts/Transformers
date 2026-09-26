@@ -62,7 +62,7 @@ def build(coll):
     # ---------------------------------------------------------------- nose
     # black valence and the white bumper wrap the front corners to the arches
     mk('valence', L['bot'], L['val'], lambda v: -u_at_s(v, D.FA_S), lambda v: u_at_s(v, D.FA_S), 'blackMatte', 72, 8, cut=True)
-    mk('bumper', L['val'], L['lb0'], lambda v: -u_at_s(v, D.FA_S), lambda v: u_at_s(v, D.FA_S), 'paint', 72, 12, cut=True)
+    mk('bumper', L['val'], L['lb0'], lambda v: -u_at_s(v, D.FA_S), lambda v: u_at_s(v, D.FA_S), 'paint', 96, 28, cut=True)
     # light bar: a thin strip across the front, headlight clusters at the corners
     mk('lightbar', L['lb0'], L['lb1'], const(-0.86), const(0.86), 'lamp', 60, 1, thick=0.012, offset=-0.003, gap=0.003)
     # hood between the diagonal creases that run from the headlights to the windshield corners
@@ -73,7 +73,7 @@ def build(coll):
         return u_at_x(v, lerp(0.70, xa - 0.02, t ** 0.9))
     mk('hood', L['lb1'], L['ws'], lambda v: -hood_edge(v), hood_edge, 'paint', 40, 18)
     # fenders: headlight corner round to the door, light bar up to the sill (windshield base at the corner)
-    sided('lightcorner', L['lb0'], L['lb1'], const(0.86), side_s(D.FA_S), 'paint', 16, 1, gap=0.003, cut=True)
+    sided('lightcorner', L['lb0'], L['lb1'], const(0.86), side_s(D.FA_S), 'paint', 40, 2, gap=0.003, cut=True)
 
     def fender_ua(v):
         return hood_edge(v) if v <= L['ws'] else U_A
@@ -82,7 +82,7 @@ def build(coll):
     # The bumper ends at the axle station; the upper fender starts above the
     # light strip, so this curved triangular return needs its own surface.
     sided('archReturn', L['skirt'], L['lb1'], side_s(D.FA_S), side_s(D.DOOR_S[0]),
-          'paint', 18, 10, cut=True)
+          'paint', 36, 24, cut=True)
     # ---------------------------------------------------------------- glass band
     mk('windshield', L['ws'], L['gt'], const(-U_A), const(U_A), 'glass', 60, 26, thick=0.012, offset=-GLASS_IN, gap=0.004)
     uA1 = lambda v: U_A + body._du(U_A, v, PILLAR)
@@ -207,6 +207,15 @@ def arch_liners(coll):
     fs = D.f(D.FA_S)
     for S, s in (('L', 1), ('R', -1)):
         m = sector(fs, D.AXLE_Z, D.ARCH_R - 0.010, D.ARCH_R + 0.030, 0.88, D.BODY_W - 0.03, -12.0, 192.0)
+        # the outer face follows the skin (the shoulder and the arch lip swell it outward),
+        # finishing 12 mm inside it so the liner closes the cut edge of the fender shell
+        verts = []
+        for v in m[0]:
+            if v.x > 0.9:
+                v = v.copy()
+                v.x = body.side_x(D.S0 + v.y, v.z) - 0.012          # Blender y = s - S0
+            verts.append(v)
+        m = (verts, m[1])
         if s < 0:
             m = kit.mirror_x(m)
         b = kit.Builder()

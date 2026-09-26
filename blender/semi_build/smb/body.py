@@ -119,24 +119,56 @@ def outline_point(u, v):
     return x, s, z
 
 
-def side_swage(x, s, z):
-    """Raised aerodynamic shoulder pressed into the cab's own side skin.
+SHOULDER = 0.070            # how far the fender shoulder stands proud of the skin
+SHOULDER_DROP = 0.52       # fender face below the crease, down to the rocker
+LIP = 0.022                # flared wheel-arch lip
+LIP_W = 0.20
 
-    A broad lower blend rises to a tighter upper highlight, then tapers to a
-    trailing point across the door/quarter seam. Every panel samples the
-    same surface so the contour continues cleanly through those seams.
+
+def shoulder_z(s):
+    """Shoulder crease height: leaves the headlight's top edge and rises gently back past
+    the wheel-arch crown to the door."""
+    return 1.05 + 0.17 * smooth01((s - 0.35) / 1.50)
+
+
+def side_swage(x, s, z):
+    """Fender shoulder pressed into the cab's own side skin (the reference's crease).
+
+    A crisp horizontal crease runs from the headlight corner back over the front wheel
+    and fades out across the door. Above it the upper fender tucks back in to the
+    window sill as a plane; below it the fender bulges out over the wheel and rolls
+    in to the rocker; the arch edge is a proud, flared lip. Every panel samples the
+    same surface, so the contour continues cleanly through the seams.
     """
-    t=(s-0.60)/3.35
-    if not 0.0<t<1.0 or not 0.85<z<1.65:
+    side = smooth01((x / _W(z) - 0.78) / 0.20)
+    if side <= 0.0:
         return 0.0
-    swell=math.sin(math.pi*t)
-    ridge=1.17+0.20*math.sin(t*math.pi/2)
-    width=(0.30 if z<ridge else 0.19)*swell**0.55
-    q=abs(z-ridge)/max(width,0.001)
-    if q>=1.0:
-        return 0.0
-    side=smooth01((x/_W(z)-0.76)/0.23)
-    return 0.075*swell**0.85*(1-q*q)**2*side
+    out = 0.0
+    env = smooth01((s - 0.28) / 0.40) * (1.0 - smooth01((s - 2.45) / 0.85))
+    if env > 0.0:
+        zc = shoulder_z(s)
+        if z >= zc:
+            top = D.SIDE_GLASS_Z - 0.04
+            k = (z - zc) / (top - zc)
+            if k < 1.0:
+                out += SHOULDER * env * (1.0 - k) ** 1.6
+        else:
+            k = (zc - z) / SHOULDER_DROP
+            if k < 1.0:
+                out += SHOULDER * env * (1.0 - k * k) ** 1.5
+    # the lip holds its full height inside the arch opening (cut away by the boolean), so the
+    # skin is continuous across the cut and no quad straddling it gets a displaced corner
+    d = math.hypot(s - D.FA_S, z - D.AXLE_Z) - D.ARCH_R
+    if d < LIP_W:
+        k = max(0.0, d) / LIP_W
+        out += LIP * (1.0 - smooth01(k)) * smooth01((z - (D.AXLE_Z - 0.15)) / 0.20)
+    return out * side
+
+
+def side_x(s, z):
+    """Outer skin x of the straight side at station s, height z (swage included)."""
+    W = _W(z)
+    return W + side_swage(W, s, z)
 
 
 def P(u, v):

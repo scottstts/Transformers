@@ -166,25 +166,32 @@ def rear_end():
     return out
 
 
-def bogie_body():
-    """Slider rails, axle beam and air suspension (the wheels are separate nodes)."""
+BOGIE_TUCK = 0.30          # each bogie half slides inboard this far while it retracts ...
+BOGIE_AFT = 0.35           # ... and aft, so its hangers stay inside the nested box's front wall
+
+
+def bogie_half(sgn):
+    """One side of the bogie as a rigid unit: slider rail, hanger, trailing arm, air spring,
+    brake drum, mud flap and half the axle (the wheels are separate nodes). The axle halves
+    telescope: the right one runs inside the left one, so the halves can slide inboard
+    together without any part of one half passing through the other's."""
     hw, zb, zt, s0, s1 = section_dims(D.VAN_SECTIONS - 1)
     sa = D.VAN_AXLE_S
     out = []
-    for sgn in (1, -1):
-        x = sgn * 0.50
-        out.append((box(x - 0.05, x + 0.05, sa - 1.0, sa + 1.05, zb - 0.26, zb - 0.11, 0.006), 'chassis'))
-        out.append((box(x - 0.05, x + 0.05, sa - 0.62, sa - 0.50, D.AXLE_Z + 0.08, zb - 0.26, 0.006), 'chassis'))
-        out.append((kit.bar(P3(x, sa - 0.56, D.AXLE_Z + 0.12), P3(x, sa + 0.34, D.AXLE_Z - 0.06), kit.chamfer_rect(0.09, 0.07, 0.015)), 'chassis'))
-        out.append((rkit.cylinder((x, D.f(sa + 0.34), D.AXLE_Z + 0.20), 0.13, 0.30, 'z', 24), 'rubber'))
-        # mud flap behind the wheels
-        xm0, xm1 = (0.60, 1.22) if sgn > 0 else (-1.22, -0.60)
-        out.append((box(xm0, xm1, sa + D.WHEEL_R + 0.14, sa + D.WHEEL_R + 0.154, 0.30, zb - 0.10, 0.004), 'rubber'))
-        out.append((box(xm0, xm1, sa + D.WHEEL_R + 0.10, sa + D.WHEEL_R + 0.14, zb - 0.16, zb - 0.10, 0.004), 'chassis'))
-    out.append((rkit.cylinder((0, D.f(sa), D.AXLE_Z), 0.07, 1.30, 'x', 24), 'chassis'))
-    for sgn in (1, -1):
-        out.append((rkit.cylinder((sgn * 0.68, D.f(sa), D.AXLE_Z), 0.19, 0.16, 'x', 32), 'chassis'))
-    return out
+    x = 0.50
+    out.append((box(x - 0.05, x + 0.05, sa - 0.90, sa + 0.95, zb - 0.26, zb - 0.11, 0.006), 'chassis'))
+    out.append((box(x - 0.05, x + 0.05, sa - 0.62, sa - 0.50, D.AXLE_Z + 0.08, zb - 0.26, 0.006), 'chassis'))
+    out.append((kit.bar(P3(x, sa - 0.56, D.AXLE_Z + 0.12), P3(x, sa + 0.34, D.AXLE_Z - 0.06), kit.chamfer_rect(0.09, 0.07, 0.015)), 'chassis'))
+    out.append((rkit.cylinder((x, D.f(sa + 0.34), D.AXLE_Z + 0.20), 0.13, 0.30, 'z', 24), 'rubber'))
+    # mud flap behind the wheels
+    out.append((box(0.60, 1.22, sa + D.WHEEL_R + 0.14, sa + D.WHEEL_R + 0.154, 0.30, zb - 0.10, 0.004), 'rubber'))
+    out.append((box(0.60, 1.22, sa + D.WHEEL_R + 0.10, sa + D.WHEEL_R + 0.14, zb - 0.16, zb - 0.10, 0.004), 'chassis'))
+    out.append((rkit.cylinder((0.68, D.f(sa), D.AXLE_Z), 0.19, 0.16, 'x', 32), 'chassis'))
+    if sgn > 0:
+        out.append((rkit.cylinder((0.31, D.f(sa), D.AXLE_Z), 0.075, 0.66, 'x', 24), 'chassis'))      # outer axle tube
+    else:
+        out.append((rkit.cylinder((0.31, D.f(sa), D.AXLE_Z), 0.058, 0.66, 'x', 24), 'chassis'))      # inner axle tube
+    return out if sgn > 0 else [(kit.mirror_x(m), slot) for m, slot in out]
 
 
 def build(coll):
@@ -206,7 +213,8 @@ def build(coll):
         if k == D.VAN_SECTIONS - 1:
             meshes += rear_end()
         make('van%d' % k, meshes)
-    make('vanBogie', bogie_body())
+    for S, sgn in (('L', 1), ('R', -1)):
+        make('vanBogie.' + S, bogie_half(sgn))
     x = (D.DUAL_IN_X + D.DUAL_OUT_X) / 2
     meshes = wheels.wheel('dual')
     for S, s in (('L', 1), ('R', -1)):

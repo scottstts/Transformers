@@ -21,12 +21,14 @@ T: 0 = truck, 1 = robot. Reverse transformation runs the same path backward.
 """
 from .mech import move, rot, dock
 from . import dims as D
+from .trailer import BOGIE_TUCK, BOGIE_AFT
 
 SEC = D.VAN_LEN / D.VAN_SECTIONS
 NEST = SEC - 0.045                 # each section slides this far over the one ahead
 VAN_BACK = 1.20                    # the van rolls back to clear the kneeling cab
 VAN_FLOOR_UP = 2.92                # jacked height gain (floor to 4.3 m)
 VAN_IN = 1.38                      # roll-in to the robot's back
+BOGIE_LIFT = 1.45                  # bogie retracted into the rear section: wheels clear of the floor line
 
 
 def sided():
@@ -55,8 +57,21 @@ def sided():
     # the drive tandem rides the shin; it slides outboard once the leg is up
     A['tandem'] = dict(host='shin', parts=['rail', 'fifth', 'axle1', 'axle2', 'qfender1', 'qfender2', 'wheelR1', 'wheelR2'],
                        steps=[move((0.22, 0.0, 0.0), (0.62, 0.76))])
-    A['mudflap'] = dict(host='shin', parts=['mudflap'], steps=[dock(c=(0.80, -0.36, -1.30), rot=(90, 0, 0), at=(0.58, 0.74))])
+    # mud flap: slides straight back beneath the lower wheel, then stands up and settles flat
+    # against the back of the calf, resting on the fifth-wheel half behind the wheel
+    A['mudflap'] = dict(host='shin', parts=['mudflap'], steps=[
+        move((0.0, -0.75, 0.0), (0.50, 0.58)),
+        dock(c=(0.0, -0.67, -1.20), rot=(0, 0, 0), at=(0.58, 0.76))])
     A['heel'] = dict(host='foot', parts=['tail'], steps=[])
+    # van bogie halves: each retracts up into the rear section before it reaches the tractor's
+    # second drive axle, sliding inboard as it goes so the wheels stay inside even the narrowest
+    # section; they drop again while the jacks lift the box (slower than the lift, so the wheels
+    # only ever rise in the world) and widen back out once clear of the floor
+    A['vanBogie'] = dict(host='@van4', parts=['vanBogie', 'wheelV'], steps=[
+        move((-BOGIE_TUCK, -BOGIE_AFT, 0.0), (0.33, 0.39)),
+        move((0.0, 0.0, BOGIE_LIFT), (0.33, 0.39)),
+        move((0.0, 0.0, -BOGIE_LIFT), (0.50, 0.62)),
+        move((BOGIE_TUCK, BOGIE_AFT, 0.0), (0.62, 0.68))])
     return A
 
 
@@ -83,7 +98,6 @@ def singles():
         'van2': dict(host='@van1', parts=['van2'], steps=[move((0.0, NEST, 0.0), (0.32, 0.42))]),
         'van3': dict(host='@van2', parts=['van3'], steps=[move((0.0, NEST, 0.0), (0.28, 0.38))]),
         'van4': dict(host='@van3', parts=['van4'], steps=[move((0.0, NEST, 0.0), (0.24, 0.34))]),
-        'vanBogie': dict(host='@van4', parts=['vanBogie', 'wheelV.L', 'wheelV.R'], steps=[]),
     }
     return S
 
@@ -96,7 +110,7 @@ def carriers():
     hw4, zb4, zt4, s40, s41 = section_dims(D.VAN_SECTIONS - 1)
     from .carrier import Strut
     return [(Jack('jackF.L', 'van0', (hw0 + 0.10, D.f(s00 + 0.06), zt0 - 0.20), window=(0.06, 0.88)), True),
-            (Jack('jackR.L', 'van4', (hw4 + 0.10, D.f(s41 - 0.10), zt4 - 0.20), window=(0.44, 0.88)), True),
+            (Jack('jackR.L', 'van4', (hw4 + 0.10, D.f(s41 - 0.10), zt4 - 0.20), window=(0.36, 0.88)), True),   # down before the bogie retracts
             # rams that carry the travelling panels (anchors bone-local, attach points on the part in the truck)
             (Strut('clipArm.L', 'chest', (0.55, 0.40, 0.30), 'clip', (0.55, D.f(1.70), 1.30), r=0.07), True),
             (Strut('pylonArm.L', 'clav.L', (0.95, 0.0, 0.26), 'pylon.L', (0.60, D.f(4.20), 2.90), r=0.07), True),
