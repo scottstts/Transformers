@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Object3D, PerspectiveCamera, Vector3 } from 'three/webgpu'
+import { BoxGeometry, Mesh, MeshBasicMaterial, Object3D, PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { FollowCamera } from '../src/game/follow-camera'
 import { createMotionState } from '../src/game/types'
 
@@ -133,6 +133,61 @@ describe('follow camera across a car switch', () => {
     }
     expect(largestStep).toBeLessThan(0.02)
     expect(camera.position.distanceTo(new Vector3(0, 0.85, 0))).toBeCloseTo(7.2, 3)
+    rig.dispose()
+  })
+})
+
+describe('follow camera obstruction', () => {
+  it('pulls in front of a wall, clears camera reactions, and returns when the view opens', () => {
+    const canvas = { addEventListener: () => {}, removeEventListener: () => {} } as unknown as HTMLCanvasElement
+    vi.stubGlobal('document', { pointerLockElement: null, addEventListener: () => {}, removeEventListener: () => {}, exitPointerLock: () => {} })
+    vi.spyOn(performance, 'now').mockReturnValue(0)
+    const camera = new PerspectiveCamera(42, 1, 0.1, 100)
+    const root = new Object3D()
+    root.updateMatrixWorld(true)
+    const state = createMotionState()
+    state.progress = 1
+    const wall = new Mesh(new BoxGeometry(20, 10, 1), new MeshBasicMaterial())
+    wall.position.set(0, 5, -5)
+    wall.updateMatrixWorld(true)
+    const rig = new FollowCamera(camera, canvas, state.yaw, 0)
+    rig.setObstacles([wall])
+
+    rig.update(1 / 60, state, root)
+    expect(camera.position.z).toBeGreaterThan(-4.5)
+    expect(camera.position.z).toBeGreaterThan(-4)
+
+    camera.position.z = -5
+    rig.clearObstruction()
+    expect(camera.position.z).toBeGreaterThan(-4.5)
+
+    wall.position.x = 50
+    wall.updateMatrixWorld(true)
+    for (let i = 0; i < 120; i++) rig.update(1 / 60, state, root)
+    expect(camera.position.distanceTo(new Vector3(0, 3.9, 0))).toBeCloseTo(12.75, 2)
+    rig.dispose()
+  })
+
+  it('leaves the special cinematic orbit alone', () => {
+    const canvas = { addEventListener: () => {}, removeEventListener: () => {} } as unknown as HTMLCanvasElement
+    vi.stubGlobal('document', { pointerLockElement: null, addEventListener: () => {}, removeEventListener: () => {}, exitPointerLock: () => {} })
+    vi.spyOn(performance, 'now').mockReturnValue(0)
+    const camera = new PerspectiveCamera(42, 1, 0.1, 100)
+    const root = new Object3D()
+    root.updateMatrixWorld(true)
+    const state = createMotionState()
+    state.progress = 1
+    const wall = new Mesh(new BoxGeometry(20, 10, 1), new MeshBasicMaterial())
+    wall.position.set(0, 5, -5)
+    wall.updateMatrixWorld(true)
+    const rig = new FollowCamera(camera, canvas, state.yaw, 0)
+    rig.setObstacles([wall])
+    rig.cinematic = true
+
+    rig.update(1 / 60, state, root)
+    expect(camera.position.distanceTo(new Vector3(0, 3.9, 0))).toBeCloseTo(12.75, 5)
+    rig.clearObstruction()
+    expect(camera.position.distanceTo(new Vector3(0, 3.9, 0))).toBeCloseTo(12.75, 5)
     rig.dispose()
   })
 })

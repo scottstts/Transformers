@@ -111,6 +111,7 @@ export class GameSession {
     this.pipeline = createPostPipeline(renderer, this.scene, this.camera, this.lens)
     this.cameraRig.update(1 / 60, this.state, this.character.model.root)
     this.world.update(this.camera, this.cameraRig.focusPoint(this.state, this.character.model.root))
+    this.cameraRig.setObstacles(this.world.cameraObstacles)
   }
 
   selectForm(form: Form): void {
@@ -428,12 +429,13 @@ export class GameSession {
       this.director.apply(this.camera, t, frameDt, this.subjectFor(this.character))
     }
     this.cameraFx.apply(this.camera)
+    effects.shakeCamera(this.camera, dt)
+    this.cameraRig.clearObstruction()
     this.updateTarget(dt)
     this.horde.special = fight.cinematic
     if (frozen) this.horde.drawFor(this.camera)
     else this.horde.update(dt, this.target, this.camera)
     this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root))
-    effects.shakeCamera(this.camera, dt)
     this.pipeline.render()
   }
 
