@@ -41,7 +41,7 @@ The export rebuilds the scene from the scripts (they reproduce the working `.ble
   - drive: 3.6 m wheelbase, 0.36 m rolling radius, 58 / 80 m/s top speed (Shift), 11 / 15 m/s² drive, 34 m/s² braking;
   - handling: rear drive, grip 1.45 plus downforce (+75 % at 50 m/s), a small steering lock, so its drifts hold shallower angles than the truck's (car-handling.md);
   - chassis: a stiff low car (a third of the truck's pitch and roll) pivoting at 0.3 m;
-  - robot: walk 3.2 m/s, run 7.8 m/s; its hips are two thirds as high as the truck robot's, so the gait style scales stride, lift, sway and jump crouch down, swings the arms and hips a little more and rolls on a longer sole (heel 0.43, toe 0.78 m from the ankle; the wing halves dock on the foot);
+  - robot: walk 3.2 m/s, run 7.8 m/s; its hips are two thirds as high as the truck robot's, so the gait style scales stride, lift, sway and jump crouch down and rolls on a longer sole (heel 0.43, toe 0.78 m from the ankle; the wing halves dock on the foot). Its own carriage brings the wide-built stand's feet and arms in while it moves (robot-locomotion.md, "Carriage per robot");
   - camera: 7.2 m behind the car and 10.2 m from the robot.
 - **Materials** (`materials.ts`), one per `f1b/mats.py` slot:
   - Paint is clearcoated, with faint orange peel in the coat.

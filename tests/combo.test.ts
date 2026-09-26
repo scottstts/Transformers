@@ -13,7 +13,7 @@ const DT = 1 / 60
 
 /** Runs the combo with clicks at the given times; returns the moves started and when the combo recovered / ended. */
 function play(clicks: number[], until: number): { moves: number[]; events: Array<[number, string]> } {
-  const combo = new ComboController(MOVES, RECOVER, RECOVER * 0.35)
+  const combo = new ComboController(MOVES, RECOVER)
   const moves: number[] = []
   const events: Array<[number, string]> = []
   const pending = [...clicks]
@@ -44,10 +44,37 @@ describe('click combo', () => {
     expect(play([0, 0.6, 1.3, 2.5], 6).moves).toEqual([0, 1, 2, 3])
   })
 
-  it('ignores a click before the window opens (the throttle)', () => {
-    // a mash at 0.2 and 0.3 does nothing; the one in the window still chains
-    expect(play([0, 0.2, 0.3], 3).moves).toEqual([0])
-    expect(play([0, 0.2, 0.3, 0.7], 3).moves).toEqual([0, 1])
+  it('buffers a click before the window opens: it chains as the window opens', () => {
+    // a mash at 0.2 and 0.3 chains move 2 at 0.5 (move 1's window), not before
+    const { moves, events } = play([0, 0.2, 0.3], 3)
+    expect(moves).toEqual([0, 1])
+    expect(events[1][0]).toBeGreaterThanOrEqual(0.5 - 1e-9)
+    expect(events[1][0]).toBeLessThan(0.5 + 2 * DT)
+    // a mash chains the whole combo at the authored cadence
+    const mash = Array.from({ length: 40 }, (_, i) => i * 0.1)
+    expect(play(mash, 5).moves.slice(0, 4)).toEqual([0, 1, 2, 3])
+  })
+
+  it('lets movement cut a move short only once its window has been open a moment with no click waiting', () => {
+    const combo = new ComboController(MOVES, RECOVER)
+    const emit = (): void => undefined
+    combo.press()
+    combo.update(DT, emit)
+    for (let t = DT; t < 0.55; t += DT) combo.update(DT, emit)
+    expect(combo.cancellable).toBe(false)
+    for (let t = 0.55; t < 0.7; t += DT) combo.update(DT, emit)
+    expect(combo.cancellable).toBe(true)
+    // a buffered click holds the move
+    const held = new ComboController(MOVES, RECOVER)
+    held.press()
+    held.update(DT, emit)
+    held.update(DT, emit)
+    held.press()
+    held.update(DT, emit)
+    for (let t = 0; t < 0.45; t += DT) {
+      held.update(DT, emit)
+      expect(held.cancellable).toBe(false)
+    }
   })
 
   it('resets to move 1 when a click comes after the window closed', () => {
@@ -57,23 +84,21 @@ describe('click combo', () => {
     expect(events.map((e) => e[1])).toEqual(['start', 'recover', 'start', 'recover', 'end'])
   })
 
-  it('does not restart until the recovery is under way', () => {
-    // move 1 recovers at 1.0; a click at 1.05 is too early in the recovery, one at 1.4 restarts
-    expect(play([0, 1.05], 3).moves).toEqual([0])
-    expect(play([0, 1.4], 3).moves).toEqual([0, 0])
+  it('restarts at once from anywhere in the recovery', () => {
+    // move 1 recovers at 1.0; a click at 1.05 restarts
+    expect(play([0, 1.05], 3).moves).toEqual([0, 0])
   })
 
-  it('ends after the fourth move: an early click there does nothing', () => {
-    const { moves } = play([0, 0.6, 1.3, 2.5, 4.3], 7)
-    expect(moves.slice(0, 4)).toEqual([0, 1, 2, 3])
-    // the click at 4.3 lands inside move 4 (2.5 .. 4.5), before its window: it is ignored
-    expect(moves.length).toBe(4)
+  it('ends after the fourth move when nothing is clicked', () => {
+    const { moves, events } = play([0, 0.6, 1.3, 2.5], 7)
+    expect(moves).toEqual([0, 1, 2, 3])
+    expect(events.map((e) => e[1]).slice(-2)).toEqual(['recover', 'end'])
   })
 
   it('loops: a click in the finisher\'s window, or at once in its recovery, starts the next combo', () => {
     const run = (clicks: number[]): { moves: number[]; events: string[] } => {
       const moves: ComboMove[] = [...MOVES.slice(0, 3), { duration: 2.0, chain: [1.4, 2.0] }]
-      const combo = new ComboController(moves, RECOVER, RECOVER * 0.35)
+      const combo = new ComboController(moves, RECOVER)
       const started: number[] = []
       const events: string[] = []
       const pending = [...clicks]
@@ -83,8 +108,8 @@ describe('click combo', () => {
       }
       return { moves: started, events }
     }
-    // move 4 starts at 2.5: 3.6 is inside its window (1.1 in: no), 4.0 is (1.5 in)
-    expect(run([0, 0.6, 1.3, 2.5, 3.6]).moves).toEqual([0, 1, 2, 3])
+    // move 4 starts at 2.5: a click at 3.6 (1.1 in) waits for its window (1.4 in), 4.0 is inside it
+    expect(run([0, 0.6, 1.3, 2.5, 3.6]).moves).toEqual([0, 1, 2, 3, 0])
     expect(run([0, 0.6, 1.3, 2.5, 4.0]).moves).toEqual([0, 1, 2, 3, 0])
     // 4.55 is just into the recovery after it: no waiting out the restart delay
     const late = run([0, 0.6, 1.3, 2.5, 4.55])
@@ -127,7 +152,7 @@ describe('keyed channel curves', () => {
 
 describe('combo held by a special', () => {
   it('goes straight into the recovery when the special ends, then back to idle', () => {
-    const combo = new ComboController(MOVES, RECOVER, RECOVER * 0.35)
+    const combo = new ComboController(MOVES, RECOVER)
     const events: string[] = []
     const emit = (e: ComboEvent): void => { events.push(e.type) }
     combo.update(DT, emit)

@@ -55,10 +55,16 @@ export const F1_PROFILE: CharacterProfile = {
   robotRadius: 1.2,
 }
 
-/** A lighter, quicker robot than the truck's: shorter strides, snappier arms. */
+/**
+ * A lighter, quicker robot than the truck's: shorter strides, snappier arms.
+ * Its stand is built wide (feet outside the hips, arms splayed 16 degrees
+ * clear of the sidepods); carried into the stride that read as a clown's
+ * walk, so moving it tracks its feet under the hips and brings its arms in,
+ * pumping forward and across the body when it runs.
+ */
 const RACER_GAIT: GaitStyle = {
   stride: [1.05, 1.9],
-  lift: [0.26, 0.55],
+  lift: [0.24, 0.44],
   runFlight: 0.06,
   runCompression: 0.05,
   runCrouch: 0.09,
@@ -67,7 +73,7 @@ const RACER_GAIT: GaitStyle = {
   hipYaw: 6,
   hipList: 3,
   shoulders: 5,
-  armSwing: [20, 42],
+  armSwing: [16, 32],
   heelStrike: [14, 6],
   toeOff: [30, 36],
   heel: 0.43,
@@ -75,6 +81,10 @@ const RACER_GAIT: GaitStyle = {
   ankle: 0.26,
   jumpCrouch: 0.3,
   jumpTuck: 0.34,
+  track: [0.78, 0.64],
+  armAbduct: [0.55, 0.45],
+  runElbow: 72,
+  armCross: 22,
 }
 
 export async function loadF1Asset(): Promise<PlayableTransformerAsset> {

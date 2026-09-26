@@ -4,7 +4,7 @@ The opening environment is an effectively unbounded desert. Distant sky and ridg
 
 The forts stand on fixed sites (forts.md); the tiled boulders are cleared from their grounds, and their walls and buildings join the world's colliders as capsules (`segments`).
 
-The sun's shadow camera follows the player on a texel-snapped grid to limit shimmer. Environment lighting is baked from a separate sky and ground scene. The shadow camera also draws `SHADOW_ONLY_LAYER` (the soldiers' low-detail shadow proxy).
+The sun casts through three cascades (`CSMShadowNode`, practical splits, blended seams) over the view out to 150 m; each cascade snaps to its texels, and their splits are recomputed whenever the camera's fov or aspect changes (the lens kicks, the director). A single 32 m box round the player left everything beyond it unshadowed, so soldiers' and buildings' shadows popped in as they came near. Environment lighting is baked from a separate sky and ground scene. The shadow cameras (cloned into every cascade) also draw `SHADOW_ONLY_LAYER` (the soldiers' shadow proxies).
 
 ## Sky, haze and stone
 

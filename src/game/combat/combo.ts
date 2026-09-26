@@ -10,16 +10,21 @@ export type ComboEvent =
   | { type: 'recover' }
   | { type: 'end' }
 
+/** After a move's chain window opens, movement may cut it short this much later (s) if no click is waiting. */
+const CANCEL_AFTER = 0.1
+
 /**
- * The click combo: clicks play the moves in order, 1-2-3-4. A move accepts the
- * next click only in its chain window, as the strike settles: clicking
- * earlier does nothing (the throttle), and letting the window close ends the
- * combo, which recovers into the stance and starts again from the first move.
- * A click in the last move's window, or in the recovery after it, starts a
- * new combo at once from the pose the finisher is settling through, so
- * combos loop without waiting for the stance. After an earlier move the
- * recovery takes a click only once it is far enough along (`restartAt`), so
- * a mash just after a missed window doesn't restart at once.
+ * The click combo: clicks play the moves in order, 1-2-3-4. A move chains the
+ * next one when its chain window opens (as the strike settles). A click
+ * earlier in the move is buffered and fires as the window opens, so mashing
+ * plays the combo at its authored cadence and no click is lost. Letting the
+ * window close ends the combo, which recovers into the stance and starts
+ * again from the first move. A click in the last move's window, or at any
+ * time in the recovery, starts a new combo at once from the pose the robot is
+ * settling through.
+ *
+ * Movement cuts the fight short (`cancellable`): during the recovery, or once a
+ * move's window has been open a moment with no click waiting.
  */
 export class ComboController {
   phase: 'idle' | 'move' | 'recover' = 'idle'
@@ -29,17 +34,24 @@ export class ComboController {
   time = 0
   private readonly moves: readonly ComboMove[]
   private readonly recoverTime: number
-  private readonly restartAt: number
   private pressed = false
+  /** a click that came before the chain window opened */
+  private buffered = false
 
-  constructor(moves: readonly ComboMove[], recoverTime: number, restartAt: number) {
+  constructor(moves: readonly ComboMove[], recoverTime: number) {
     this.moves = moves
     this.recoverTime = recoverTime
-    this.restartAt = restartAt
   }
 
   get active(): boolean {
     return this.phase !== 'idle'
+  }
+
+  /** Movement may take the robot back now. */
+  get cancellable(): boolean {
+    if (this.phase === 'recover') return true
+    if (this.phase !== 'move' || this.buffered || this.pressed) return false
+    return this.time >= this.moves[this.move].chain[0] + CANCEL_AFTER
   }
 
   /** A click; it is taken on the next update. */
@@ -47,12 +59,13 @@ export class ComboController {
     this.pressed = true
   }
 
-  /** Stop at once (the robot leaves its stance). */
+  /** Stop at once (the robot leaves its stance, or movement takes it back). */
   cancel(): void {
     this.phase = 'idle'
     this.move = -1
     this.time = 0
     this.pressed = false
+    this.buffered = false
   }
 
   /** Go straight into the recovery (the special that held the fight has ended). */
@@ -61,6 +74,7 @@ export class ComboController {
     this.move = -1
     this.time = 0
     this.pressed = false
+    this.buffered = false
     emit({ type: 'recover' })
   }
 
@@ -75,18 +89,20 @@ export class ComboController {
     if (this.phase === 'move') {
       const m = this.moves[this.move]
       const last = this.move === this.moves.length - 1
-      if (click && this.time >= m.chain[0] && this.time <= m.chain[1]) {
+      if (click && this.time < m.chain[0]) this.buffered = true
+      if ((click || this.buffered) && this.time >= m.chain[0] && this.time <= m.chain[1]) {
         this.begin(last ? 0 : this.move + 1, emit)
         return
       }
       if (this.time >= (last ? m.duration : Math.max(m.duration, m.chain[1]))) {
         this.phase = 'recover'
         this.time = 0
+        this.buffered = false
         emit({ type: 'recover' })
       }
       return
     }
-    if (click && (this.move === this.moves.length - 1 || this.time >= this.restartAt)) {
+    if (click) {
       this.begin(0, emit)
       return
     }
@@ -102,6 +118,7 @@ export class ComboController {
     this.phase = 'move'
     this.move = move
     this.time = 0
+    this.buffered = false
     emit({ type: 'start', move })
   }
 }

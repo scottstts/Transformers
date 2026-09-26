@@ -18,11 +18,15 @@ const DROP_TIME = 0.25
 /** Geodesic frequency of the tiling: 10 f^2 + 2 tiles over the sphere (12 of them pentagons). */
 const FREQUENCY = 8
 /** Clearance kept between the robot's parts and the field (m). */
-const MARGIN = 0.35
+const MARGIN = 0.4
+/** The sphere's centre height as a share of the robot's height: a little below its middle, so it stands sunk in the sand. */
+const CENTRE_SHARE = 0.42
+/** The scan band's period (s): a line of light climbing the field. */
+const SCAN_PERIOD = 2.8
 
 /**
- * The guard's energy shield: an ellipsoidal field of glowing hexagonal tiles
- * round the robot.
+ * The guard's energy shield: a sphere of glowing hexagonal tiles round the
+ * robot, sunk a little into the sand.
  *
  * The tiles are geometry, not a texture mapping: a Goldberg tiling (the dual
  * of a geodesic sphere), so every hexagon is about the same size everywhere,
@@ -32,15 +36,18 @@ const MARGIN = 0.35
  * outlines and lights whole tiles at a time:
  *
  *   outline  thin glowing tile edges, brighter toward the silhouette
- *   idle     tiles almost empty, each breathing faintly at its own pace
+ *   idle     tiles almost empty, each breathing faintly at its own pace; a
+ *            band of light climbs the field now and then
+ *   seam     where the sphere meets the sand, a continuous line of light
  *   hit      the tiles round the blow flare white-hot; a ring of lit tiles
  *            races out across the field; the whole field pulses
  *   form     tiles pop in from the ground up with a flash (and out again)
  *
- * The ellipsoid is fitted every frame to the robot's own parts (mesh bounds in
- * its heading frame), so each robot is enclosed whole, whatever its size or
- * pose. One mesh, one additive draw, no depth write; the far side shows
- * through dimmer.
+ * The shape is a true sphere, never an ellipsoid: fitted to each robot's
+ * parts only while it forms (the smallest sphere about a point at
+ * CENTRE_SHARE of its height that holds every part, a margin out), then held
+ * rigid. An ellipsoid refitted every frame read as a squashed egg. One mesh,
+ * one additive draw, no depth write; the far side shows through dimmer.
  */
 export class Shield {
   readonly mesh: Mesh
@@ -54,8 +61,8 @@ export class Shield {
   private level = 0
   private readonly anchor: Object3D
   private readonly parts: Mesh[] = []
-  /** fitted radii (x across, y up, z along the heading) and the centre's height, eased */
-  private readonly radii = new Vector3(2, 3, 2)
+  /** the sphere's radius and its centre's height (m), set as it forms */
+  private radius = 3
   private centerY = 1.5
   private fitted = false
   private yaw = 0
@@ -106,15 +113,22 @@ export class Shield {
       const since = form.sub(at)
       const shown = smoothstep(0.0, 0.05, since)
       const arriving = exp(since.div(0.07).pow(2).negate()).mul(form.lessThan(1).select(float(1), float(0)))
-      const fill = breath.pow(6).mul(0.05).add(0.01).add(ring.mul(0.7)).add(core.mul(2.6)).add(arriving.mul(0.5))
-      // kept low enough that the tint survives the tone map: bright lines bloomed to white
-      const lines = outline.mul(float(0.22).add(rim.mul(0.9)).add(ring.mul(1.6)).add(core.mul(2.4)).add(pulse.mul(0.35)).add(arriving.mul(1.4)))
-      const glow = tint.mul(lines.add(fill.mul(float(1).sub(outline))))
+      // a band of light climbing the field (tile by tile), from below the sand to over the top
+      const scanAt = time.div(SCAN_PERIOD).fract().mul(2.6).sub(1.3)
+      const scan = exp(c.y.sub(scanAt).div(0.09).pow(2).negate())
+      const fill = breath.pow(6).mul(0.035).add(0.006).add(ring.mul(0.35)).add(core.mul(1.4)).add(arriving.mul(0.3)).add(scan.mul(0.03))
+      // kept low enough that the tint survives the tone map and bloom: brighter lines read as white, not blue
+      const lines = outline.mul(float(0.1).add(rim.mul(0.38)).add(ring.mul(0.8)).add(core.mul(1.3)).add(pulse.mul(0.15)).add(arriving.mul(0.7)).add(scan.mul(0.25)))
+      // the seam: where the sphere enters the sand, one continuous line (not per tile), filtered by its footprint
+      const y = positionWorld.y
+      const fy = max(fwidth(y), float(1e-3))
+      const seam = exp(y.div(fy.mul(2.5).add(0.05)).pow(2).negate()).mul(float(0.45).add(pulse.mul(0.3)))
+      const glow = tint.mul(lines.add(fill.mul(float(1).sub(outline))).add(seam))
       // the flaring tiles burn toward white
-      const hot = min(float(1), core.mul(0.6))
+      const hot = min(float(0.8), core.mul(0.45))
       const light = mix(glow, vec3(1, 1, 1).mul(lines.add(fill).mul(0.8)), hot)
       const back = frontFacing.select(float(1), float(0.35))
-      const above = smoothstep(0.0, 0.2, positionWorld.y)
+      const above = smoothstep(-0.02, 0.06, y)
       return light.mul(shown).mul(back).mul(above)
     })()
     this.mesh = new Mesh(goldberg(FREQUENCY), m)
@@ -136,9 +150,8 @@ export class Shield {
   /** The field's horizontal radius at `height` m above the sand (0 while it is down). */
   reach(height: number): number {
     if (!this.raised) return 0
-    const u = (height - this.centerY) / this.radii.y
-    const k = Math.sqrt(Math.max(0, 1 - u * u))
-    return Math.max(this.radii.x, this.radii.z) * k
+    const u = height - this.centerY
+    return Math.sqrt(Math.max(0, this.radius * this.radius - u * u))
   }
 
   /** A blow lands at `at` (world): its tiles flare and the ripple starts there. */
@@ -155,7 +168,7 @@ export class Shield {
     const d = this.toUnit(from, _d)
     d.y = Math.max(d.y, -0.2)
     d.normalize()
-    return out.copy(d).multiply(this.radii).applyAxisAngle(_up, this.yaw).add(_c.set(this.mesh.position.x, this.centerY, this.mesh.position.z))
+    return out.copy(d).multiplyScalar(this.radius).applyAxisAngle(_up, this.yaw).add(_c.set(this.mesh.position.x, this.centerY, this.mesh.position.z))
   }
 
   update(dt: number, yaw: number): void {
@@ -169,11 +182,12 @@ export class Shield {
     this.mesh.visible = this.level > 0
     if (!this.mesh.visible) return
     this.yaw = yaw
-    this.fit(dt)
+    // sized while it forms, then rigid
+    if (this.target > 0 && (!this.fitted || this.level < 1)) this.fit()
     const p = _c.setFromMatrixPosition(this.anchor.matrixWorld)
     this.mesh.position.set(p.x, this.centerY, p.z)
     this.mesh.rotation.set(0, yaw, 0)
-    this.mesh.scale.copy(this.radii)
+    this.mesh.scale.setScalar(this.radius)
   }
 
   warm(on: boolean): void {
@@ -182,46 +196,44 @@ export class Shield {
   }
 
   /**
-   * Fit the ellipsoid to the robot's parts: their bounds' corners in the
-   * heading frame round the pelvis, the smallest ellipsoid of a fixed shape
-   * (centred at 46 % of the height, its vertical radius 64 % of it) that holds
-   * them, a margin out. Eased, so a swinging arm swells it smoothly.
+   * Size the sphere to the robot's parts: its centre over the pelvis at
+   * CENTRE_SHARE of the robot's height, its radius the farthest part-bounds
+   * corner from there, a margin out. While it forms it only grows (the guard
+   * pose is still arriving), so it never visibly shrinks.
    */
-  private fit(dt: number): void {
+  private fit(): void {
     const p = _c.setFromMatrixPosition(this.anchor.matrixWorld)
-    const cos = Math.cos(this.yaw), sin = Math.sin(this.yaw)
-    let top = 0, wide = 0.5, deep = 0.5
-    const pts = _pts
+    let top = 0
     let n = 0
+    const pts = _pts
     for (const mesh of this.parts) {
       if (!mesh.visible) continue
       const g = mesh.geometry
       if (!g.boundingBox) g.computeBoundingBox()
       const b = g.boundingBox!
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 8 && n < MAX_POINTS; i++, n++) {
         _v.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(mesh.matrixWorld)
-        const dx = _v.x - p.x, dz = _v.z - p.z
-        // heading frame: x across, z along the heading
-        const x = dx * cos - dz * sin, z = dx * sin + dz * cos
-        if (n < MAX_POINTS) { pts[n * 3] = x; pts[n * 3 + 1] = _v.y; pts[n * 3 + 2] = z; n++ }
+        pts[n * 3] = _v.x - p.x
+        pts[n * 3 + 1] = _v.y
+        pts[n * 3 + 2] = _v.z - p.z
         top = Math.max(top, _v.y)
-        wide = Math.max(wide, Math.abs(x))
-        deep = Math.max(deep, Math.abs(z))
       }
     }
-    const c = top * 0.46, ay = Math.max(0.5, top * 0.64)
-    let m = 0
+    const c = top * CENTRE_SHARE
+    let r2 = 0
     for (let i = 0; i < n; i++) {
-      const x = pts[i * 3] / wide, y = (pts[i * 3 + 1] - c) / ay, z = pts[i * 3 + 2] / deep
-      m = Math.max(m, x * x + y * y + z * z)
+      const x = pts[i * 3], y = pts[i * 3 + 1] - c, z = pts[i * 3 + 2]
+      r2 = Math.max(r2, x * x + y * y + z * z)
     }
-    m = Math.sqrt(m)
-    const k = this.fitted ? 1 - Math.exp(-dt * 6) : 1
-    this.fitted = true
-    this.radii.x += (wide * m + MARGIN - this.radii.x) * k
-    this.radii.y += (ay * m + MARGIN - this.radii.y) * k
-    this.radii.z += (deep * m + MARGIN - this.radii.z) * k
-    this.centerY += (c - this.centerY) * k
+    const r = Math.sqrt(r2) + MARGIN
+    if (!this.fitted) {
+      this.radius = r
+      this.centerY = c
+      this.fitted = true
+    } else {
+      this.radius = Math.max(this.radius, r)
+      this.centerY = Math.max(this.centerY, c)
+    }
   }
 
   /** A world point as a direction on the unit sphere the tiles are laid on. */
@@ -244,8 +256,8 @@ const _up = new Vector3(0, 1, 0)
  * `f`, projected to the sphere; each vertex becomes a tile whose corners are
  * its surrounding triangles' centroids. Every tile is a fan from its centre
  * with `cell` (centre direction, seed) and `edge` (0 centre, 1 outline),
- * facing out. Tiles well below the equator are left out (the field stands on
- * the sand).
+ * facing out. Tiles near the bottom pole are left out (always under the
+ * sand).
  */
 export function goldberg(f: number): BufferGeometry {
   const t = (1 + Math.sqrt(5)) / 2

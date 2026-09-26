@@ -47,6 +47,11 @@ export interface GaitPose {
   curl: number
   /** height of the lowest foot above the ground (m): run flight and jumps */
   air?: number
+  /** the feet's track and the shoulders' abduction as shares of the rig's (default 1) */
+  track?: number
+  abduct?: number
+  /** upper arm rotated inward about its own axis (deg): the bent forearm comes across the body */
+  armTwist?: Record<'R' | 'L', number>
 }
 
 export interface LocalPose { t: Vector3; q: Quaternion }
@@ -118,14 +123,18 @@ export class RobotRig {
     onStand('neck', eulerXYZ(-g.lean * 0.4, 0, g.headYaw * 0.4, tmp))
     onStand('head', eulerXYZ(g.headPitch, g.headRoll ?? 0, g.headYaw * 0.6, tmp))
     const curl = g.curl / GAIT_REST_CURL
+    const abduct = d.armAbduct * (g.abduct ?? 1)
     for (const [side, s] of [['L', 1], ['R', -1]] as const) {
-      set(`upperarm.${side}`, eulerXYZ(g.arms[side], -s * d.armAbduct, 0, tmp))
+      set(`upperarm.${side}`, eulerXYZ(g.arms[side], -s * abduct, 0, tmp))
+      // twist about the arm's own axis first (it hangs along -Z): the elbow's hinge turns inward
+      const twist = g.armTwist?.[side] ?? 0
+      if (twist) this.local[this.index[`upperarm.${side}`]].q.multiply(_q1.setFromAxisAngle(Z_AXIS, -s * deg(twist)))
       set(`forearm.${side}`, eulerXYZ(-d.elbowBend + g.elbow[side], 0, 0, tmp))
       for (const f of FINGERS) {
         for (let k = 0; k < 3; k++) set(`${f}${k + 1}.${side}`, eulerXYZ(0, s * d.fingerCurl[k] * curl, 0, tmp))
       }
     }
-    this.solve(root, overlay && overlay.weight > 0 ? overlay.apply(this, root, g) : g.legs)
+    this.solve(root, overlay && overlay.weight > 0 ? overlay.apply(this, root, g) : g.legs, g.track ?? 1)
   }
 
   /** FK from the local poses; the pelvis joint frame is `root`. */
@@ -143,13 +152,13 @@ export class RobotRig {
     }
   }
 
-  private solve(root: Matrix4, legs: Record<'R' | 'L', GaitLeg>): void {
+  private solve(root: Matrix4, legs: Record<'R' | 'L', GaitLeg>, track: number): void {
     const d = this.dims
     this.forward(root)
     // knee pole: pelvis front, blended with pelvis up for rigs whose legs also fold forward
     const pelvis = _m0.extractRotation(this.world[this.index.pelvis])
     const pole = _v1.set(0, -1, d.kneePoleUp ?? 0).applyMatrix4(pelvis).normalize()
-    const stanceX = d.stanceX ?? d.hipX
+    const stanceX = (d.stanceX ?? d.hipX) * track
     const footF = d.footF ?? d.robotF
     for (const [side, s] of SIDES) {
       const leg = legs[side]

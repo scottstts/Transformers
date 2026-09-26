@@ -16,14 +16,19 @@ import { wrap } from '../math'
 /** The fight takes the pose over this fast from the gait (s), and hands it back this fast at the end. */
 const ENTRY = 0.12
 const EXIT = 0.22
-/** Largest turn toward the camera's heading at the start of a move (rad): feet that stay planted limit it. */
-const REAIM = { first: 0.7, chained: 0.45 }
+/** Movement taking the robot back from the fight: the pose hands back to the gait this fast (s). */
+const RELEASE = 0.16
+/** Aim assist: cones (rad) round a steered heading and round the robot's own facing, and its range (m). */
+const ASSIST_STEERED = 0.55
+const ASSIST_FACING = 1.0
+const ASSIST_RANGE = 8
+/** A move turning the robot more than this (rad) pivots its feet into the new heading, over these times (s). */
+const PIVOT_TURN = 0.35
+const PIVOT_STEP: readonly [number, number] = [0.12, 0.17]
 /** Recovery: channels settle by this share of it; feet off their stance by more than this step back (m, rad). */
 const SETTLE_SHARE = 0.72
 const STANCE_SLACK = 0.07
 const STANCE_TURN = 0.17
-/** A click during the recovery restarts the combo once this share of it has passed. */
-const RESTART_SHARE = 0.35
 
 /**
  * The robot's fighting, around the session: clicks drive the combo
@@ -31,8 +36,15 @@ const RESTART_SHARE = 0.35
  * last left off, the feet step and plant on the ground (FootPlanner), and the
  * move's root motion carries the robot: its standing point and heading are
  * written into the motion state each frame, so walking resumes from wherever
- * the fight left it. Each move is aimed toward the camera's heading, as far as
- * planted feet allow.
+ * the fight left it.
+ *
+ * Each move is aimed where the player steers (the movement keys or stick,
+ * camera-relative, held as the move starts), else where the robot faces, and
+ * turned onto the nearest soldier near that line (aim assist). A move may turn
+ * the robot all the way round: the root turns in its first moments and the
+ * feet pivot into the new heading. Movement takes the robot back from the
+ * fight (`release`) once the combo allows it (combo.ts `cancellable`): the
+ * pose hands back to the gait at once and walking resumes.
  *
  * The pose reaches the rig through the character's overlay, blended with the
  * gait by a weight that eases in at the first move and out as the recovery
@@ -63,8 +75,8 @@ export class RobotCombat {
   private struck = false
   /** a combo move's blow lands (it charges the special) */
   onStrike: ((move: number) => void) | null = null
-  /** turns a move's aim (rad) from the standing point (x, z) toward something to hit, if anything is there */
-  aimAssist: ((x: number, z: number, heading: number) => number) | null = null
+  /** turns a move's aim (rad) from the standing point (x, z) toward something to hit within `range` m and `cone` rad, if anything is there */
+  aimAssist: ((x: number, z: number, heading: number, range: number, cone: number) => number) | null = null
   /** a blow, sweep or blast of the current move reaches the world (hits.ts) */
   onHit: ((hit: HitEvent) => void) | null = null
   /** the current move's hits and how far through them the move is */
@@ -74,6 +86,11 @@ export class RobotCombat {
   private sweepBase = 0
   private sweepSerial = 0
   private readonly lastDesired = new Vector3()
+  /** the heading the player steers toward (camera-relative input), if any */
+  private steerYaw = 0
+  private steering = false
+  /** released to movement: the pose is handing back to the gait, the fight no longer owns the robot */
+  private loose = false
   private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false }
   /** the guard is held (the input), and the guard pose is up */
   private guardHeld = false
@@ -81,7 +98,6 @@ export class RobotCombat {
   private nextStep = 0
   private weight = 0
   private exiting = false
-  private readonly forward = new Vector3()
   private readonly desired = new Vector3()
   /** this frame's motion state and camera, for the callbacks below (bound once: no per-frame closures) */
   private frameState: MotionState
@@ -96,7 +112,7 @@ export class RobotCombat {
     this.robotOffset = robotOffset
     this.moves = combat.moveset.moves
     const recover = combat.moveset.recover
-    this.combo = new ComboController(this.moves, recover, recover * RESTART_SHARE)
+    this.combo = new ComboController(this.moves, recover)
     this.frame = { weight: 0, values: this.player.values, move: -1, time: 0, state, camera }
     this.frameState = state
     this.player.reset(combat.overlay.neutral)
@@ -104,7 +120,33 @@ export class RobotCombat {
 
   /** The fight owns the robot (movement, jumps and transforming wait). */
   get active(): boolean {
-    return this.combo.active || this.special !== null || this.weight > 0 || this.guarding
+    return this.combo.active || this.special !== null || (this.weight > 0 && !this.loose) || this.guarding
+  }
+
+  /** The direction the player steers (world x, z; camera-relative input), or null; aims the next move. */
+  setSteer(dir: { x: number; z: number } | null): void {
+    this.steering = dir !== null && Math.hypot(dir.x, dir.z) > 1e-3
+    if (dir && this.steering) this.steerYaw = Math.atan2(dir.x, dir.z)
+  }
+
+  /** Movement may take the robot back from the fight now (a recovery, or a move whose window has passed its strike). */
+  get releasable(): boolean {
+    return !this.special && !this.guarding && !this.loose && this.combo.cancellable
+  }
+
+  /**
+   * Movement takes the robot back: the combo ends, the pose hands back to the
+   * gait over RELEASE and the fight gives up the robot at once (the weapon
+   * goes away as in a recovery).
+   */
+  release(): void {
+    if (!this.releasable) return
+    this.combo.cancel()
+    this.queued.length = 0
+    this.hits = null
+    this.loose = true
+    this.exiting = true
+    this.player.settle(this.combat.overlay.neutral, RELEASE * 1.5, this.combat.moveset.recoverCues)
   }
 
   /** The guard pose is up: enemy blows land on the shield. */
@@ -114,8 +156,9 @@ export class RobotCombat {
 
   /**
    * Hold or release the guard. It rises whenever no move is playing (a combo's
-   * recovery gives way to it) and holds while held; releasing it recovers into
-   * the stance. A click from the guard starts the combo from the guard pose.
+   * recovery gives way to it) or a move could be cut short (`releasable`), and
+   * holds while held; releasing it recovers into the stance. A click from the
+   * guard starts the combo from the guard pose.
    */
   setGuard(held: boolean): void {
     this.guardHeld = held
@@ -169,16 +212,17 @@ export class RobotCombat {
     this.frameCamera = camera
     if (this.weight === 0) {
       this.player.reset(this.combat.overlay.neutral)
-      this.plantFeet()
       this.combat.effects.begin()
     }
+    if (this.weight === 0 || this.loose) this.plantFeet()
     this.combo.cancel()
     this.queued.length = 0
     this.exiting = false
+    this.loose = false
     this.endGuard()
     this.special = special
     this.tempoCurve.set(1, special.tempo)
-    this.beginMove(special.move, state, camera, REAIM.first)
+    this.beginMove(special.move, state, camera, true)
     this.hits = this.combat.hits.special
     this.combat.effects.beginSpecial()
     return special
@@ -193,6 +237,7 @@ export class RobotCombat {
     this.combo.cancel()
     this.weight = 0
     this.exiting = false
+    this.loose = false
     this.combat.overlay.weight = 0
     this.model.overlay = null
     this.combat.effects.reset()
@@ -204,7 +249,12 @@ export class RobotCombat {
     if (!this.special) this.combo.update(dt, this.onComboEvent)
     this.updateGuard(state, camera)
     if (!this.combo.active && !this.special && this.weight === 0 && !this.guarding) {
+      this.loose = false
       this.combat.effects.ambient(dt, state.yaw)
+      return
+    }
+    if (this.loose) {
+      this.updateLoose(dt)
       return
     }
 
@@ -244,9 +294,29 @@ export class RobotCombat {
     if (this.weight === 0 && !owning) this.combat.effects.end()
   }
 
+  /** Released: the pose settles and hands back to the gait; the robot is the gait's to move. */
+  private updateLoose(dt: number): void {
+    this.player.update(dt, this.onMoveCue)
+    this.weight = Math.max(0, this.weight - dt / RELEASE)
+    this.combat.overlay.weight = smooth(this.weight)
+    this.model.overlay = this.weight > 0 ? this.combat.overlay : null
+    this.combat.overlay.pose.v.set(this.player.values)
+    // the feet go with the body: planted where they were, the gait's own share grows as the weight falls
+    this.feet.update(dt, this.onLand)
+    const f = this.frame
+    f.weight = this.combat.overlay.weight
+    f.move = -1
+    f.time = this.combo.time
+    this.combat.effects.update(dt, f)
+    if (this.weight === 0) {
+      this.loose = false
+      this.combat.effects.end()
+    }
+  }
+
   /** After the scenery pushed the robot: the ground frame moves with it (the feet keep their offsets). */
   afterCollisions(state: MotionState): void {
-    if (!this.active) return
+    if (!this.active || this.loose) return
     const fx = Math.sin(state.yaw), fz = Math.cos(state.yaw)
     const px = state.pos.x + fx * this.robotOffset
     const pz = state.pos.z + fz * this.robotOffset
@@ -261,10 +331,11 @@ export class RobotCombat {
       const first = this.weight === 0
       if (first) {
         this.player.reset(this.combat.overlay.neutral)
-        this.plantFeet()
         effects.begin()
       }
-      this.beginMove(this.moves[event.move], state, camera, first ? REAIM.first : REAIM.chained)
+      // from the stance, or from walking away after a release: the feet are where the model shows them
+      if (first || this.loose) this.plantFeet()
+      this.beginMove(this.moves[event.move], state, camera, true)
       this.hits = this.combat.hits.moves[event.move] ?? null
       effects.moveStart(event.move, this.frame.camera)
     } else if (event.type === 'recover') {
@@ -275,14 +346,26 @@ export class RobotCombat {
     }
   }
 
-  private beginMove(move: CombatMove, state: MotionState, camera: PerspectiveCamera, limit: number): void {
-    camera.getWorldDirection(this.forward)
-    let aim = Math.hypot(this.forward.x, this.forward.z) > 1e-3 ? Math.atan2(this.forward.x, this.forward.z) : state.yaw
-    if (this.aimAssist && limit > 0) {
-      aim = this.aimAssist(state.pos.x + Math.sin(state.yaw) * this.robotOffset, state.pos.z + Math.cos(state.yaw) * this.robotOffset, aim)
+  /**
+   * Start `move` from the current pose. An aimed move turns toward where the
+   * player steers (else the way the robot faces), then onto the nearest
+   * soldier near that line; a turn past PIVOT_TURN pivots the feet into it.
+   */
+  private beginMove(move: CombatMove, state: MotionState, _camera: PerspectiveCamera, aimed: boolean): void {
+    let heading = state.yaw
+    if (aimed) {
+      const steered = this.steering
+      heading = steered ? this.steerYaw : state.yaw
+      if (this.aimAssist) {
+        const x = state.pos.x + Math.sin(state.yaw) * this.robotOffset
+        const z = state.pos.z + Math.cos(state.yaw) * this.robotOffset
+        heading = this.aimAssist(x, z, heading, ASSIST_RANGE, steered ? ASSIST_STEERED : ASSIST_FACING)
+      }
+      heading = state.yaw + wrap(heading - state.yaw)
     }
-    const heading = state.yaw + Math.max(-limit, Math.min(limit, wrap(aim - state.yaw)))
+    this.loose = false
     this.setGround(state, heading)
+    if (Math.abs(heading - state.yaw) > PIVOT_TURN) this.pivotFeet()
     const v = this.player.values
     v[CH.advance] = 0
     v[CH.strafe] = 0
@@ -300,17 +383,19 @@ export class RobotCombat {
 
   /** Raise the guard when it is held and nothing else plays; lower it when released. */
   private updateGuard(state: MotionState, camera: PerspectiveCamera): void {
-    if (this.guardHeld && !this.guarding && !this.special && this.combo.phase !== 'move') {
+    // it rises in a recovery, or cuts a move short once movement could (its window open, no click waiting)
+    if (this.guardHeld && !this.guarding && !this.special && (this.combo.phase !== 'move' || this.combo.cancellable)) {
       if (this.weight === 0) {
         this.player.reset(this.combat.overlay.neutral)
-        this.plantFeet()
         this.combat.effects.begin()
       }
+      if (this.weight === 0 || this.loose) this.plantFeet()
       this.combo.cancel()
       this.queued.length = 0
       this.exiting = false
+      this.loose = false
       this.guarding = true
-      this.beginMove(this.combat.guard, state, camera, 0)
+      this.beginMove(this.combat.guard, state, camera, false)
       this.combat.effects.guard(true)
     } else if (!this.guardHeld && this.guarding) {
       this.endGuard()
@@ -379,6 +464,22 @@ export class RobotCombat {
     v[CH.advance] = 0
     v[CH.strafe] = 0
     v[CH.turn] = (state.yaw - heading) * 180 / Math.PI
+  }
+
+  /** Both feet step into the stance of the new heading, the one farther from it first. */
+  private pivotFeet(): void {
+    const d = this.model.dims
+    const stanceX = d.stanceX ?? d.hipX
+    const back = (d.footF ?? d.robotF) - d.robotF
+    const h = this.heading
+    const places = SIDES.map((side) => {
+      const lat = side === 'L' ? stanceX : -stanceX
+      const to = { x: this.origin.x + Math.sin(h) * back + Math.cos(h) * lat, z: this.origin.z + Math.cos(h) * back - Math.sin(h) * lat, yaw: h }
+      const at = this.feet.sample(side)
+      return { side, to, off: Math.hypot(at.x - to.x, at.z - to.z) }
+    })
+    places.sort((a, b) => b.off - a.off)
+    places.forEach((p, k) => this.feet.step(p.side, p.to, PIVOT_STEP[k], this.combat.stepLift * 0.6))
   }
 
   private plantFeet(): void {

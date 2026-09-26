@@ -4,8 +4,11 @@ import { BufferAttribute, BufferGeometry, Matrix4, Vector3 } from 'three/webgpu'
  * A material-slot mesh writer for the forts' modules. Builders work in a
  * module's local frame (metres, +y up, the module's front along +z) and pass
  * a placement matrix; the writer keeps one position / normal / shade buffer
- * per slot and emits one indexed BufferGeometry per slot (one draw each for a
- * whole fort).
+ * per slot and bucket and emits one indexed BufferGeometry for each (one draw
+ * each). Buckets are chosen by the caller around whole modules (`bucket`):
+ * the fort splits into quadrants, so the view and each of the sun's shadow cascades
+ * only draw the parts near them, and small props go into detail buckets that
+ * are hidden from afar.
  *
  * Polygons are the modelling unit: a planar polygon is emitted flat with its
  * own normal (fan-triangulated: builders pass convex polygons); a surface
@@ -14,6 +17,13 @@ import { BufferAttribute, BufferGeometry, Matrix4, Vector3 } from 'three/webgpu'
  * wall slab weathered darker than the next).
  */
 export type Vec3 = [number, number, number]
+
+/** A slot's geometry in one bucket. */
+export interface SlotGeometry {
+  slot: string
+  bucket: string
+  geometry: BufferGeometry
+}
 
 class SlotBuffer {
   position: number[] = []
@@ -24,6 +34,7 @@ class SlotBuffer {
 
 export class MeshWriter {
   private readonly slots = new Map<string, SlotBuffer>()
+  private current = ''
   /** current placement and its normal matrix */
   private M = new Matrix4()
   private readonly N = new Matrix4()
@@ -37,6 +48,16 @@ export class MeshWriter {
     return this
   }
 
+  /** The bucket the following polygons go to (until changed). */
+  bucket(name: string): this {
+    this.current = name
+    return this
+  }
+
+  get currentBucket(): string {
+    return this.current
+  }
+
   /** Per-part tone variation for the following polygons. */
   shade(v: number): this {
     this.shadeValue = v
@@ -44,8 +65,9 @@ export class MeshWriter {
   }
 
   private slot(name: string): SlotBuffer {
-    let s = this.slots.get(name)
-    if (!s) this.slots.set(name, s = new SlotBuffer())
+    const key = `${name}|${this.current}`
+    let s = this.slots.get(key)
+    if (!s) this.slots.set(key, s = new SlotBuffer())
     return s
   }
 
@@ -104,10 +126,11 @@ export class MeshWriter {
     return this.triangles
   }
 
-  /** One geometry per non-empty slot. */
-  build(): Map<string, BufferGeometry> {
-    const out = new Map<string, BufferGeometry>()
-    for (const [name, s] of this.slots) {
+  /** One geometry per non-empty slot and bucket. */
+  build(): SlotGeometry[] {
+    const out: SlotGeometry[] = []
+    for (const [key, s] of this.slots) {
+      const [slot, bucket] = key.split('|')
       if (!s.index.length) continue
       const g = new BufferGeometry()
       g.setAttribute('position', new BufferAttribute(new Float32Array(s.position), 3))
@@ -117,7 +140,7 @@ export class MeshWriter {
       g.setIndex(new BufferAttribute(n > 65535 ? new Uint32Array(s.index) : new Uint16Array(s.index), 1))
       g.computeBoundingSphere()
       g.computeBoundingBox()
-      out.set(name, g)
+      out.push({ slot, bucket, geometry: g })
     }
     return out
   }
@@ -277,6 +300,61 @@ export function cylinderY(w: MeshWriter, slot: string, r: number, y0: number, y1
   }
   if (caps[1]) w.poly(slot, ring(r - c, y1).slice(0, seg))
   if (caps[0]) w.poly(slot, ring(r - c, y0).slice(0, seg).reverse())
+}
+
+/**
+ * A surface of revolution about local y: `profile` is (radius, y) from bottom
+ * to top, `normals` the profile's (radial, y) normals (smooth rows). Radius
+ * 0 closes a pole.
+ */
+export function revolveY(w: MeshWriter, slot: string, profile: Vec2[], normals: Vec2[], seg = 16): void {
+  const rows: Vec3[][] = []
+  const nrm: Vec3[][] = []
+  for (let i = 0; i < profile.length; i++) {
+    const [r, y] = profile[i]
+    const [nr, ny] = normals[i]
+    const l = Math.hypot(nr, ny) || 1
+    rows.push(Array.from({ length: seg + 1 }, (_, k) => {
+      const a = (k / seg) * Math.PI * 2
+      return [Math.cos(a) * r, y, -Math.sin(a) * r] as Vec3
+    }))
+    nrm.push(Array.from({ length: seg + 1 }, (_, k) => {
+      const a = (k / seg) * Math.PI * 2
+      return [(Math.cos(a) * nr) / l, ny / l, (-Math.sin(a) * nr) / l] as Vec3
+    }))
+  }
+  w.grid(slot, rows, nrm)
+}
+
+/** A tube through `points` (a polyline: a cable, a coil), radius r, `sides` round; its ends open. */
+export function tube(w: MeshWriter, slot: string, points: Vec3[], r: number, sides = 4): void {
+  if (points.length < 2) return
+  const rows: Vec3[][] = []
+  const nrm: Vec3[][] = []
+  const P = points.map((p) => new Vector3(...p))
+  // parallel-transported frame along the polyline: no twisting flips
+  const t0 = P[1].clone().sub(P[0]).normalize()
+  let n = Math.abs(t0.y) < 0.9 ? new Vector3(0, 1, 0).cross(t0).normalize() : new Vector3(1, 0, 0).cross(t0).normalize()
+  let prevT = t0
+  for (let i = 0; i < P.length; i++) {
+    const t = (i < P.length - 1 ? P[i + 1].clone().sub(P[i]) : P[i].clone().sub(P[i - 1])).normalize()
+    const axis = prevT.clone().cross(t)
+    const s = axis.length()
+    if (s > 1e-6) n = n.applyAxisAngle(axis.normalize(), Math.asin(Math.min(1, s)))
+    prevT = t
+    const b = t.clone().cross(n).normalize()
+    const row: Vec3[] = []
+    const nr: Vec3[] = []
+    for (let k = 0; k <= sides; k++) {
+      const a = (k / sides) * Math.PI * 2
+      const d = n.clone().multiplyScalar(Math.cos(a)).addScaledVector(b, Math.sin(a))
+      row.push([P[i].x + d.x * r, P[i].y + d.y * r, P[i].z + d.z * r])
+      nr.push([d.x, d.y, d.z])
+    }
+    rows.push(row)
+    nrm.push(nr)
+  }
+  w.grid(slot, rows, nrm)
 }
 
 /** A straight tube (member) between two points, radius r: cylinderY placed along a - b. */

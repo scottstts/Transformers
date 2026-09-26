@@ -75,6 +75,19 @@ export interface GaitStyle {
 	/** jump: crouch depth at full load, leg tuck at the apex */
 	jumpCrouch: number;
 	jumpTuck: number;
+	/**
+	 * Optional carriage for builds whose stand does not suit locomotion (a
+	 * racer's wide stance and splayed arms read as a clown's walk): the feet's
+	 * track as a share of the rig's stance width, and the shoulders' abduction
+	 * as a share of the rig's, walking and running (standing keeps the rig's);
+	 * the elbow bend at a full run (deg, default 55); and the upper arms'
+	 * inward rotation at a full run (deg), which brings the pumping forearms
+	 * forward and across the body instead of out to the sides.
+	 */
+	track?: [ number, number ];
+	armAbduct?: [ number, number ];
+	runElbow?: number;
+	armCross?: number;
 }
 
 /** A heavy machine: long stance, weight shift over the planted leg. */
@@ -123,6 +136,8 @@ const JUMP_ARMS = 38;
 /** Lean (deg) per m/s^2 of acceleration, and body bank (deg) per m/s^2 of turning. */
 const ACCEL_LEAN = 1.8;
 const TURN_BANK = 1.6;
+/** Most a turn on the spot drives the stepping (m/s equivalent): quick pivots shuffle, they don't sprint in place. */
+const TURN_STEP_MAX = 2.6;
 /** Idle weight shift: rate (rad/s), pelvis shift (m), list (deg). */
 const IDLE_SHIFT: [ number, number, number ] = [ 0.37, 0.018, 0.7 ];
 
@@ -168,7 +183,8 @@ export class RobotGait {
 		const st = this.style;
 		this.time += dt;
 		const mv = active ? Math.abs( speed ) : 0;
-		const eff = active ? Math.max( mv, Math.abs( turnRate ) * 1.4 ) : 0;
+		// turning on the spot steps too, but a fast pivot doesn't make the feet flail
+		const eff = active ? Math.max( mv, Math.min( Math.abs( turnRate ) * 1.4, TURN_STEP_MAX ) ) : 0;
 		this.amp = lerp( this.amp, clamp( eff / 2.6, 0, 1 ), 1 - Math.exp( - dt * 5 ) );
 		this.run = lerp( this.run, running && mv > 4 ? 1 : 0, 1 - Math.exp( - dt * 3 ) );
 
@@ -238,7 +254,7 @@ export class RobotGait {
 			// negative shoulder pitch swings forward: the right arm swings back as the right leg reaches forward
 			const sw = Math.cos( this.phase + off - ARM_LAG ) * lerp( st.armSwing[ 0 ], st.armSwing[ 1 ], this.run ) * this.amp;
 			arms[ S ] = sw + 1.5 * Math.sin( this.time * 0.9 + off );
-			elbow[ S ] = - Math.max( 0, - sw ) * 0.7 - this.run * 55 * this.amp;
+			elbow[ S ] = - Math.max( 0, - sw ) * 0.7 - this.run * ( st.runElbow ?? 55 ) * this.amp;
 
 		}
 
@@ -277,7 +293,12 @@ export class RobotGait {
 		this.follow( arms, elbow, dt );
 
 		const roll = list + this.bank;
+		const moving = this.amp * locomotion;
+		const cross = ( st.armCross ?? 0 ) * lerp( 0.35, 1, this.run ) * moving;
 		return {
+			track: st.track ? lerp( 1, lerp( st.track[ 0 ], st.track[ 1 ], this.run ), moving ) : 1,
+			abduct: st.armAbduct ? lerp( 1, lerp( st.armAbduct[ 0 ], st.armAbduct[ 1 ], this.run ), moving ) : 1,
+			armTwist: { R: cross, L: cross },
 			legs, crouch, sway, arms, elbow, air,
 			lean,
 			roll,
@@ -285,7 +306,7 @@ export class RobotGait {
 			torsoRoll: - list * 0.85,
 			twist,
 			breath: Math.sin( this.time * 1.3 ) * 0.8,
-			headYaw: ( this.look + THREE.MathUtils.radToDeg( turnRate ) * 0.12 ) * locomotion - shoulderYaw * 0.85,
+			headYaw: ( this.look + clamp( THREE.MathUtils.radToDeg( turnRate ) * 0.12, - 18, 18 ) ) * locomotion - shoulderYaw * 0.85,
 			headPitch: lerp( Math.sin( this.time * 0.41 ) * 2 - this.accelLean * 0.3, - lean * 0.35, jumpWeight ),
 			headRoll: - this.bank * 0.5,
 			curl: 0.45 + this.run * 0.5

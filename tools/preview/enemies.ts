@@ -65,8 +65,16 @@ const SAMPLES: Record<string, Sample> = {
   // a fort from the air
   'fort-air': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 50, figures: [],
-    fort: (f) => ({ eye: fp(f, 55, 95, 75), look: fp(f, 0, -2, 0) }),
+    fort: (f) => ({ eye: fp(f, 110, 150, 150), look: fp(f, 0, -8, 0) }),
   },
+  // each quadrant seen from the edge of the yard, at a robot's eye height
+  ...Object.fromEntries([0, 1, 2, 3].map((k) => [`fort-q${k}`, {
+    eye: [0, 0, 0], look: [0, 0, 0], fov: 60, figures: [],
+    fort: (f: Fort) => {
+      const a = Math.PI / 4 + (k * Math.PI) / 2
+      return { eye: fp(f, Math.sin(a - 0.5) * 20, Math.cos(a - 0.5) * 20, 7), look: fp(f, Math.sin(a) * 55, Math.cos(a) * 55, 3) }
+    },
+  } satisfies Sample])),
   // the front gate as the robot comes up to it
   'fort-gate': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 50, figures: [],

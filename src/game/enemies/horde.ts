@@ -1,6 +1,6 @@
 import { Frustum, Group, Matrix4, Sphere, Vector3, type PerspectiveCamera } from 'three/webgpu'
 import type { SoldierAsset } from '../../content/soldier/asset'
-import { HordeRenderer, HORDE_CAPACITY } from '../../content/soldier/horde-renderer'
+import { HordeRenderer, HORDE_CAPACITY, SHADOW_FAR } from '../../content/soldier/horde-renderer'
 import { SoldierAudio } from '../../content/soldier/audio'
 import { Sparks } from '../../content/transformer/combat/fx/sparks'
 import { Billows } from '../../content/transformer/combat/fx/billows'
@@ -14,15 +14,15 @@ import { Soldier, SOLDIER, type SoldierImpact } from './soldier'
 import { Debris, DEBRIS_FADE, DEBRIS_LIE } from './debris'
 
 /** Garrison size at peace, the level at which reinforcements roll out during a fight, and the most alive at once. */
-export const GARRISON = 14
-export const REINFORCE_BELOW = 8
-const MAX_ALIVE = 16
+export const GARRISON = 28
+export const REINFORCE_BELOW = 16
+const MAX_ALIVE = 32
 /** Seconds between reinforcements during a fight, and while the fort refills at peace. */
-const REINFORCE_EVERY = 1.1
-const REFILL_EVERY = 5
+const REINFORCE_EVERY = 0.6
+const REFILL_EVERY = 3
 /** How many may be swinging at once, and how many close in to the ring at all. */
-const ATTACKERS = 3
-const RING = 7
+const ATTACKERS = 4
+const RING = 9
 /** Share of the way round the ring the fighting soldiers move toward the robot's front. */
 const FRONT_BIAS = 0.3
 /** Distance beyond the robot's body where the ring stands, and the outer holding ring (m). */
@@ -34,6 +34,13 @@ const SLASH_CONE = 1.05
 /** Draw and simulate forts within these distances of the camera (m); beyond `SIM_FAR` they tick slowly. */
 const DRAW_FAR = 460
 const SIM_FAR = 170
+/** At peace: rolling speed on a beat (m/s), how near a point counts as there (m), pauses there (s) on a patrol and on a sentry's pacing. */
+const PATROL_SPEED = 1.8
+const PATROL_ARRIVE = 1.0
+const PATROL_PAUSE: readonly [number, number] = [0.6, 2.8]
+const SENTRY_PAUSE: readonly [number, number] = [2.2, 6]
+/** How far a soldier's shadow can reach from it across the sand (m): a 3 m body under a sun 25 degrees up. */
+const SHADOW_REACH = 7
 
 /** What the soldiers fight: the player's body on the ground this frame. */
 export interface EnemyTarget {
@@ -65,6 +72,8 @@ interface Garrison {
   clock: number
   cooldown: Map<Soldier, number>
   post: Map<Soldier, number>
+  /** at peace: where each soldier is on its post's beat (point index), until when it waits there, where it looks */
+  beat: Map<Soldier, { k: number; wait: number; look: number }>
   /** each soldier's destination when it came out of the hangar (it rolls out before it fights) */
   leaving: Set<Soldier>
 }
@@ -103,6 +112,8 @@ export class Horde {
   private readonly garrisons: Garrison[] = []
   private readonly pool: Soldier[] = []
   private readonly drawList: Soldier[] = []
+  /** scratch: soldiers off screen whose shadows may fall into view */
+  private readonly shadowList: Soldier[] = []
   /** scratch: a garrison's standing soldiers this frame */
   private readonly standing: Soldier[] = []
   private serial = 0
@@ -119,7 +130,7 @@ export class Horde {
     this.audio = new SoldierAudio(mix)
     this.object.add(this.renderer.object, this.sparks.mesh, this.billows.mesh)
     for (const fort of forts.list) {
-      const g: Garrison = { fort, soldiers: [], alert: false, wave: false, spawnClock: 0, clock: 0, cooldown: new Map(), post: new Map(), leaving: new Set() }
+      const g: Garrison = { fort, soldiers: [], alert: false, wave: false, spawnClock: 0, clock: 0, cooldown: new Map(), post: new Map(), beat: new Map(), leaving: new Set() }
       this.garrisons.push(g)
       for (let i = 0; i < GARRISON; i++) this.station(g, i)
     }
@@ -284,7 +295,11 @@ export class Horde {
     if (!g.alert && t.present && g.fort.inside(t.x, t.z)) {
       g.alert = true
       for (const s of g.soldiers) if (s.alive) this.audio.ignite(this.listener.distanceTo(_v.set(s.x, 1.5, s.z)))
-    } else if (g.alert && d > g.fort.plan.barrier + 25) g.alert = false
+    } else if (g.alert && d > g.fort.plan.barrier + 25) {
+      g.alert = false
+      // back to their beats wherever the fight left them
+      g.beat.clear()
+    }
   }
 
   /**
@@ -299,7 +314,7 @@ export class Horde {
     if (alive >= GARRISON || !g.alert) g.wave = false
     const every = g.alert ? REINFORCE_EVERY : REFILL_EVERY
     const want = g.alert ? g.wave : alive < GARRISON
-    if (!want || alive >= MAX_ALIVE || g.spawnClock < every || g.soldiers.length >= MAX_ALIVE + 6) return
+    if (!want || alive >= MAX_ALIVE || g.spawnClock < every || g.soldiers.length >= MAX_ALIVE + 12) return
     g.spawnClock = 0
     const plan = g.fort.plan
     const door = plan.spawns[this.serial % plan.spawns.length]
@@ -336,19 +351,7 @@ export class Horde {
       alive.push(s)
     }
     if (!g.alert) {
-      for (const s of alive) {
-        const i = g.post.get(s) ?? 0
-        const plan = g.fort.plan
-        const post = plan.posts[i % plan.posts.length]
-        const ring = Math.floor(i / plan.posts.length)
-        const p = g.fort.toWorld(post.at[0] + ring * 1.8, post.at[1] - ring * 1.8)
-        s.goal.x = p.x
-        s.goal.z = p.z
-        s.goal.face = post.yaw + plan.site.yaw
-        s.goal.speed = SOLDIER.engageSpeed
-        s.goal.drive = true
-        s.goal.ready = false
-      }
+      for (const s of alive) this.patrol(g, s)
       return
     }
     // alerted: the nearest RING close in on the ring round the target, the rest hold further out
@@ -396,6 +399,57 @@ export class Horde {
         this.audio.swing(this.listener.distanceTo(_v.set(s.x, 1.5, s.z)))
       }
     })
+  }
+
+  /**
+   * At peace a soldier walks its post's beat (plan.ts `Post`): it rolls
+   * slowly to each point in turn, stops there a moment and looks about (out
+   * over the yard on a patrol loop, along its watch on a sentry's pacing),
+   * then goes on; pacing turns back at the end of its two points.
+   */
+  private patrol(g: Garrison, s: Soldier): void {
+    const plan = g.fort.plan
+    const i = g.post.get(s) ?? 0
+    const post = plan.posts[i % plan.posts.length]
+    const shift = Math.floor(i / plan.posts.length) * 1.8
+    const beat = post.beat
+    let b = g.beat.get(s)
+    if (!b) {
+      // join the beat at its nearest point
+      let k = 0, best = Infinity
+      for (let j = 0; j < beat.length; j++) {
+        const p = g.fort.toWorld(beat[j][0] + shift, beat[j][1] - shift, _q)
+        const d = Math.hypot(p.x - s.x, p.z - s.z)
+        if (d < best) { best = d; k = j }
+      }
+      b = { k, wait: 0, look: 0 }
+      g.beat.set(s, b)
+    }
+    const p = g.fort.toWorld(beat[b.k][0] + shift, beat[b.k][1] - shift, _q)
+    const d = Math.hypot(p.x - s.x, p.z - s.z)
+    s.goal.x = p.x
+    s.goal.z = p.z
+    s.goal.drive = true
+    s.goal.ready = false
+    if (d > PATROL_ARRIVE) {
+      s.goal.face = Math.atan2(p.x - s.x, p.z - s.z)
+      s.goal.speed = PATROL_SPEED
+      return
+    }
+    const pacing = beat.length === 2
+    if (b.wait === 0) {
+      const [lo, hi] = pacing ? SENTRY_PAUSE : PATROL_PAUSE
+      b.wait = g.clock + lo + Math.random() * (hi - lo)
+      // a patrol looks out from the yard's middle, a sentry along its watch
+      const out = pacing ? post.yaw : Math.atan2(beat[b.k][0], beat[b.k][1])
+      b.look = out + plan.site.yaw + (Math.random() - 0.5) * 1.6
+    }
+    s.goal.face = b.look
+    s.goal.speed = SOLDIER.engageSpeed
+    if (g.clock >= b.wait) {
+      b.k = (b.k + 1) % beat.length
+      b.wait = 0
+    }
   }
 
   private nearestGate(g: Garrison, s: Soldier): { inside: [number, number]; outside: [number, number] } {
@@ -510,6 +564,7 @@ export class Horde {
       }
       g.soldiers.splice(i, 1)
       g.post.delete(s)
+      g.beat.delete(s)
       g.cooldown.delete(s)
       g.leaving.delete(s)
       this.pool.push(s)
@@ -545,26 +600,41 @@ export class Horde {
     this.contact.burst(_v.set(s.x, 0, s.z), 1, 16)
   }
 
-  /** Cull to the view, sort near to far, hand to the renderer (`update` does this for its camera). */
+  /**
+   * Cull to the view, sort near to far, hand to the renderer (`update` does
+   * this for its camera). Soldiers just off screen whose shadows can reach
+   * into view (within SHADOW_REACH of it, and SHADOW_FAR of the camera) go
+   * after the visible ones: they only cast.
+   */
   drawFor(camera: PerspectiveCamera): void {
     camera.updateMatrixWorld()
     this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     this.frustum.setFromProjectionMatrix(this.projScreen)
     const list = this.drawList
+    const extra = this.shadowList
     list.length = 0
+    extra.length = 0
     for (const g of this.garrisons) {
       for (const s of g.soldiers) {
         this.sphere.center.set(s.x, 1.6 + s.y, s.z)
-        this.sphere.radius = s.alive ? 2.2 : 7
-        if (!this.frustum.intersectsSphere(this.sphere)) continue
         s.distance = camera.position.distanceTo(this.sphere.center)
         if (s.distance > DRAW_FAR) continue
-        list.push(s)
+        this.sphere.radius = s.alive ? 2.2 : 7
+        if (this.frustum.intersectsSphere(this.sphere)) {
+          list.push(s)
+          continue
+        }
+        if (s.distance > SHADOW_FAR) continue
+        this.sphere.radius += SHADOW_REACH
+        if (this.frustum.intersectsSphere(this.sphere)) extra.push(s)
       }
     }
     list.sort((a, b) => a.distance - b.distance)
     if (list.length > HORDE_CAPACITY) list.length = HORDE_CAPACITY
-    this.renderer.draw(list)
+    const visible = list.length
+    extra.sort((a, b) => a.distance - b.distance)
+    for (let i = 0; i < extra.length && list.length < HORDE_CAPACITY; i++) list.push(extra[i])
+    this.renderer.draw(list, visible)
   }
 }
 
@@ -579,4 +649,5 @@ const _from = new Vector3()
 const _push = new Vector3()
 const _base = new Vector3()
 const _p = { x: 0, z: 0 }
+const _q = { x: 0, z: 0 }
 const _contact: Contact = { nx: 0, nz: 0, depth: 0 }

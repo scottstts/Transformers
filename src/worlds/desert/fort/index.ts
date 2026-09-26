@@ -1,4 +1,4 @@
-import type { Group, Material, Scene } from 'three/webgpu'
+import { Vector3, type Camera, type Group, type Material, type Mesh, type Scene } from 'three/webgpu'
 import type { CircleCollider, SegmentCollider } from '../../../game/types'
 import { buildFort } from './build'
 import { createFortMaterials } from './materials'
@@ -22,14 +22,19 @@ export interface Fort {
   readonly segments: SegmentCollider[]
 }
 
+/** Detail geometry (slab loops, razor wire, clutter) is drawn within this distance of its bounds (m). */
+const DETAIL_FAR = 120
+
 /**
  * The desert's forts (plan.ts): built once at start, static geometry (one
- * draw per material slot each), their walls, buildings and props added to
- * the world's colliders, and the ground around them cleared of the tiled
- * boulders (`exclusions`).
+ * draw per material slot and quadrant each, build.ts), their walls,
+ * buildings and props added to the world's colliders, and the ground around
+ * them cleared of the tiled boulders (`exclusions`). Each quadrant's small
+ * detail is shown only near it (`update`).
  */
 export class Forts {
   readonly list: Fort[] = []
+  private readonly detail: Array<{ mesh: Mesh; centre: Vector3; radius: number }> = []
   readonly circles: CircleCollider[] = []
   readonly segments: SegmentCollider[] = []
   /** world circles the tiled scatter keeps out of */
@@ -40,8 +45,12 @@ export class Forts {
     this.materials = createFortMaterials()
     for (const site of sites) {
       const plan = planFort(site)
-      const { group, triangles } = buildFort(plan, this.materials)
+      const { group, triangles, detail } = buildFort(plan, this.materials)
       scene.add(group)
+      for (const mesh of detail) {
+        const sphere = mesh.geometry.boundingSphere!
+        this.detail.push({ mesh, centre: sphere.center.clone().applyMatrix4(group.matrixWorld), radius: sphere.radius })
+      }
       const c = Math.cos(site.yaw), s = Math.sin(site.yaw)
       const fort: Fort = {
         plan, group, triangles, circles: [], segments: [],
@@ -78,7 +87,22 @@ export class Forts {
     }
   }
 
-  /** The fort whose barrier ring contains the world point, if any. */
+  /** Show each quadrant's detail only while the camera is near it. */
+  update(camera: Camera): void {
+    const p = camera.position
+    for (const d of this.detail) d.mesh.visible = p.distanceTo(d.centre) - d.radius < DETAIL_FAR
+  }
+
+  /** The fort whose car ring (plan.barrier) the world point is inside, if any: no car form there. */
+  within(x: number, z: number): Fort | null {
+    for (const f of this.list) {
+      const s = f.plan.site
+      if (Math.hypot(x - s.x, z - s.z) < f.plan.barrier) return f
+    }
+    return null
+  }
+
+  /** The fort whose barrier ring (with 40 m to spare) contains the world point, if any. */
   near(x: number, z: number): Fort | null {
     for (const f of this.list) {
       const s = f.plan.site
