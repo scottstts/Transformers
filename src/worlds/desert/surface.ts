@@ -6,6 +6,7 @@ import { TyreTracks } from './tyre-tracks.ts'
 import { Footprints } from './footprints.ts'
 import { ScorchMarks } from './scorch.ts'
 import { Debris } from './debris.ts'
+import type { PavedGround } from './paved-ground.ts'
 
 /** Tread slide (m/s) at which a track reads as fully scraped. */
 const FULL_SCRAPE = 5
@@ -15,7 +16,8 @@ const PATCH = 0.36
 /**
  * How the desert answers contact: kicked-up dust and grit, tyre tracks and
  * footprints in the sand; and a blast: fused-glass craters and furrows, a
- * base surge of sand and crust thrown out.
+ * base surge of sand and crust thrown out. On the fortress's paving a blast
+ * spalls, cracks and chars the concrete and throws concrete (scorch.ts).
  */
 export class DesertSurface implements ContactEffects {
   readonly dust: Dust
@@ -25,12 +27,16 @@ export class DesertSurface implements ContactEffects {
   readonly scorch: ScorchMarks
   readonly debris: Debris
 
-  constructor(scene: Scene) {
+  private readonly paving: PavedGround | null
+
+  /** `paving`: where the floor is paved (a blast marks concrete as concrete, and throws concrete) */
+  constructor(scene: Scene, paving: PavedGround | null = null) {
+    this.paving = paving
     this.dust = new Dust(scene)
     this.grit = new Grit(scene)
     this.tracks = new TyreTracks(scene)
     this.footprints = new Footprints(scene)
-    this.scorch = new ScorchMarks(scene)
+    this.scorch = new ScorchMarks(scene, paving)
     this.debris = new Debris(scene)
   }
 
@@ -77,7 +83,8 @@ export class DesertSurface implements ContactEffects {
   }
 
   eject(center: Vector3, speed: number, count: number, dir: Vector3, spread: number, size: number): void {
-    this.debris.burst(center, speed, count, dir, spread, size)
+    // off a slab the chunks are broken concrete, off the sand its crust
+    this.debris.burst(center, speed, count, dir, spread, size, (this.paving?.top(center.x, center.z) ?? -1) >= 0)
     this.grit.burst(center, speed * 0.8, count * 4, dir, spread)
   }
 

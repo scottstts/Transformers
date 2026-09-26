@@ -3,9 +3,10 @@ import { DesertSurface } from './surface.ts'
 import { DesertWorld, createDesertEnvironmentScene } from './world.ts'
 
 export function createDesertWorld(scene: Scene) {
+  const world = new DesertWorld(scene)
   return {
-    world: new DesertWorld(scene),
-    contactEffects: new DesertSurface(scene),
+    world,
+    contactEffects: new DesertSurface(scene, world.forts.paving),
     environmentScene: createDesertEnvironmentScene,
   }
 }

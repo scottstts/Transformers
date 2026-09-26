@@ -62,19 +62,30 @@ const SAMPLES: Record<string, Sample> = {
       { x: 1.1, z: 0, yaw: Math.PI / 2, blade: 1 },
     ],
   },
-  // a fort from the air
+  // the fortress from the air, in front of the main gate
   'fort-air': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 50, figures: [],
-    fort: (f) => ({ eye: fp(f, 110, 150, 150), look: fp(f, 0, -8, 0) }),
+    fort: (f) => ({ eye: fp(f, 150, 330, 230), look: fp(f, 0, -12, 0) }),
   },
-  // each quadrant seen from the edge of the yard, at a robot's eye height
-  ...Object.fromEntries([0, 1, 2, 3].map((k) => [`fort-q${k}`, {
+  // each district from its yard at a robot's eye height, looking out over its buildings
+  ...Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((k) => [`fort-d${k}`, {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 60, figures: [],
     fort: (f: Fort) => {
-      const a = Math.PI / 4 + (k * Math.PI) / 2
-      return { eye: fp(f, Math.sin(a - 0.5) * 20, Math.cos(a - 0.5) * 20, 7), look: fp(f, Math.sin(a) * 55, Math.cos(a) * 55, 3) }
+      const s = f.plan.sectors[k]
+      const c = f.plan.centre
+      const [x, z] = s.yard.at
+      const a = s.role === 'citadel' ? Math.PI : Math.atan2(x - c[0], z - c[1])
+      return { eye: fp(f, x - Math.sin(a) * 12, z - Math.cos(a) * 12, 7), look: fp(f, x + Math.sin(a) * 50, z + Math.cos(a) * 50, 4) }
     },
   } satisfies Sample])),
+  // the citadel's bridged gatehouse from the main road
+  'fort-citadel': {
+    eye: [0, 0, 0], look: [0, 0, 0], fov: 55, figures: [],
+    fort: (f) => {
+      const g = f.plan.gates.find((k) => k.kind === 'citadel' && k.out[1] > 0)!
+      return { eye: fp(f, g.at[0] + 14, g.at[1] + 55, 6), look: fp(f, g.at[0], g.at[1], 8) }
+    },
+  },
   // the front gate as the robot comes up to it
   'fort-gate': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 50, figures: [],
@@ -84,12 +95,12 @@ const SAMPLES: Record<string, Sample> = {
       return { eye: fp(f, e[0], e[1], 6), look: fp(f, g.at[0], g.at[1], 3) }
     },
   },
-  // the yard from inside the front gate: the hangar door, bunker, containers
+  // the gate court from inside the main gate: the road up to the citadel and the keep over it
   'fort-yard': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 55, figures: [],
     fort: (f) => {
       const g = f.plan.gates[0]
-      return { eye: fp(f, g.inside[0], g.inside[1], 7), look: fp(f, f.plan.hangars[0].at[0], f.plan.hangars[0].at[1], 3) }
+      return { eye: fp(f, g.inside[0], g.inside[1], 7), look: fp(f, f.plan.centre[0], f.plan.centre[1], 12) }
     },
   },
   // the key poses side by side, three-quarter view

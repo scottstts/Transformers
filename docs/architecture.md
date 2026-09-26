@@ -10,13 +10,13 @@ Each character package (`src/content/cybertruck/`, `src/content/ferrari-f1/`) su
 
 `src/content/roster.ts` lists the playable cars: label, menu tagline and accent, loader and factory. Adding a car means adding a package and a roster entry. Assets download once per session (the promise is shared; a failed download can be retried). The last choice is remembered in local storage and used at boot.
 
-## Enemies and forts
+## Enemies and the fortress
 
-The desert's forts (`src/worlds/desert/fort/`, forts.md) are world scenery; their garrisons are `src/game/enemies/` (enemies.md), with the soldier's asset, rig and rendering in `src/content/soldier/` (soldier-model.md). The session owns one `Horde` for every fort and one `CarBarrier`. It routes the fight's `onHit` events to the horde and the horde's blade strikes to the playing character's `struck`. The soldier asset loads at boot beside the car's, as its own observed stage.
+The desert's fortress (`src/worlds/desert/fort/`, forts.md) is world scenery; its districts' garrisons are `src/game/enemies/` (enemies.md), with the soldier's asset, rig, rendering and health bars in `src/content/soldier/` (soldier-model.md). The session owns one `Horde` (every garrison) and one `CarBarrier`. It routes the fight's `onHit` events to the horde and the horde's blade strikes to the playing character's `struck`, tells the horde while a special plays (`Horde.special`: nothing is destroyed before its last blow) and settles the horde as the cutscene ends. The soldier asset loads at boot beside the car's, as its own observed stage.
 
 ## Switching cars
 
-`GameSession.switchCharacter` swaps cars in either form when no transformation or jump is running. A car is built the first time it is chosen:
+`GameSession.switchCharacter` swaps cars in either form, fighting or not, inside a fortress or out: a combo or a raised guard is simply dropped. Asked during a transformation, a jump or a special it waits for it to end (the world runs on meanwhile; the freeze starts only once it is swapping) instead of refusing, and a swipe while a car loads retargets the running switch: refusing made the menu look broken until the right moment was hit. A car is built the first time it is chosen:
 - download its vehicle and weapon assets together; the roster load promise is typed as `PlayableTransformerAsset`, so it cannot report ready without the weapon;
 - place it where the current car stands;
 - compile its shaders against the live scene's lighting (`compileAsync(object, camera, scene)`), then keep the combat weapon/effects warm through the hidden settle frames so geometry uploads plus the weapon cast-shadow pipeline are submitted before the cover lifts.

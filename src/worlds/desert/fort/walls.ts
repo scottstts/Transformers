@@ -63,8 +63,8 @@ export function concertina(w: MeshWriter, run: WallRun): void {
   const dx = run.b[0] - run.a[0], dz = run.b[1] - run.a[1]
   const len = Math.hypot(dx, dz)
   const ux = dx / len, uz = dz / len
-  // the slab line's ends are slab centres: the coil runs the slabs' full length
-  const s0 = -t.width / 2 + 0.1, s1 = len + t.width / 2 - 0.1
+  // the run's ends are its outer slabs' ends: the coil runs the slabs' full length
+  const s0 = 0.1, s1 = len - 0.1
   const r = 0.3, y = t.height + 0.12 + r, pitch = 0.36, seg = 8
   w.place(new Matrix4())
   const turns = Math.max(1, Math.round((s1 - s0) / pitch))
@@ -78,7 +78,7 @@ export function concertina(w: MeshWriter, run: WallRun): void {
   }
   tube(w, 'galvanized', pts, 0.009, 3)
   // brackets: a Y of flat bar from the slab top up either side of the coil
-  for (let s = 0; s <= len + 1e-3; s += t.width * 2) {
+  for (let s = t.width / 2; s <= len + 1e-3; s += t.width * 2) {
     const px = run.a[0] + ux * s, pz = run.a[1] + uz * s
     for (const k of [-1, 1]) {
       strut(w, 'darkSteel', [px, t.height - 0.02, pz], [px + uz * k * 0.34, y - 0.06, pz - ux * k * 0.34], 0.012, 4)

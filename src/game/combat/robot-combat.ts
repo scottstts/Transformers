@@ -3,7 +3,7 @@ import type { TransformerModel } from '../../content/transformer/model/transform
 import type { CharacterCombat, CombatCamera, CombatFrame } from '../../content/transformer/combat/effects'
 import type { CombatMove, MoveCue } from '../../content/transformer/combat/moves'
 import type { SpecialMove } from '../../content/transformer/combat/special'
-import type { HitEvent, MoveHits } from '../../content/transformer/combat/hits'
+import { lastHitTime, type HitEvent, type MoveHits } from '../../content/transformer/combat/hits'
 import { MovePlayer } from '../../content/transformer/combat/player'
 import { FootPlanner } from '../../content/transformer/combat/feet'
 import { Curve } from '../../content/transformer/combat/curves'
@@ -92,7 +92,9 @@ export class RobotCombat {
   private steering = false
   /** released to movement: the pose is handing back to the gait, the fight no longer owns the robot */
   private loose = false
-  private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false }
+  private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false, final: false }
+  /** when the special's last blow lands (its time), so that blow can be marked final */
+  private finalAt = -1
   /** the guard is held (the input), and the guard pose is up */
   private guardHeld = false
   private guarding = false
@@ -229,6 +231,7 @@ export class RobotCombat {
     this.tempoCurve.set(1, special.tempo)
     this.beginMove(special.move, state, camera, true)
     this.hits = this.combat.hits.special
+    this.finalAt = lastHitTime(this.hits)
     this.combat.effects.beginSpecial()
     return special
   }
@@ -434,6 +437,7 @@ export class RobotCombat {
     const t = this.player.time
     const e = this.hit
     e.special = this.special !== null
+    e.final = false
     const strikes = hits.strikes
     while (strikes && this.nextStrike < strikes.length && strikes[this.nextStrike].t <= t) {
       const s = strikes[this.nextStrike++]
@@ -441,6 +445,7 @@ export class RobotCombat {
       e.heading = state.yaw + ((s.aim ?? 0) * Math.PI) / 180
       e.reach = s.reach; e.arc = (s.arc * Math.PI) / 180
       e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.sweep = -1; e.radial = false
+      e.final = e.special && s.t === this.finalAt
       sink(e)
     }
     const blasts = hits.blasts
@@ -453,6 +458,7 @@ export class RobotCombat {
       e.z = this.origin.z + Math.cos(h) * fwd - Math.sin(h) * lat
       e.heading = h; e.reach = b.radius; e.arc = Math.PI * 2
       e.damage = b.damage; e.knock = b.knock; e.lift = b.lift; e.motion = 0; e.sweep = -1; e.radial = true
+      e.final = e.special && b.t === this.finalAt
       sink(e)
     }
     const sweeps = hits.sweeps
@@ -465,6 +471,7 @@ export class RobotCombat {
         e.z = d.z + Math.cos(state.yaw) * w.ahead
         e.heading = state.yaw; e.reach = w.radius; e.arc = Math.PI * 2
         e.damage = w.damage; e.knock = w.knock; e.lift = w.lift; e.motion = motion; e.sweep = this.sweepBase + i; e.radial = false
+        e.final = false
         sink(e)
       }
     }

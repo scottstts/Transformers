@@ -4,7 +4,6 @@ import type { RosterEntry } from '../content/roster'
 export interface VehicleHost {
   readonly roster: readonly RosterEntry[]
   current(): string
-  readonly canSwitch: boolean
   switchTo(entry: RosterEntry): Promise<boolean>
   /** return to play (pointer lock), from a user gesture */
   resume(): void
@@ -256,16 +255,14 @@ export class VehicleMenu {
     return Math.max(0, this.host.roster.findIndex((entry) => entry.id === this.host.current()))
   }
 
-  /** Move the carousel by `dir` cars and swap that car in; swipes wait while a car loads. */
+  /**
+   * Move the carousel by `dir` cars and swap that car in. A swipe while a car
+   * loads retargets: the running switch goes on to the car now in the centre.
+   */
   private swipe(dir: number): void {
-    if (!this.open || this.loading) return
+    if (!this.open) return
     const target = Math.min(this.host.roster.length - 1, Math.max(0, this.index + dir))
     if (target === this.index) {
-      this.nudge(dir)
-      return
-    }
-    if (!this.host.canSwitch) {
-      this.status.textContent = 'Finish the transformation first'
       this.nudge(dir)
       return
     }
@@ -295,7 +292,7 @@ export class VehicleMenu {
           this.status.textContent = `Couldn't load the ${entry.label}: ${error instanceof Error ? error.message : String(error)}`
         }
         if (!switched) {
-          if (!this.status.textContent) this.status.textContent = 'Finish the transformation first'
+          if (!this.status.textContent) this.status.textContent = 'Couldn\'t switch just now'
           this.index = this.currentIndex()
           break
         }

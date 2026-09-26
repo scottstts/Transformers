@@ -4,7 +4,8 @@ import { N } from '../../rendering/noise.ts';
 import { rockGeometry } from './world.ts';
 
 /**
- * Crust thrown out by a blast: slabs of hardpan and stones, flung
+ * Crust thrown out by a blast: slabs of hardpan and stones (or, off the
+ * fortress's paving, broken concrete), flung
  * ballistically, tumbling until they land, then lying where they fell until
  * they settle into the sand. One instanced draw of real (shadow-casting)
  * rock geometry; each chunk is stored once at birth and its flight, spin and
@@ -26,6 +27,8 @@ export class Debris {
 	private readonly a0: THREE.InstancedBufferAttribute;
 	private readonly a1: THREE.InstancedBufferAttribute;
 	private readonly a2: THREE.InstancedBufferAttribute;
+	/** per chunk: 1 broken concrete (thrown off paving), 0 the sand's crust */
+	private readonly kind: THREE.InstancedBufferAttribute;
 
 	constructor( scene: THREE.Scene ) {
 
@@ -45,11 +48,14 @@ export class Debris {
 		this.a0 = make(); // start position, birth
 		this.a1 = make(); // velocity, size
 		this.a2 = make(); // spin axis (unit), spin rate (rad/s)
+		this.kind = new THREE.InstancedBufferAttribute( new Float32Array( MAX ), 1 );
+		this.kind.setUsage( THREE.DynamicDrawUsage );
 		for ( let i = 0; i < MAX; i ++ ) this.a0.array[ i * 4 + 3 ] = - 1e9;
 
 		const p0 = instancedBufferAttribute( this.a0, 'vec4' ) as any;
 		const v0 = instancedBufferAttribute( this.a1, 'vec4' ) as any;
 		const spin = instancedBufferAttribute( this.a2, 'vec4' ) as any;
+		const concrete = instancedBufferAttribute( this.kind, 'float' ) as any;
 		const size = v0.w;
 		const age = this.time.sub( p0.w );
 		// lands when its centre comes down to a third of its size above the sand
@@ -79,7 +85,11 @@ export class Debris {
 		const n = N( positionLocal.xz.mul( 1.7 ).add( p0.w ) );
 		const crust = mix( color( 0x9c8266 ), color( 0xc9b090 ), n.r );
 		const stone = mix( color( 0x5f4d3e ), color( 0x8b735c ), n.g );
-		m.colorNode = mix( crust, stone, smoothstep( 0.6, 0.75, v0.w.mul( 3.7 ).fract() ) ).mul( mix( float( 0.72 ), float( 1.04 ), smoothstep( - 0.6, 0.6, normalLocal.y ) ) );
+		const sand = mix( crust, stone, smoothstep( 0.6, 0.75, v0.w.mul( 3.7 ).fract() ) );
+		// broken concrete: the slab's grey skin on its top, the aggregate showing in its fractures
+		const aggregate = mix( color( 0x4d4943 ), color( 0x756f64 ), smoothstep( 0.45, 0.62, N( positionLocal.xz.mul( 6.1 ) ).r ) );
+		const slab = mix( aggregate, mix( color( 0x98948b ), color( 0xaaa59b ), n.g ), smoothstep( 0.35, 0.8, normalLocal.y ) );
+		m.colorNode = mix( sand, slab, concrete ).mul( mix( float( 0.72 ), float( 1.04 ), smoothstep( - 0.6, 0.6, normalLocal.y ) ) );
 		m.roughnessNode = float( 0.93 );
 		this.mesh = new THREE.Mesh( geometry, m );
 		this.mesh.frustumCulled = false;
@@ -95,7 +105,7 @@ export class Debris {
 	 * about `dir` (`spread` 0 a jet along it, 1 anywhere above the ground),
 	 * `size` their largest (m).
 	 */
-	burst( center: THREE.Vector3, speed: number, count: number, dir: THREE.Vector3, spread: number, size: number ): void {
+	burst( center: THREE.Vector3, speed: number, count: number, dir: THREE.Vector3, spread: number, size: number, concrete = false ): void {
 
 		const A0 = this.a0.array as Float32Array, A1 = this.a1.array as Float32Array, A2 = this.a2.array as Float32Array;
 		const start = this.cursor;
@@ -118,16 +128,18 @@ export class Debris {
 			const ax = Math.random() * 2 - 1, ay = Math.random() * 2 - 1, az = Math.random() * 2 - 1;
 			const al = Math.hypot( ax, ay, az ) || 1;
 			A2.set( [ ax / al, ay / al, az / al, ( 3 + Math.random() * 9 ) * ( Math.random() < 0.5 ? - 1 : 1 ) ], i * 4 );
+			( this.kind.array as Float32Array )[ i ] = concrete ? 1 : 0;
 
 		}
 		const n = Math.min( count, MAX );
-		for ( const a of [ this.a0, this.a1, this.a2 ] ) {
+		for ( const a of [ this.a0, this.a1, this.a2, this.kind ] ) {
 
-			if ( start + n <= MAX ) a.addUpdateRange( start * 4, n * 4 );
+			const k = a.itemSize;
+			if ( start + n <= MAX ) a.addUpdateRange( start * k, n * k );
 			else {
 
-				a.addUpdateRange( start * 4, ( MAX - start ) * 4 );
-				a.addUpdateRange( 0, ( start + n - MAX ) * 4 );
+				a.addUpdateRange( start * k, ( MAX - start ) * k );
+				a.addUpdateRange( 0, ( start + n - MAX ) * k );
 
 			}
 			a.needsUpdate = true;

@@ -3,8 +3,8 @@ import type { SoldierAsset } from './asset'
 import { createShadowMaterial, createSoldierMaterials, hordeNodes } from './materials'
 import { SHADOW_ONLY_LAYER } from '../../rendering/layers'
 
-/** Soldiers drawn at most at once (every fort's garrison and its debris). */
-export const HORDE_CAPACITY = 128
+/** Soldiers drawn at most at once (the fortress's garrisons and their debris). */
+export const HORDE_CAPACITY = 160
 
 /** One soldier to draw this frame: its bone rows (bones x 12 floats, affine world rows) and state. */
 export interface HordeInstance {

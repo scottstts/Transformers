@@ -16,7 +16,9 @@
  *   blast   a burst at a ground point at `t` (a slam, a crater, an ignition):
  *           everything within `radius` thrown out from it, harder nearer
  *
- * `damage` is in soldier health (100 is a whole soldier), `knock` the speed
+ * `damage` is in soldier health (SOLDIER.health, 300, is a whole soldier: a
+ * combo's first three blows leave one standing, its fourth takes it down),
+ * `knock` the speed
  * (m/s) it is thrown at along the ground and `lift` straight up.
  */
 export type HitKind = 'blunt' | 'cut' | 'blast'
@@ -90,6 +92,17 @@ export interface HitEvent {
   sweep: number
   /** thrown outward from the centre (blasts) rather than along the heading */
   radial: boolean
-  /** the special: everything reacts bigger */
+  /** the special: everything reacts bigger, and its blows before the last cannot destroy (enemies.md) */
   special: boolean
+  /** the special's last blow: whatever its hits emptied breaks apart now */
+  final: boolean
+}
+
+/** When a move's last blow lands (s): its latest strike or blast, or the end of its latest sweep. */
+export function lastHitTime(h: MoveHits): number {
+  let t = 0
+  for (const s of h.strikes ?? []) t = Math.max(t, s.t)
+  for (const b of h.blasts ?? []) t = Math.max(t, b.t)
+  for (const w of h.sweeps ?? []) t = Math.max(t, w.t1)
+  return t
 }

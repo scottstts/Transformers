@@ -233,3 +233,52 @@ export function bund(w: MeshWriter, M: Matrix4, m: Module): void {
   cylinderY(w, 'steel', 0.2, 0.14, 0.75, 12, 0.03)
   w.place(M)
 }
+
+/**
+ * A flagpole: a tapered pole on a concrete base with a bolted collar, a
+ * truck and finial at the top, the halyard down to its cleat, and the flag
+ * flying from the hoist along +x of its frame (every flag's frame is turned
+ * to the one wind): a cloth surface rippling in travelling folds that grow
+ * toward the fly, drooping a little at its free end. `m.variant` picks the
+ * flag's tone.
+ */
+export function flagpole(w: MeshWriter, M: Matrix4, m: Module): void {
+  const H = m.size[1]
+  w.place(M)
+  chamferBox(w, 'concrete', [-0.5, -0.2, -0.5], [0.5, 0.35, 0.5], 0.04)
+  cylinderY(w, 'darkSteel', 0.16, 0.35, 0.5, 12, 0.02)
+  revolveY(w, 'galvanized', [[0.085, 0.5], [0.07, H * 0.5], [0.045, H]], [[1, 0.004], [1, 0.004], [1, 0.004]], 10)
+  cylinderY(w, 'galvanized', 0.075, H, H + 0.1, 10, 0.02)
+  revolveY(w, 'galvanized', [[0.001, H + 0.1], [0.07, H + 0.17], [0.07, H + 0.2], [0.001, H + 0.27]], [[0, -1], [1, -0.3], [1, 0.3], [0, 1]], 10)
+  // halyard and cleat
+  strut(w, 'darkSteel', [0.06, H - 0.05, 0.03], [0.07, 1.4, 0.03], 0.006, 3, M)
+  w.place(M)
+  chamferBox(w, 'darkSteel', [0.07, 1.3, 0.0], [0.11, 1.5, 0.06], 0.005)
+  // the flag: hoist at the pole, 2.9 x 1.8 m
+  const L = 2.9, Hf = 1.8, top = H - 0.25
+  const nu = 14, nv = 6
+  const point = (u: number, v: number): Vec3 => {
+    const fold = 0.22 * u * Math.sin(Math.PI * 2 * (u * 1.35 - 0.1) + v * 0.5)
+    return [0.09 + u * L, top - v * Hf - 0.12 * u * u, fold]
+  }
+  const rows: Vec3[][] = [], normals: Vec3[][] = []
+  const e = 0.01
+  for (let j = 0; j <= nv; j++) {
+    const row: Vec3[] = [], nrm: Vec3[] = []
+    for (let i = 0; i <= nu; i++) {
+      const u = i / nu, v = j / nv
+      row.push(point(u, v))
+      const a = point(Math.min(1, u + e), v), b = point(Math.max(0, u - e), v)
+      const c = point(u, Math.min(1, v + e)), d = point(u, Math.max(0, v - e))
+      const du = [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dv = [c[0] - d[0], c[1] - d[1], c[2] - d[2]]
+      const nx = du[1] * dv[2] - du[2] * dv[1], ny = du[2] * dv[0] - du[0] * dv[2], nz = du[0] * dv[1] - du[1] * dv[0]
+      const l = Math.hypot(nx, ny, nz) || 1
+      nrm.push([nx / l, ny / l, nz / l])
+    }
+    rows.push(row)
+    normals.push(nrm)
+  }
+  w.shade(((m.variant * 0.37) % 1) * 0.9 + 0.05)
+  w.grid('flag', rows, normals)
+  w.shade(0.5)
+}

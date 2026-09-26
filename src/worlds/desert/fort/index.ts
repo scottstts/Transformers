@@ -1,10 +1,13 @@
 import { Vector3, type Camera, type Group, type Material, type Mesh, type Scene } from 'three/webgpu'
 import type { CircleCollider, SegmentCollider } from '../../../game/types'
+import { ColliderGrid } from '../../../game/collide'
 import { buildFort } from './build'
+import { pavedPatches } from './paving'
+import { PavedGround } from '../paved-ground'
 import { createFortMaterials } from './materials'
-import { FORT_SITES, insideWalls, planFort, type FortPlan, type FortSite } from './plan'
+import { FORT_SITES, insideWalls, planFort, sectorAt, type FortPlan, type FortSite } from './plan'
 
-export { FORT_SITES, type FortPlan, type FortSite } from './plan'
+export { FORT_SITES, outsideSector, type FortPlan, type FortSite, type Sector, type SectorRole } from './plan'
 
 /** A fort in the world: its plan, its geometry and its colliders in world space. */
 export interface Fort {
@@ -15,22 +18,25 @@ export interface Fort {
   toWorld(x: number, z: number, out?: { x: number; z: number }): { x: number; z: number }
   /** world -> fort frame */
   toLocal(x: number, z: number, out?: { x: number; z: number }): { x: number; z: number }
-  /** a world point inside the wall ring */
+  /** a world point inside the perimeter */
   inside(x: number, z: number): boolean
-  /** this fort's colliders in world space */
+  /** the district a world point is in (`plan.sectors.length` outside the perimeter) */
+  sector(x: number, z: number): number
+  /** this fort's colliders in world space, and binned for bodies that test them often (the soldiers) */
   readonly circles: CircleCollider[]
   readonly segments: SegmentCollider[]
+  readonly grid: ColliderGrid
 }
 
 /** Detail geometry (slab loops, razor wire, clutter) is drawn within this distance of its bounds (m). */
 const DETAIL_FAR = 120
 
 /**
- * The desert's forts (plan.ts): built once at start, static geometry (one
- * draw per material slot and quadrant each, build.ts), their walls,
- * buildings and props added to the world's colliders, and the ground around
- * them cleared of the tiled boulders (`exclusions`). Each quadrant's small
- * detail is shown only near it (`update`).
+ * The desert's fortress (plan.ts): built once at start, static geometry (one
+ * draw per material slot and district each, build.ts), its walls, buildings
+ * and props added to the world's colliders, and the ground around it cleared
+ * of the tiled boulders (`exclusions`). Each district's small detail is
+ * shown only near it (`update`).
  */
 export class Forts {
   readonly list: Fort[] = []
@@ -39,6 +45,8 @@ export class Forts {
   readonly segments: SegmentCollider[] = []
   /** world circles the tiled scatter keeps out of */
   readonly exclusions: Array<{ x: number; z: number; r: number }> = []
+  /** where the fortresses' floors are paved (the world's surface answers blasts by it) */
+  readonly paving = new PavedGround()
   private readonly materials: Record<string, Material>
 
   constructor(scene: Scene, sites: readonly FortSite[] = FORT_SITES) {
@@ -52,13 +60,22 @@ export class Forts {
         this.detail.push({ mesh, centre: sphere.center.clone().applyMatrix4(group.matrixWorld), radius: sphere.radius })
       }
       const c = Math.cos(site.yaw), s = Math.sin(site.yaw)
+      const toWorld = (x: number, z: number, out = { x: 0, z: 0 }): { x: number; z: number } => {
+        out.x = site.x + x * c + z * s
+        out.z = site.z - x * s + z * c
+        return out
+      }
+      const circles: CircleCollider[] = plan.circles.map((k) => {
+        const p = toWorld(k.x, k.z)
+        return { x: p.x, z: p.z, r: k.r }
+      })
+      const segments: SegmentCollider[] = plan.segments.map((k) => {
+        const a = toWorld(k.ax, k.az), b = toWorld(k.bx, k.bz)
+        return { ax: a.x, az: a.z, bx: b.x, bz: b.z, r: k.r }
+      })
       const fort: Fort = {
-        plan, group, triangles, circles: [], segments: [],
-        toWorld: (x, z, out = { x: 0, z: 0 }) => {
-          out.x = site.x + x * c + z * s
-          out.z = site.z - x * s + z * c
-          return out
-        },
+        plan, group, triangles, circles, segments, grid: new ColliderGrid(segments, circles),
+        toWorld,
         toLocal: (x, z, out = { x: 0, z: 0 }) => {
           const dx = x - site.x, dz = z - site.z
           out.x = dx * c - dz * s
@@ -69,17 +86,15 @@ export class Forts {
           const dx = x - site.x, dz = z - site.z
           return insideWalls(plan, dx * c - dz * s, dx * s + dz * c)
         },
+        sector: (x, z) => {
+          const dx = x - site.x, dz = z - site.z
+          return sectorAt(plan, dx * c - dz * s, dx * s + dz * c)
+        },
       }
       this.list.push(fort)
-      const p = { x: 0, z: 0 }
-      for (const k of plan.circles) {
-        fort.toWorld(k.x, k.z, p)
-        fort.circles.push({ x: p.x, z: p.z, r: k.r })
-      }
-      for (const k of plan.segments) {
-        const a = fort.toWorld(k.ax, k.az)
-        const b = fort.toWorld(k.bx, k.bz)
-        fort.segments.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z, r: k.r })
+      for (const p of pavedPatches(plan)) {
+        const w = toWorld(p.at[0], p.at[1])
+        this.paving.add({ x: w.x, z: w.z, yaw: p.yaw + site.yaw, hx: p.hx, hz: p.hz, top: p.top, round: p.round })
       }
       this.circles.push(...fort.circles)
       this.segments.push(...fort.segments)
@@ -87,7 +102,7 @@ export class Forts {
     }
   }
 
-  /** Show each quadrant's detail only while the camera is near it. */
+  /** Show each district's detail only while the camera is near it. */
   update(camera: Camera): void {
     const p = camera.position
     for (const d of this.detail) d.mesh.visible = p.distanceTo(d.centre) - d.radius < DETAIL_FAR

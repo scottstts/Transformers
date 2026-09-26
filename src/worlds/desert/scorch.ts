@@ -1,8 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { abs, atan, attribute, cameraViewMatrix, exp, float, floor, fract, length, max, min, mix, positionWorld, select, smoothstep, uniform, vec2, vec3 } from 'three/tsl';
+import { abs, atan, attribute, cameraViewMatrix, exp, float, floor, fract, length, max, min, mix, positionLocal, positionWorld, select, smoothstep, uniform, vec2, vec3 } from 'three/tsl';
 import { N } from '../../rendering/noise.ts';
 import { blackbody } from '../../rendering/blackbody.ts';
 import { groundSurface } from './materials.ts';
+import { NEAR, type PavedGround } from './paved-ground.ts';
 
 /**
  * Sand fused by a blast of heat. When enough heat lands on quartz sand it melts
@@ -22,6 +23,14 @@ import { groundSurface } from './materials.ts';
  *           leaves the same trench and berms in plain sand
  *
  * Heat is gone in seconds; the marks themselves fade over LIFE.
+ *
+ * Marks answer the surface they land on (`PavedGround`): where the floor is
+ * paved the sand's mark is cut away under the slabs and a concrete one is
+ * drawn on the paving's top instead. Concrete doesn't fuse: a blast spalls
+ * its skin off to the aggregate in a shallow scar, splits it in radial and
+ * ring cracks and chars it with soot; a dragged edge scores a gouge with
+ * chipped lips. Both glow a moment where the heat landed. Before, the sand
+ * crater's depth bias drew it over the slabs, sand and all.
  */
 const CRATERS = 6;
 const FURROWS = 40;
@@ -48,11 +57,17 @@ export class ScorchMarks {
 
 	readonly craters: THREE.Mesh;
 	readonly furrows: THREE.Mesh;
+	/** the concrete marks, one crater and one furrow mesh per paving level */
+	readonly paved: THREE.Mesh[] = [];
 	private readonly time = uniform( 0 );
-	private readonly crater: { position: THREE.BufferAttribute; mark: THREE.BufferAttribute; heat: THREE.BufferAttribute; written: number };
-	private readonly furrow: { position: THREE.BufferAttribute; mark: THREE.BufferAttribute; line: THREE.BufferAttribute; reheat: THREE.BufferAttribute; written: number };
+	private readonly crater: { position: THREE.BufferAttribute; mark: THREE.BufferAttribute; heat: THREE.BufferAttribute; near0: THREE.BufferAttribute; near1: THREE.BufferAttribute; written: number };
+	private readonly furrow: { position: THREE.BufferAttribute; mark: THREE.BufferAttribute; line: THREE.BufferAttribute; reheat: THREE.BufferAttribute; near0: THREE.BufferAttribute; near1: THREE.BufferAttribute; written: number };
+	private readonly paving: PavedGround | null;
+	private readonly near = new Float32Array( NEAR );
 
-	constructor( scene: THREE.Scene ) {
+	constructor( scene: THREE.Scene, paving: PavedGround | null = null ) {
+
+		this.paving = paving;
 
 		const quads = ( count: number, attributes: Record<string, number> ) => {
 
@@ -73,14 +88,42 @@ export class ScorchMarks {
 
 		};
 
-		const c = quads( CRATERS, { position: 3, mark: 4, heat: 2 } );
-		this.crater = { position: c.out.position, mark: c.out.mark, heat: c.out.heat, written: 0 };
-		this.craters = this.decal( c.geometry, this.craterMaterial() );
-		const f = quads( FURROWS, { position: 3, mark: 4, line: 4, reheat: 4 } );
-		this.furrow = { position: f.out.position, mark: f.out.mark, line: f.out.line, reheat: f.out.reheat, written: 0 };
+		const c = quads( CRATERS, { position: 3, mark: 4, heat: 2, near0: 4, near1: 4 } );
+		this.crater = { position: c.out.position, mark: c.out.mark, heat: c.out.heat, near0: c.out.near0, near1: c.out.near1, written: 0 };
+		const f = quads( FURROWS, { position: 3, mark: 4, line: 4, reheat: 4, near0: 4, near1: 4 } );
+		this.furrow = { position: f.out.position, mark: f.out.mark, line: f.out.line, reheat: f.out.reheat, near0: f.out.near0, near1: f.out.near1, written: 0 };
 		( this.furrow.reheat.array as Float32Array ).fill( NEVER );
-		this.furrows = this.decal( f.geometry, this.furrowMaterial() );
+		for ( const a of [ c.out.near0, c.out.near1, f.out.near0, f.out.near1 ] ) ( a.array as Float32Array ).fill( - 1 );
+		// the paving's top under the fragment (-1 bare ground), from the shapes the mark listed when it was laid
+		const top = paving ? paving.topNode( positionWorld.xz, attribute( 'near0', 'vec4' ), attribute( 'near1', 'vec4' ) ) : float( - 1 );
+		const bare = select( top.lessThan( 0 ), float( 1 ), float( 0 ) );
+		this.craters = this.decal( c.geometry, this.craterMaterial( bare ) );
+		this.furrows = this.decal( f.geometry, this.furrowMaterial( bare ) );
 		scene.add( this.craters, this.furrows );
+		for ( const level of paving?.levels ?? [] ) {
+
+			const on = select( abs( top.sub( level ) ).lessThan( 1e-3 ), float( 1 ), float( 0 ) );
+			this.paved.push( this.decal( c.geometry, this.concreteCrater( level, on ) ), this.decal( f.geometry, this.concreteFurrow( level, on ) ) );
+
+		}
+		if ( this.paved.length ) scene.add( ...this.paved );
+
+	}
+
+	/** The paved shapes near a mark's bounding circle, into its quad's index attributes. */
+	private listNear( near0: THREE.BufferAttribute, near1: THREE.BufferAttribute, q: number, x: number, z: number, radius: number ): void {
+
+		const n = this.near;
+		if ( this.paving ) this.paving.near( x, z, radius, n );
+		else n.fill( - 1 );
+		for ( let k = 0; k < 4; k ++ ) {
+
+			( near0.array as Float32Array ).set( [ n[ 0 ], n[ 1 ], n[ 2 ], n[ 3 ] ], ( q * 4 + k ) * 4 );
+			( near1.array as Float32Array ).set( [ n[ 4 ], n[ 5 ], n[ 6 ], n[ 7 ] ], ( q * 4 + k ) * 4 );
+
+		}
+		flush( near0, q, 4 );
+		flush( near1, q, 4 );
 
 	}
 
@@ -102,6 +145,7 @@ export class ScorchMarks {
 
 		}
 		for ( const [ a, size ] of [ [ this.crater.position, 3 ], [ this.crater.mark, 4 ], [ this.crater.heat, 2 ] ] as const ) flush( a, q, size );
+		this.listNear( this.crater.near0, this.crater.near1, q, center.x, center.z, r * Math.SQRT2 );
 
 	}
 
@@ -130,6 +174,7 @@ export class ScorchMarks {
 
 		}
 		for ( const [ a, size ] of [ [ this.furrow.position, 3 ], [ this.furrow.mark, 4 ], [ this.furrow.line, 4 ], [ this.furrow.reheat, 4 ] ] as const ) flush( a, q, size );
+		this.listNear( this.furrow.near0, this.furrow.near1, q, ( from.x + to.x ) / 2, ( from.z + to.z ) / 2, Math.hypot( length / 2 + margin, across ) );
 		return handle;
 
 	}
@@ -166,7 +211,7 @@ export class ScorchMarks {
 
 	}
 
-	private craterMaterial(): THREE.MeshStandardNodeMaterial {
+	private craterMaterial( bare ): THREE.MeshStandardNodeMaterial {
 
 		const mark = attribute( 'mark', 'vec4' );
 		const heatAttr = attribute( 'heat', 'vec2' );
@@ -220,12 +265,12 @@ export class ScorchMarks {
 			height, x, y, axisX: vec3( 1, 0, 0 ), axisY: vec3( 0, 0, 1 ), glass, char, glow,
 			// cracks show dark in the cold glass: the crust split and settled
 			glassShade: float( 1 ).sub( cracks.mul( 0.45 ) ),
-			opacity: float( 1 ).sub( smoothstep( REACH * 0.8, REACH * 0.98, r ) ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ),
+			opacity: float( 1 ).sub( smoothstep( REACH * 0.8, REACH * 0.98, r ) ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ).mul( bare ),
 		} );
 
 	}
 
-	private furrowMaterial(): THREE.MeshStandardNodeMaterial {
+	private furrowMaterial( bare ): THREE.MeshStandardNodeMaterial {
 
 		const mark = attribute( 'mark', 'vec4' );
 		const line = attribute( 'line', 'vec4' );
@@ -273,10 +318,164 @@ export class ScorchMarks {
 			glassShade: float( 1 ),
 			opacity: float( 1 ).sub( smoothstep( SOOT * 0.8, SOOT * 0.98, abs( u ).div( hw ) ) )
 				.mul( smoothstep( hw.mul( - 2.4 ), hw.mul( - 0.5 ), end ) )
-				.mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ),
+				.mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ).mul( bare ),
 		} );
 
 	}
+
+	/**
+	 * A blast on concrete at paving height `level`: the skin spalled off to
+	 * the aggregate in a shallow ragged scar at the heart, radial cracks
+	 * running out through the slab with a broken ring or two, soot charred
+	 * over it all and thrown out in rays; the scar and cracks glow a moment.
+	 */
+	private concreteCrater( level: number, on ): THREE.MeshStandardNodeMaterial {
+
+		const mark = attribute( 'mark', 'vec4' );
+		const heatAttr = attribute( 'heat', 'vec2' );
+		const R = mark.z, heat = heatAttr.x, seed = heatAttr.y;
+		const age = this.time.sub( mark.w );
+		const TAU = 2 * Math.PI;
+		const polar = ( x, y ) => ( { r: length( vec2( x, y ) ).div( R ), a: atan( y, x ).div( TAU ).add( 0.5 ) } );
+		const ridge = ( v, w ) => float( 1 ).sub( smoothstep( 0, w, abs( v.sub( 0.5 ) ) ) );
+		// the scar's ragged edge (it follows the slab's weak aggregate), and its floor of broken pits
+		const scar = ( x, y ) => {
+
+			const { r, a } = polar( x, y );
+			const ragged = r.add( N( vec2( a.mul( 9 ).add( seed ), r.mul( 1.3 ) ) ).r.sub( 0.5 ).mul( 0.22 ) );
+			return float( 1 ).sub( smoothstep( 0.3, 0.36, ragged ) );
+
+		};
+		const height = ( x, y ) => {
+
+			// broken, not patterned: two broad octaves of pitting (a fine one aliased into a grid)
+			const pits = N( vec2( x, y ).mul( 0.45 ).add( seed ) ).g.sub( 0.5 ).mul( 0.03 ).add( N( vec2( y, x ).mul( 1.1 ).add( seed.mul( 1.7 ) ) ).r.sub( 0.5 ).mul( 0.012 ) );
+			return scar( x, y ).mul( float( - 0.035 ).add( pits ) );
+
+		};
+		const x = mark.x, y = mark.y;
+		const { r, a } = polar( x, y );
+		const spall = scar( x, y );
+		const K = 9;
+		const spoke = a.mul( K ).add( N( vec2( r.mul( 0.5 ), a.mul( 3 ).add( seed ) ) ).a.sub( 0.5 ).mul( 0.3 ) );
+		const reach = N( vec2( floor( spoke ).mul( 0.173 ).add( seed ), 0.61 ) ).r.mul( 0.8 ).add( 0.7 );
+		const radial = ridge( fract( spoke ), float( 0.035 ).mul( float( 1.3 ).sub( r ) ).max( 0.004 ) )
+			.mul( smoothstep( 0.26, 0.34, r ) ).mul( float( 1 ).sub( smoothstep( reach.sub( 0.25 ), reach, r ) ) );
+		const ring = ridge( fract( r.mul( 1.6 ).add( N( vec2( a.mul( 5 ).add( seed ), 0.3 ) ).r.mul( 0.3 ) ) ), 0.018 )
+			.mul( smoothstep( 0.4, 0.55, N( vec2( a.mul( 7 ), seed ) ).b ) ).mul( smoothstep( 0.35, 0.45, r ) ).mul( float( 1 ).sub( smoothstep( 1.0, 1.2, r ) ) );
+		const cracks = max( radial, ring );
+		const ray = N( vec2( a.mul( 14 ).add( seed.mul( 2 ) ), r.mul( 0.35 ) ) ).g.mul( 0.7 ).add( N( vec2( a.mul( 29 ).add( seed ), r.mul( 0.8 ) ) ).b.mul( 0.3 ) );
+		const edge = r.add( N( positionWorld.xz.mul( 0.35 ) ).r.sub( 0.5 ).mul( 0.25 ) );
+		const soot = float( 1 ).sub( smoothstep( 0.55, 1.35, edge ) ).mul( 0.8 )
+			.add( smoothstep( 0.55, 0.8, ray ).mul( smoothstep( 0.7, 0.95, r ) ).mul( float( 1 ).sub( smoothstep( 1.2, 1.9, r ) ) ).mul( 0.5 ) ).clamp( 0, 0.88 );
+		const core = exp( r.div( 0.4 ).pow( 2 ).negate() );
+		const tScar = float( 1500 ).mul( heat ).mul( core ).mul( exp( age.div( 1.4 ).negate() ) ).add( AMBIENT );
+		const tCrack = float( 1300 ).mul( heat ).mul( exp( r.div( 0.7 ).pow( 2 ).negate() ) ).mul( exp( age.div( 3.5 ).negate() ) ).add( AMBIENT );
+		const glow = blackbody( tScar ).mul( spall ).add( blackbody( tCrack ).mul( cracks ) ).mul( GLOW );
+		return concreteMaterial( {
+			level, height, x, y, axisX: vec3( 1, 0, 0 ), axisY: vec3( 0, 0, 1 ), spall, cracks, soot, glow,
+			opacity: max( max( spall, cracks ), soot ).mul( float( 1 ).sub( smoothstep( REACH * 0.8, REACH * 0.98, r ) ) ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ).mul( on ),
+		} );
+
+	}
+
+	/**
+	 * An edge dragged over concrete at paving height `level`: a scored gouge
+	 * down to the aggregate, striated along the drag, with chipped lips and,
+	 * for a hot edge, a halo of soot; the gouge glows where the edge was hot
+	 * (and again when a front reignites it).
+	 */
+	private concreteFurrow( level: number, on ): THREE.MeshStandardNodeMaterial {
+
+		const mark = attribute( 'mark', 'vec4' );
+		const line = attribute( 'line', 'vec4' );
+		const reheat = attribute( 'reheat', 'vec4' );
+		const hw = mark.z, length_ = line.x, heat = line.y;
+		const age = this.time.sub( mark.w );
+		const u = mark.x, v = mark.y;
+		const end = min( v, length_.sub( v ) );
+		const taper = smoothstep( hw.mul( - 1 ), hw.mul( 3 ), end );
+		// the gouge is narrower than the sand's trench: concrete gives way only where the edge bites
+		const gougeW = ( uu, vv ) => abs( uu ).div( hw.mul( 0.55 ) ).add( N( vec2( vv.mul( 1.1 ), uu.mul( 0.5 ) ) ).r.sub( 0.5 ).mul( 0.35 ) );
+		const height = ( uu, vv ) => {
+
+			const e = min( vv, length_.sub( vv ) );
+			const t = smoothstep( hw.mul( - 1 ), hw.mul( 3 ), e );
+			const w = gougeW( uu, vv );
+			const striae = N( vec2( uu.mul( 9 ), vv.mul( 0.4 ) ) ).g.sub( 0.5 ).mul( 0.2 );
+			return float( 1 ).sub( w.mul( w ) ).max( 0 ).mul( float( - 0.05 ).add( striae.mul( 0.02 ) ) ).mul( t );
+
+		};
+		const w = gougeW( u, v );
+		const gouge = float( 1 ).sub( smoothstep( 0.8, 1.0, w ) ).mul( taper );
+		const lips = smoothstep( 0.85, 1.05, w ).mul( float( 1 ).sub( smoothstep( 1.1, 1.7, w ) ) ).mul( smoothstep( 0.45, 0.6, N( vec2( v.mul( 2.3 ), u.mul( 3.1 ) ) ).b ) ).mul( taper );
+		const fused = smoothstep( 0.02, 0.2, heat );
+		const soot = float( 1 ).sub( smoothstep( 0.9, SOOT * 0.8, abs( u ).div( hw ).add( N( positionWorld.xz.mul( 0.7 ) ).r.sub( 0.5 ).mul( 0.5 ) ) ) ).mul( 0.8 ).mul( smoothstep( hw.mul( - 2.5 ), hw.mul( 1.5 ), end ) ).mul( fused );
+		const speed = reheat.y, at = reheat.z;
+		const off = abs( v.sub( at ) );
+		const arrival = select( speed.greaterThan( 0 ), off.div( max( speed, 1e-3 ) ), max( at, length_.sub( at ) ).sub( off ).div( max( speed.negate(), 1e-3 ) ) );
+		const front = this.time.sub( reheat.x ).sub( arrival );
+		const burn = select( front.greaterThanEqual( 0 ), exp( front.div( COOL.front ).negate() ), float( 0 ) );
+		const tFirst = float( 1700 ).mul( heat ).mul( exp( age.div( COOL.furrow ).negate() ) );
+		const tBurn = float( 2000 ).mul( burn );
+		const temperature = max( tFirst, tBurn ).mul( exp( w.mul( w ).mul( - 1.5 ) ) ).mul( taper ).add( AMBIENT );
+		const glow = blackbody( temperature ).mul( gouge ).mul( GLOW );
+		return concreteMaterial( {
+			level, height, x: u, y: v, axisX: vec3( line.w.negate(), 0, line.z ), axisY: vec3( line.z, 0, line.w ),
+			spall: gouge, cracks: lips.mul( 0.5 ), soot, glow,
+			opacity: max( max( gouge, lips.mul( 0.8 ) ), soot )
+				.mul( smoothstep( hw.mul( - 2.4 ), hw.mul( - 0.5 ), end ) )
+				.mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ).mul( on ),
+		} );
+
+	}
+
+}
+
+interface ConcreteMark {
+	/** the paving's top the mark is drawn on (m) */
+	level: number;
+	height: ( x, y ) => any;
+	x: any;
+	y: any;
+	axisX: any;
+	axisY: any;
+	/** 0..1 skin gone to the aggregate; 0..1 a crack; 0..1 soot */
+	spall: any;
+	cracks: any;
+	soot: any;
+	glow: any;
+	opacity: any;
+}
+
+/**
+ * Concrete's marks, drawn over the paving it lands on (lifted to its top):
+ * soot is a dark translucent film over the slab; spalled scars show the
+ * aggregate (grey-brown stones in a darker matrix) and cracks show dark,
+ * both opaque; relief through the normal.
+ */
+function concreteMaterial( m: ConcreteMark ): THREE.MeshStandardNodeMaterial {
+
+	const material = new THREE.MeshStandardNodeMaterial( { transparent: true, depthWrite: false } );
+	material.polygonOffset = true;
+	material.polygonOffsetFactor = - 2;
+	material.polygonOffsetUnits = - 2;
+	material.positionNode = positionLocal.add( vec3( 0, m.level + 0.004 - LIFT, 0 ) );
+	const e = 0.03;
+	const h0 = m.height( m.x, m.y );
+	const gx = m.height( m.x.add( e ), m.y ).sub( h0 ).div( e );
+	const gy = m.height( m.x, m.y.add( e ) ).sub( h0 ).div( e );
+	material.normalNode = vec3( 0, 1, 0 ).sub( m.axisX.mul( gx ) ).sub( m.axisY.mul( gy ) ).normalize().transformDirection( cameraViewMatrix );
+	const stones = N( positionWorld.xz.mul( 1.3 ).add( N( positionWorld.xz.mul( 0.21 ) ).rg.mul( 2 ) ) );
+	const aggregate = mix( vec3( 0.2, 0.19, 0.17 ), vec3( 0.4, 0.37, 0.33 ), smoothstep( 0.35, 0.7, stones.r ) ).mul( stones.g.mul( 0.2 ).add( 0.82 ) );
+	const soot = mix( vec3( 0.025, 0.024, 0.022 ), vec3( 0.06, 0.055, 0.05 ), stones.b );
+	const scarred = mix( aggregate.mul( float( 1 ).sub( m.soot.mul( 0.6 ) ) ), vec3( 0.03, 0.028, 0.026 ), m.cracks );
+	material.colorNode = mix( soot, scarred, max( m.spall, m.cracks ) );
+	material.roughnessNode = mix( float( 0.96 ), float( 0.9 ), m.spall );
+	material.metalnessNode = float( 0 );
+	material.emissiveNode = m.glow;
+	material.opacityNode = m.opacity;
+	return material;
 
 }
 

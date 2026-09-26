@@ -40,6 +40,7 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 
 ## World reactions (desert, via `ContactEffects`)
 
+- **Surface-aware marks**: the world knows where the fortress is paved (`PavedGround`, from the plan's aprons, roads, gate passages, bays, garage and hangar floors and helipads). The sand's marks are cut away under the slabs and concrete's marks drawn on each paving level instead: a spalled scar showing aggregate, radial and ring cracks, soot and rays, a scored gouge with chipped lips for a dragged edge; crust thrown off a slab is broken concrete. Each mark lists the (at most 8) paved shapes near it when it is laid and its fragments test only those: testing every shape across a crater's quad cost more than the mark. Before, the sand crater's depth bias drew it over the slabs.
 - **Fused glass** (`scorch.ts`): quartz sand melted by heat sets as dark olive glass (trinitite). A crater is a bowl, rim, ejecta blanket and soot rays, with a glass floor. Its cracks and radial fissures stay hot longest. A furrow is a trench of glass that can be reignited later by a heat front (`reignite`). Temperatures cool exponentially and glow through `rendering/blackbody.ts`: Planck colour with a compressed level, and nothing below about 800 K. Heat is gone in seconds; the marks fade over 110 s.
 - The decal quads are mirrored differently for craters and furrows: a furrow's (u, v) frame is left-handed, so its corners run the other way to face up. Otherwise they are back-face culled.
 - **Debris** (`debris.ts`): shadow-casting crust slabs and stones. Flight, tumble (Rodrigues about a per-chunk axis) and rest are evaluated on the GPU from birth data. They lie 24 s, then settle into the sand.
@@ -54,10 +55,10 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 
 ## Against the soldiers
 
-A special's hits are far bigger than the combo's (`hits.ts`, enemies.md). They are marked `special`, which throws debris 30 % harder and scorches blast victims.
+A special's hits are far bigger than the combo's (`hits.ts`, enemies.md). They are marked `special`, which throws debris 30 % harder and scorches blast victims. Its blows before its last never destroy: a soldier they empty is held doomed in its flinch through the cutscene, and the last blow (`HitEvent.final`, the latest strike or blast) breaks every doomed soldier at once, in its reach or not. Nothing disintegrates mid-cinematic.
 
 - **Skyfall**: the launch blows everything within 10 m flat. The impact kills everything within 22 m of the crater.
-- **Red Line**: each cut marks what it passes through (70 damage) and the hairpins throw what they skid into. At the flick, the blast at the ring's centre (13.5 m) takes the rest.
+- **Red Line**: each cut marks what it passes through (70 damage) and the hairpins throw what they skid into. At the flick, the blast at the ring's centre (13.5 m) takes the rest, and whatever the cuts emptied beyond it breaks with it.
 
 Soldiers cannot reach the robot during the cutscene (the target is absent).
 
