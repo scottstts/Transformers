@@ -94,6 +94,23 @@ export interface GaitStyle {
 	kneePoleUp?: [ number, number ];
 	/** Forward lean in degrees per m/s, walking and running. */
 	lean?: [ number, number ];
+	/** Share of the contact sweep ahead of the hip at the strike, walking and running (default 0.5). */
+	reach?: [ number, number ];
+	/** Knee flexion (deg) left at the stride's longest reach, walking and running (default 20). */
+	kneeFloor?: [ number, number ];
+	/** How far the walking pelvis vaults over the stance leg instead of holding the stride's lowest carriage (0..1). */
+	vault?: number;
+	/**
+	 * Swing lift as a window (shares of the swing): fully raised by the first
+	 * value, lowering from the second, walking and running. Holding the foot up
+	 * through the swing folds the leg under the hip and drives the knee instead
+	 * of trailing the foot out behind. Default: one early-peaking hump.
+	 */
+	liftWindow?: [ [ number, number ], [ number, number ] ];
+	/** Share of the swing over which the toe-off pitch relaxes, walking and running (default 0.35). */
+	toeRelease?: [ number, number ];
+	/** Arms carried forward (deg) against the torso's lean while moving, walking and running. */
+	armCarry?: [ number, number ];
 }
 
 /** A heavy machine: long stance, weight shift over the planted leg. */
@@ -130,6 +147,7 @@ const TOE_ROLL = 0.6;
 /** Swing: how early the lift peaks (0 at mid-swing), relaxed toe (rad), how fast the stance velocity fades after lift-off and before the strike. */
 const LIFT_SKEW = 0.3;
 const SWING_TOE = 0.12;
+const TOE_RELEASE = 0.35;
 const SWING_TANGENT_FADE = 10;
 /** Samples of the stride cycle handed to the rig to size the pelvis carriage. */
 const STRIDE_SAMPLES = 16;
@@ -169,6 +187,11 @@ export class RobotGait {
 	private bank = 0;
 	private lastSpeed = 0;
 	private travelShare = 0;
+	// this frame's swing and contact shape (blended walking to running)
+	private reachShare = 0.5;
+	private liftRise = 0;
+	private liftFall = 0;
+	private toeRelease = TOE_RELEASE;
 	private readonly armSpring: Record<Side, Spring> = { R: { x: 0, v: 0 }, L: { x: 0, v: 0 } };
 	private readonly elbowSpring: Record<Side, Spring> = { R: { x: 0, v: 0 }, L: { x: 0, v: 0 } };
 	private springsLive = false;
@@ -217,6 +240,14 @@ export class RobotGait {
 		const lift = lerp( st.lift[ 0 ], st.lift[ 1 ], this.run ) * this.amp;
 		const strike = lerp( st.heelStrike[ 0 ], st.heelStrike[ 1 ], this.run ) * RAD * this.amp;
 		const toeOff = lerp( st.toeOff[ 0 ], st.toeOff[ 1 ], this.run ) * RAD * this.amp;
+		this.reachShare = st.reach ? lerp( st.reach[ 0 ], st.reach[ 1 ], this.run ) : 0.5;
+		if ( st.liftWindow ) {
+
+			this.liftRise = lerp( st.liftWindow[ 0 ][ 0 ], st.liftWindow[ 1 ][ 0 ], this.run );
+			this.liftFall = lerp( st.liftWindow[ 0 ][ 1 ], st.liftWindow[ 1 ][ 1 ], this.run );
+
+		}
+		this.toeRelease = st.toeRelease ? lerp( st.toeRelease[ 0 ], st.toeRelease[ 1 ], this.run ) : TOE_RELEASE;
 
 		const legs = {} as Record<Side, GaitLeg>;
 		for ( const S of SIDES ) {
@@ -261,6 +292,7 @@ export class RobotGait {
 		const shoulderYaw = - Math.cos( this.phase ) * st.shoulders * this.amp * locomotion;
 		const twist = ( shoulderYaw - hipYaw ) / 1.6;
 
+		const carry = st.armCarry ? lerp( st.armCarry[ 0 ], st.armCarry[ 1 ], this.run ) * this.amp : 0;
 		const arms = {} as Record<Side, number>, elbow = {} as Record<Side, number>;
 		for ( const [ S, off ] of [ [ 'R', 0 ], [ 'L', Math.PI ] ] as const ) {
 
@@ -269,7 +301,7 @@ export class RobotGait {
 			const f = this.cycle( S, this.phase - ARM_LAG );
 			const armPhase = f < stanceFrac ? Math.PI * f / stanceFrac : Math.PI + Math.PI * ( f - stanceFrac ) / ( 1 - stanceFrac );
 			const sw = Math.cos( armPhase ) * lerp( st.armSwing[ 0 ], st.armSwing[ 1 ], this.run ) * this.amp;
-			arms[ S ] = sw + 1.5 * Math.sin( this.time * 0.9 + off );
+			arms[ S ] = sw - carry + 1.5 * Math.sin( this.time * 0.9 + off );
 			elbow[ S ] = - Math.max( 0, - sw ) * 0.7 - this.run * ( st.runElbow ?? 55 ) * this.amp;
 
 		}
@@ -321,8 +353,10 @@ export class RobotGait {
 
 		}
 		return {
-			minKnee: 20 * moving,
+			minKnee: ( st.kneeFloor ? lerp( st.kneeFloor[ 0 ], st.kneeFloor[ 1 ], this.run ) : 20 ) * moving,
 			stridePath: this.stridePath,
+			strideCycle: this.cycle( 'R' ),
+			vault: ( st.vault ?? 0 ) * ( 1 - this.run ) * moving,
 			kneePoleUp: st.kneePoleUp ? lerp( st.kneePoleUp[ 0 ], st.kneePoleUp[ 1 ], moving ) : undefined,
 			track: st.track ? lerp( 1, lerp( st.track[ 0 ], st.track[ 1 ], this.run ), moving ) : 1,
 			abduct: st.armAbduct ? lerp( 1, lerp( st.armAbduct[ 0 ], st.armAbduct[ 1 ], this.run ), moving ) : 1,
@@ -372,14 +406,21 @@ export class RobotGait {
 			// The tangent terms fade quickly, limiting overshoot past the contact stations.
 			const m = - sweep * ( 1 - stance ) / stance;
 			base = sweep * ( smooth( t ) - 0.5 ) + m * ( t * ( 1 - t ) ** SWING_TANGENT_FADE + ( t - 1 ) * t ** SWING_TANGENT_FADE );
-			const clearance = Math.sin( Math.PI * ( t + LIFT_SKEW * t * ( 1 - t ) ) );
-			up = lift * clearance * clearance;
-			toe = toeOff * ( 1 - ramp( 0, 0.35, t ) );
+			if ( this.style.liftWindow ) up = lift * ramp( 0, this.liftRise, t ) * ( 1 - ramp( this.liftFall, 1, t ) );
+			else {
+
+				const clearance = Math.sin( Math.PI * ( t + LIFT_SKEW * t * ( 1 - t ) ) );
+				up = lift * clearance * clearance;
+
+			}
+			toe = toeOff * ( 1 - ramp( 0, this.toeRelease, t ) );
 			heel = strike * ramp( 0.6, 1, t );
 			const toeRelax = Math.sin( Math.PI * t );
 			relax = SWING_TOE * toeRelax * toeRelax * this.amp;
 
 		}
+		// the whole path shifts back so the foot lands `reachShare` of the sweep ahead of the hip
+		base += ( this.reachShare - 0.5 ) * sweep;
 		const st = this.style;
 		// rolling about the heel (toe up) and the toe (heel up) moves the ankle along an arc about that edge
 		const step = base

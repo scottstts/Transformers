@@ -45,6 +45,7 @@ const STYLE: FighterStyle = {
   light: 0xa8c4ff,
   step: 0.9,
   shield: [0.35, 0.62, 1.0],
+  cut: 0.32,
 }
 
 class CybertruckFighter extends Fighter {

@@ -62,6 +62,14 @@ export interface GaitPose {
    * long stride sets a steady carriage instead of a plunge at every splay.
    */
   stridePath?: readonly GaitLeg[]
+  /** The right leg's place in that cycle (0..1); the left leg is half a cycle on. */
+  strideCycle?: number
+  /**
+   * 0..1: how far the pelvis follows the stride's reach step by step (a walk's
+   * vault over the stance leg, which may rise above the stand) instead of
+   * holding the cycle's lowest carriage.
+   */
+  vault?: number
 }
 
 export interface LocalPose { t: Vector3; q: Quaternion }
@@ -146,7 +154,7 @@ export class RobotRig {
     }
     const weight = overlay?.weight ?? 0
     this.solve(root, overlay && weight > 0 ? overlay.apply(this, root, g) : g.legs,
-      g.track ?? 1, g.kneePoleUp ?? d.kneePoleUp ?? 0, g.minKnee ?? 0, 1 - weight, g.stridePath)
+      g.track ?? 1, g.kneePoleUp ?? d.kneePoleUp ?? 0, g.minKnee ?? 0, 1 - weight, g)
   }
 
   /** FK from the local poses; the pelvis joint frame is `root`. */
@@ -165,7 +173,7 @@ export class RobotRig {
   }
 
   private solve(root: Matrix4, legs: Record<'R' | 'L', GaitLeg>, track: number, poleUp: number, minKnee: number, reachWeight: number,
-    stridePath: readonly GaitLeg[] | undefined): void {
+    g: GaitPose): void {
     const d = this.dims
     this.forward(root)
     const stanceX = (d.stanceX ?? d.hipX) * track
@@ -179,16 +187,41 @@ export class RobotRig {
         const dy = -(footF + leg.step) - hip.y
         return hip.z - (d.ankleZ + leg.up + Math.sqrt(Math.max(0, reachSq - dx * dx - dy * dy)))
       }
-      let drop = -Infinity
+      const hipL = _hipL.setFromMatrixPosition(this.world[this.index['hip.L']])
+      const hipR = _hipR.setFromMatrixPosition(this.world[this.index['hip.R']])
+      let drop = softMaximum(need(hipL, legs.L, 1), need(hipR, legs.R, -1))
+      const vault = g.vault ?? 0
+      const path = g.stridePath
       let carriage = -Infinity
-      for (const [side, s] of SIDES) {
-        const hip = _v2.setFromMatrixPosition(this.world[this.index[`hip.${side}`]])
-        drop = softMaximum(drop, need(hip, legs[side], s))
-        if (stridePath) for (const leg of stridePath) carriage = Math.max(carriage, need(hip, leg, s))
+      if (path) {
+        // the reach over the cycle, both legs at each sample (the left half a cycle on)
+        const n = path.length
+        let mean = 0, c = 0, s = 0
+        for (let j = 0; j < n; j++) {
+          const v = softMaximum(need(hipR, path[j], -1), need(hipL, path[(j + n / 2) % n], 1))
+          _reach[j] = v
+          carriage = Math.max(carriage, v)
+          const a = 4 * Math.PI * j / n
+          mean += v / n
+          c += 2 * v * Math.cos(a) / n
+          s += 2 * v * Math.sin(a) / n
+        }
+        if (vault > 0) {
+          // a walk vaults: fit one rise and fall per step, raised until every sample is reached
+          let clear = -Infinity
+          for (let j = 0; j < n; j++) {
+            const a = 4 * Math.PI * j / n
+            clear = Math.max(clear, _reach[j] - (mean + c * Math.cos(a) + s * Math.sin(a)))
+          }
+          const a = 4 * Math.PI * (g.strideCycle ?? 0)
+          carriage = MathUtils.lerp(carriage, mean + c * Math.cos(a) + s * Math.sin(a) + clear, vault)
+        }
       }
       // the current frame's reach still holds wherever the carriage falls short (jumps, overlays)
-      drop = softMaximum(0, softMaximum(carriage, drop))
-      if (drop > 0) {
+      drop = softMaximum(carriage, drop)
+      // only a vault lifts the pelvis above the stand
+      drop = MathUtils.lerp(softMaximum(0, drop), drop, vault)
+      if (drop !== 0) {
         root.elements[14] -= drop * reachWeight
         this.forward(root)
       }
@@ -232,6 +265,10 @@ const _b = new Vector3()
 const _c = new Vector3()
 const _d = new Vector3()
 const _e = new Vector3()
+const _hipL = new Vector3()
+const _hipR = new Vector3()
+/** per-sample reach of the stride cycle */
+const _reach = new Float64Array(64)
 
 /** Ease the change of supporting leg and the onset of compression over 6 cm. */
 function softMaximum(a: number, b: number): number {

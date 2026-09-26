@@ -94,7 +94,7 @@ export function probeFight(car: string, tokens: string[], until: number, every: 
       if (t >= 0) checkCores(t)
     } else if (t >= next - 1e-6 && t >= 0) {
       next += every
-      console.log(`t ${t.toFixed(2)} w ${fight.poseWeight.toFixed(2)} air ${fight.air.toFixed(2)} yaw ${(state.yaw * 57.3).toFixed(1)} pel ${rel('bone:pelvis')} hR ${rel('bone:hand.R')} hL ${rel('bone:hand.L')} fR ${rel('bone:foot.R')} fL ${rel('bone:foot.L')} kR ${rel('bone:shin.R')} kL ${rel('bone:shin.L')} lift ${player.model.lift.toFixed(2)} edge ${tip(0)} ${tip(1)}`)
+      console.log(`t ${t.toFixed(2)} w ${fight.poseWeight.toFixed(2)} air ${fight.air.toFixed(2)} yaw ${(state.yaw * 57.3).toFixed(1)} pel ${rel('bone:pelvis')} sR ${rel('bone:upperarm.R')} sL ${rel('bone:upperarm.L')} hR ${rel('bone:hand.R')} hL ${rel('bone:hand.L')} fR ${rel('bone:foot.R')} fL ${rel('bone:foot.L')} kR ${rel('bone:shin.R')} kL ${rel('bone:shin.L')} lift ${player.model.lift.toFixed(2)} edge ${tip(0)} ${tip(1)}`)
     }
   }
 }

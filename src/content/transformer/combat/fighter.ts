@@ -31,11 +31,16 @@ export interface FighterStyle {
   step: number
   /** the guard shield's energy colour (linear): the character's special light */
   shield: [number, number, number]
+  /** width (m) of the gash the weapon's edge cuts wherever it goes below the ground; none without */
+  cut?: number
 }
 
 /** How long the weapon takes to form and to go (s), unless a cue says otherwise. */
 const FORM_TIME = 0.4
 const LIGHT_INTENSITY = 12
+/** Gash spans shorter than this are ignored; a growing gash is laid again every CUT_STEP (m). */
+const CUT_MIN = 0.1
+const CUT_STEP = 0.3
 
 /**
  * The effects every fighter shares, driven by move cues:
@@ -43,8 +48,11 @@ const LIGHT_INTENSITY = 12
  *   weapon-in  (value: seconds) the weapon forms in the hand, sparks and light
  *   weapon-out (value: seconds) it goes back into the hand, shedding embers
  *   slam       (value: strength) the weapon head is driven into the sand: dust
- *              ring, a gash in the ground, a few sparks, the sound of it, a
- *              camera kick and a moment of hit-stop
+ *              ring, a few sparks, the sound of it, a camera kick and a moment
+ *              of hit-stop
+ *
+ * A weapon with a `cut` width cuts the ground wherever its edge goes below
+ * it: the gash (a cold furrow) spans everything the edge reached, bite and drag.
  *   kick / shake / punch / pull / stop   camera reactions (value: strength,
  *              degrees, metres, seconds)
  *   servo      (value: seconds) a heavy joint drive on the character's machine
@@ -87,6 +95,14 @@ export class Fighter implements CombatEffects {
   protected swingSpeed = 0
   /** 0..1 the weapon's light held on while it is whole (an overcharged weapon lights its surroundings) */
   protected charged = 0
+  /** the edge in the ground: the gash so far along `cutDir` from `cutOrigin` */
+  private cutting = false
+  private readonly cutOrigin = new Vector3()
+  private readonly cutDir = new Vector3()
+  private cutMin = 0
+  private cutMax = 0
+  private cutSide = 0
+  private cutLaid = 0
 
   constructor(model: TransformerModel, character: CharacterEffects, contact: ContactEffects, mix: AudioMix, weapon: Weapon | null, style: FighterStyle) {
     this.model = model
@@ -165,9 +181,13 @@ export class Fighter implements CombatEffects {
         this.lastTip.copy(this.edgeTip)
         this.trail.strength = w.presence * w.presence
         this.trail.update(dt, this.edgeBase, this.edgeTip)
+        if (this.style.cut) this.groundCut(frame.state.yaw)
         // forming: sparks shed along the front, light from the hand
         if (w.presence < 1 && w.presence > 0 && this.presenceTarget !== w.presence) this.shed(w.presence, dt)
-      } else this.trail.reset()
+      } else {
+        this.trail.reset()
+        this.endCut()
+      }
       const forming = w.presence > 0 && w.presence < 1
       this.lightLevel = forming ? 1 : Math.max(0, this.lightLevel - dt * 4)
       const level = Math.max(this.lightLevel, w.presence > 0 ? this.charged : 0)
@@ -189,6 +209,7 @@ export class Fighter implements CombatEffects {
   }
 
   reset(): void {
+    this.cutting = false
     this.presenceTarget = 0
     if (this.weapon) {
       this.weapon.presence = 0
@@ -262,26 +283,86 @@ export class Fighter implements CombatEffects {
     dissolve(this.mix, this.style.forge, seconds)
   }
 
-  /** The weapon head driven into the sand at its edge's middle. */
+  /** The weapon head driven into the sand where its edge reaches lowest. */
   protected slam(strength: number, cam: CombatCamera): void {
-    const at = _p.addVectors(this.edgeBase, this.edgeTip).multiplyScalar(0.5)
+    const at = _p.copy(this.edgeBase.y < this.edgeTip.y ? this.edgeBase : this.edgeTip)
     at.y = 0
-    const dir = _d.subVectors(this.edgeTip, this.edgeBase).setY(0)
-    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1)
-    dir.normalize()
     slam(this.mix, strength)
-    // the sand thrown up around it and a gash where the edge went in
+    // the sand thrown up around it (the edge in the ground cuts its own gash)
     for (let k = 0; k < 10; k++) {
       const a = (k / 10) * Math.PI * 2
       _q.set(at.x + Math.cos(a) * 0.9 * strength, 0, at.z + Math.sin(a) * 0.9 * strength)
       this.contact.burst(_q, 1.2 * strength, 10)
     }
     this.contact.burst(at, 1.6 * strength, 40)
-    this.contact.footprint(at, dir, 1.4 * strength, 0.35, 1.3 * strength)
     this.sparks.emit({ count: Math.round(40 * strength), at, dir: _u.set(0, 1, 0), spread: 0.75, speed: [3, 11], life: [0.25, 0.8], size: 0.018, drag: 1.2, gravity: 1, palette: 0, jitter: 0.3 })
     cam.kick(Math.min(1, strength))
     cam.shake(Math.min(1, 0.7 * strength))
     cam.hitStop(0.075, 0.1)
+  }
+
+  /**
+   * The edge below the ground (y = 0): the gash spans, along the line it
+   * first cut, every point the edge has reached under the surface. It is laid
+   * once the bite is long enough, again whole each time the drag has extended
+   * it by CUT_STEP, and as the edge comes out; each lay covers the last.
+   */
+  private groundCut(yaw: number): void {
+    const a = this.edgeBase, b = this.edgeTip
+    const low = a.y < b.y ? a : b, high = a.y < b.y ? b : a
+    if (low.y >= 0) {
+      this.endCut()
+      return
+    }
+    // where the edge enters the ground, and its deepest end, on the surface
+    const enter = high.y > 0 ? _d.lerpVectors(low, high, low.y / (low.y - high.y)) : _d.copy(high)
+    enter.y = 0
+    const deep = _q.set(low.x, 0, low.z)
+    if (!this.cutting) {
+      this.cutting = true
+      this.cutOrigin.copy(enter)
+      this.cutDir.subVectors(deep, enter)
+      // an edge driven in square to the ground cuts along the heading
+      if (this.cutDir.lengthSq() < 0.01) this.cutDir.set(Math.sin(yaw), 0, Math.cos(yaw))
+      this.cutDir.normalize()
+      this.cutMin = this.cutMax = 0
+      this.cutSide = 0
+      this.cutLaid = 0
+      this.extendCut(deep)
+      this.contact.burst(deep, 0.8, 16)
+    } else {
+      const before = this.cutMax - this.cutMin
+      this.extendCut(enter)
+      this.extendCut(deep)
+      // the dragged edge ploughs sand up as it goes
+      if (this.cutMax - this.cutMin > before + 0.2) this.contact.burst(deep, 0.6, 8)
+    }
+    const span = this.cutMax - this.cutMin
+    if (span > CUT_MIN && span > this.cutLaid + (this.cutLaid > 0 ? CUT_STEP : 0)) this.layCut()
+  }
+
+  private extendCut(p: Vector3): void {
+    _u.subVectors(p, this.cutOrigin)
+    const along = _u.dot(this.cutDir)
+    this.cutMin = Math.min(this.cutMin, along)
+    this.cutMax = Math.max(this.cutMax, along)
+    // follow the edge's drift across the line, eased
+    this.cutSide += (_u.x * this.cutDir.z - _u.z * this.cutDir.x - this.cutSide) * 0.2
+  }
+
+  private endCut(): void {
+    if (!this.cutting) return
+    this.cutting = false
+    if (this.cutMax - this.cutMin > Math.max(CUT_MIN, this.cutLaid)) this.layCut()
+  }
+
+  private layCut(): void {
+    this.cutLaid = this.cutMax - this.cutMin
+    const o = this.cutOrigin, d = this.cutDir, side = this.cutSide
+    _p.set(o.x + d.z * side, 0, o.z - d.x * side)
+    _q.copy(_p).addScaledVector(d, this.cutMax)
+    _p.addScaledVector(d, this.cutMin)
+    this.contact.furrow(_p, _q, this.style.cut ?? 0, 0)
   }
 
   /** A heavy joint drive on the character's machine, `seconds` long. */

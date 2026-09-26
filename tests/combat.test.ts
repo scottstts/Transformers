@@ -273,6 +273,27 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks }) => {
   })
 })
 
+describe('truck finisher ground cut', () => {
+  it('cuts the sand only where the chop bites and drags the axe back', () => {
+    const cuts: Array<{ from: Vector3; to: Vector3; heat: number; t: number }> = []
+    let now = 0
+    const contact = { ...NO_CONTACT, furrow: (from: Vector3, to: Vector3, _width: number, heat: number) => { cuts.push({ from: from.clone(), to: to.clone(), heat, t: now }); return cuts.length } }
+    const c = createCybertruck({ ...readAsset('cybertruck'), weapon: readWeapon('cybertruck-axe') }, contact, new AudioMix())
+    const strike = FIGHTERS[0].clicks[3] + c.combat.moveset.moves[3].strike!
+    runFight(c, FIGHTERS[0].clicks, 7, (t) => { now = t })
+    expect(cuts.length).toBeGreaterThan(0)
+    for (const cut of cuts) {
+      // a cold cut, laid from the blow on, not by the earlier moves
+      expect(cut.heat).toBe(0)
+      expect(cut.t).toBeGreaterThan(strike - 0.1)
+    }
+    // the bite shows at the blow, not when the axe comes out
+    expect(Math.min(...cuts.map((cut) => cut.t))).toBeLessThan(strike + 0.15)
+    // the bite and the drag back make one long gash
+    expect(Math.max(...cuts.map((cut) => cut.from.distanceTo(cut.to)))).toBeGreaterThan(0.9)
+  })
+})
+
 describe('truck finisher continuity', () => {
   for (const count of [1, 2, 3]) {
     it(`recovers without joint snaps when stopped after move ${count}`, () => {

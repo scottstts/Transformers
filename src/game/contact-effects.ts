@@ -25,7 +25,7 @@ export interface ContactEffects {
   blast(point: Vector3, strength: number, dt: number): void
   /** a blast of heat at `center`: a crater `radius` m across its bowl, `heat` 0..1+ (1: fused white-hot) */
   crater(center: Vector3, radius: number, heat: number): void
-  /** a white-hot edge dragged through the ground from `from` to `to`, `width` m; returns a handle for `reignite` */
+  /** an edge dragged through the ground from `from` to `to`, `width` m (heat 0: a plain cut; 1: white-hot, fused); returns a handle for `reignite` */
   furrow(from: Vector3, to: Vector3, width: number, heat: number): number
   /** a furrow catches again after `delay` s: a heat front from `at` m along it at `speed` m/s (negative: in from its ends) */
   reignite(handle: number, delay: number, at: number, speed: number): void
