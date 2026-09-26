@@ -15,7 +15,7 @@ Shift switches walking to running. Walking contact occupies 60 % of the cycle; r
   - The head holds its gaze against the shoulder yaw and half of the bank.
   - The body leans with speed and into acceleration, and banks into turns.
   - Standing still, the weight shifts slowly from leg to leg.
-- **Arms** swing opposite the legs with a small lag and follow through on damped springs (sub-stepped). Their phase follows the actual stance and recovery durations, so the shorter run support does not put the arms out of step. Spring response rises with cadence within bounded limits, keeping the arms synchronized at full running speed.
+- **Arms** follow through on damped springs (sub-stepped), with response rising within bounds as cadence increases. The default pump follows stance and recovery duration. The F1 run instead uses half-cycle opposing pumps timed to thigh drive, with compensation for the spring's phase delay. Warping each arm by a 25 % support / 75 % recovery split made both arms move forward together; a small lag cannot repair that timing.
 
 ## Steering (`game/movement.ts`)
 
@@ -34,13 +34,15 @@ The F1 is tuned against human joint ranges, because earlier passes that tuned th
 - `reach` (0.47 / 0.38): the share of the contact sweep ahead of the hip at the strike. A run lands closer under the body and pushes off further behind.
 - `kneeFloor` (10° / 18°): the knee flexion left at the stride's longest reach, which sets the carriage height. The truck keeps 20°.
 - `vault` (1): the walking pelvis follows the stance leg's reach step by step. The rig fits one rise and fall per step to the cycle's reach samples, raised until every sample is reachable, so the pelvis vaults about 9 cm and is highest at mid-stance. It may rise above the stand, whose knees are bent 26°. A constant carriage with a long step forces a deep mid-stance knee instead. Running holds the constant carriage (see Leg reach).
-- `liftWindow` (rise by 0.25, lower from 0.3 / 0.6 of the swing) with lift 0.22 / 0.7 m and `toeRelease` (0.5 / 0.7): the foot is raised early and held up. Walking, the swing knee then peaks near 60° early in the swing. Running, the heel recovers under the hip (knee near 118°), the knee drives to about 65° of thigh flexion, and the leg retracts into a 27° landing.
+- Walking uses `liftWindow`, raising the foot by 0.25 and lowering from 0.3 of the swing, with 0.22 m lift. Running blends into `runCycle`: a rounded 0.7 m recovery arc peaking at 0.32 of swing, then continuously descending into the forward sweep and retraction. The heel folds through behind the body before the knee comes forward. The former high shelf through 0.6 of swing forced a high knee followed by a late downward stamp. Peak running thigh flexion is now about 53° rather than 65°, while retaining heel recovery. `toeRelease` remains 0.5 / 0.7.
 - `armCarry` (8° / 14°): the arms are carried forward against the torso lean (the stand's 8° plus the speed lean). Otherwise they hang behind a leaning chest.
 - Speed lean 0 / 0.3° per m/s over the stand's 8°, so the trunk leans about 7° walking and 11° running. Contact is 25 % of the running cycle, near a sprinter's duty factor.
 
 The F1's transformation needs a knee pole tilted upward. Its moving pose blends that pole toward pelvis-forward, keeping the knees in forward-bending planes rather than kicking sideways when lifted. Reduced sway, hip list and shoulder yaw restrain the torso. These are runtime carriage changes; the transformation asset and standing pose remain authoritative.
 
-`tests/locomotion-rig.test.ts` checks full step distance, solved ankle accuracy, steady planted-foot velocity, knee range, running pelvis bounce, joint continuity through movement transitions, velocity continuity at foot contact, and the F1's knee and arm alignment and joint ranges. It does not replace visual inspection of the assembled robot.
+The F1 run also owns its vertical flight independently of the lowest sole. `freeFlight` blends the final model ground correction toward a floor at the exported standing sole datum; penetration can still lift the model, but recovering feet cannot pull it down. The previous unconditional ground projection undid the rig's steady carriage and produced roughly 31 cm of final pelvis travel, even though the skeleton-only bounce check passed. Flight height uses a rounded hump with zero endpoint velocity. Jump and combat ownership fade this run-specific correction out. Walking and the truck retain their existing ground projection.
+
+`tests/locomotion-rig.test.ts` checks full step distance, solved ankle accuracy, steady planted-foot velocity, knee range, running pelvis bounce, joint continuity through movement transitions, velocity continuity at foot contact, and the F1's knee and arm alignment and joint ranges. The F1 checks include final model ground correction and half-cycle arm opposition. These catch mechanical regressions; they do not establish that the assembled robot looks natural.
 
 ## Jumping
 

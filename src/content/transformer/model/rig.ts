@@ -47,6 +47,8 @@ export interface GaitPose {
   curl: number
   /** height of the lowest foot above the ground (m): run flight and jumps */
   air?: number
+  /** Running flight owns body height; sole correction may lift but must not pull it down (0..1). */
+  freeFlight?: number
   /** the feet's track and the shoulders' abduction as shares of the rig's (default 1) */
   track?: number
   abduct?: number

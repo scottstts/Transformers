@@ -94,6 +94,7 @@ export const RACER_GAIT: GaitStyle = {
   liftWindow: [[0.25, 0.3], [0.25, 0.6]],
   toeRelease: [0.5, 0.7],
   armCarry: [8, 14],
+  runCycle: { recoveryPeak: 0.32 },
 }
 
 export async function loadF1Asset(): Promise<PlayableTransformerAsset> {

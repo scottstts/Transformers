@@ -111,6 +111,8 @@ export interface GaitStyle {
 	toeRelease?: [ number, number ];
 	/** Arms carried forward (deg) against the torso's lean while moving, walking and running. */
 	armCarry?: [ number, number ];
+	/** Coordinated run: continuous recovery arc, opposing arms and independent flight height. */
+	runCycle?: { recoveryPeak: number };
 }
 
 /** A heavy machine: long stance, weight shift over the planted leg. */
@@ -270,6 +272,7 @@ export class RobotGait {
 		if ( ! Number.isFinite( w ) ) w = 0;
 		const flight = w >= stanceFrac ? ( w - stanceFrac ) / ( 0.5 - stanceFrac ) : - 1;
 		let air = flight >= 0 ? 4 * st.runFlight * run * flight * ( 1 - flight ) : 0;
+		if ( st.runCycle && flight >= 0 ) air = st.runFlight * run * Math.sin( Math.PI * flight ) ** 2;
 		let crouch = 0.1 + st.runCrouch * run
 			+ st.bob * ( 1 - this.run ) * this.amp * ( 0.5 + 0.5 * Math.cos( 2 * ( this.phase - 0.5 ) ) )
 			+ ( flight < 0 ? st.runCompression * run * Math.sin( Math.PI * w / stanceFrac ) : 0 );
@@ -293,6 +296,11 @@ export class RobotGait {
 		const twist = ( shoulderYaw - hipYaw ) / 1.6;
 
 		const carry = st.armCarry ? lerp( st.armCarry[ 0 ], st.armCarry[ 1 ], this.run ) * this.amp : 0;
+		const armFrequency = eff / ( 2 * cadenceStride ) * TAU;
+		const armResponse = clamp( armFrequency * 2.4, ARM_SPRING, 36 );
+		// Compensate the spring's sinusoidal phase delay; support duration must
+		// not warp the left and right pumps away from half-cycle opposition.
+		const armLead = Math.atan2( 2 * ARM_DAMPING * armResponse * armFrequency, armResponse ** 2 - armFrequency ** 2 );
 		const arms = {} as Record<Side, number>, elbow = {} as Record<Side, number>;
 		for ( const [ S, off ] of [ [ 'R', 0 ], [ 'L', Math.PI ] ] as const ) {
 
@@ -300,7 +308,10 @@ export class RobotGait {
 			// Follow the actual support/swing timing: a run's toe-off happens well before half-cycle.
 			const f = this.cycle( S, this.phase - ARM_LAG );
 			const armPhase = f < stanceFrac ? Math.PI * f / stanceFrac : Math.PI + Math.PI * ( f - stanceFrac ) / ( 1 - stanceFrac );
-			const sw = Math.cos( armPhase ) * lerp( st.armSwing[ 0 ], st.armSwing[ 1 ], this.run ) * this.amp;
+			// Counter the thigh drive, which precedes foot strike: the same-side
+			// arm is forward at push-off and back as the recovering knee comes through.
+			const pump = st.runCycle ? lerp( Math.cos( armPhase ), Math.cos( this.phase + off + Math.PI / 2 + dir * armLead - ARM_LAG ), this.run ) : Math.cos( armPhase );
+			const sw = pump * lerp( st.armSwing[ 0 ], st.armSwing[ 1 ], this.run ) * this.amp;
 			arms[ S ] = sw - carry + 1.5 * Math.sin( this.time * 0.9 + off );
 			elbow[ S ] = - Math.max( 0, - sw ) * 0.7 - this.run * ( st.runElbow ?? 55 ) * this.amp;
 
@@ -338,7 +349,6 @@ export class RobotGait {
 		if ( ! inJump ) this.jumpLead = null;
 
 		// Keep spring lag bounded as cadence rises, so the arms stay opposite the legs.
-		const armResponse = clamp( eff / ( 2 * cadenceStride ) * TAU * 2.4, ARM_SPRING, 36 );
 		this.follow( arms, elbow, dt, armResponse );
 
 		const roll = list + this.bank;
@@ -353,6 +363,7 @@ export class RobotGait {
 
 		}
 		return {
+			freeFlight: st.runCycle ? run * locomotion : 0,
 			minKnee: ( st.kneeFloor ? lerp( st.kneeFloor[ 0 ], st.kneeFloor[ 1 ], this.run ) : 20 ) * moving,
 			stridePath: this.stridePath,
 			strideCycle: this.cycle( 'R' ),
@@ -411,6 +422,16 @@ export class RobotGait {
 
 				const clearance = Math.sin( Math.PI * ( t + LIFT_SKEW * t * ( 1 - t ) ) );
 				up = lift * clearance * clearance;
+
+			}
+			if ( this.style.runCycle ) {
+
+				// A single rounded recovery, not a high shelf followed by a late
+				// vertical drop. Zero endpoint velocity preserves the ground contact.
+				const peak = this.style.runCycle.recoveryPeak;
+				const a = t < peak ? t / peak : ( 1 - t ) / ( 1 - peak );
+				const arc = 0.5 - 0.5 * Math.cos( Math.PI * a );
+				up = lerp( up, lift * arc, this.run );
 
 			}
 			toe = toeOff * ( 1 - ramp( 0, this.toeRelease, t ) );
