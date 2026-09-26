@@ -41,6 +41,8 @@ export class GameSession {
   /** characters built so far (their GPU resources stay warm for switching back) */
   private readonly built = new Map<string, Character>()
   private switching: string | null = null
+  /** a switch is waiting for a transformation, jump or special to end (the world runs on) */
+  private waiting = false
   private standing = false
   private carActions = true
   /** the robot stands: it can walk, jump and fight */
@@ -135,9 +137,13 @@ export class GameSession {
     return this.energy.full
   }
 
-  /** A car can be swapped in whenever no transformation, jump or fight is running (either form). */
+  /**
+   * A car can be swapped in at once whenever no transformation, jump or
+   * special is playing (either form, fighting or not, inside a fortress or
+   * out): a combo or a raised guard is simply dropped by the swap.
+   */
   get canSwitch(): boolean {
-    return !isTransforming(this.state) && !this.jump.active && !this.fight.active
+    return !isTransforming(this.state) && !this.jump.active && !this.fight.cinematic
   }
 
   /** The car being loaded by `switchCharacter`, if any. */
@@ -152,13 +158,21 @@ export class GameSession {
    * (the UI covers the screen). The swap then happens behind that cover, and
    * the promise resolves only once the GPU has finished the new car's first
    * frames (first-use uploads and pipelines), so picture and sound return
-   * together. Resolves false if the swap was no longer possible once the car
-   * was ready.
+   * together. Asked mid-transformation, mid-jump or mid-special it waits for
+   * that to finish (the world runs on meanwhile) rather than refusing:
+   * refusing made the menu look broken until the right moment was hit.
    */
   async switchCharacter(entry: RosterEntry): Promise<boolean> {
     if (entry.id === this.character.id) return true
     if (this.switching) return false
     this.switching = entry.id
+    // (the world is frozen while a switch loads, so what it waits for must end first)
+    this.waiting = true
+    try {
+      while (!this.canSwitch) await nextFrame()
+    } finally {
+      this.waiting = false
+    }
     this.audio.hold(true)
     try {
       let next = this.built.get(entry.id)
@@ -171,7 +185,6 @@ export class GameSession {
           await this.renderer.compileAsync(next.model.root, this.camera, this.scene)
           await this.renderer.compileAsync(next.effects.object, this.camera, this.scene)
           this.built.set(entry.id, next)
-          if (!this.canSwitch) return false
           this.swap(next)
           // Keep combat warm during the hidden first frames: this forces the
           // weapon geometry and its cast-shadow path through real GPU draws.
@@ -181,7 +194,6 @@ export class GameSession {
           next.combat.effects.warm(false)
         }
       }
-      if (!this.canSwitch) return false
       this.swap(next)
       await this.settleFrames(SWITCH_SETTLE_FRAMES)
       return true
@@ -220,7 +232,7 @@ export class GameSession {
 
   /** Let the render loop draw `frames` frames, then wait until the GPU has finished them. */
   private async settleFrames(frames: number): Promise<void> {
-    for (let i = 0; i < frames; i++) await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()) })
+    for (let i = 0; i < frames; i++) await nextFrame()
     await this.waitForGpu()
   }
 
@@ -278,7 +290,11 @@ export class GameSession {
     this.cinematic = on
     this.handback = false
     this.cameraRig.cinematic = on
-    if (!on) this.director.stop()
+    if (!on) {
+      this.director.stop()
+      // whatever the special emptied and its last blow missed breaks apart as it ends
+      this.horde.settle()
+    }
     this.onCinematicChange?.(on)
   }
 
@@ -320,7 +336,7 @@ export class GameSession {
     const frameDt = Math.max(1 / 240, Math.min(this.timer.getDelta(), 1 / 30))
     // while a car switch loads the world stands still (the fight, the soldiers, their debris): nothing
     // happens behind the cover that the player could not answer
-    const frozen = this.switching !== null
+    const frozen = this.switching !== null && !this.waiting
     // the fight's hit-stop slows the world's clock for a moment; the camera keeps real time
     this.cameraFx.update(frozen ? 0 : frameDt)
     const state = this.state
@@ -370,7 +386,7 @@ export class GameSession {
     this.lockedTime = Math.max(0, this.lockedTime - frameDt)
     const hold: FortHold = this.barrier.holding ? 'car'
       : this.lockedTime > 0 ? 'locked'
-        : this.wallTime > 0.6 && this.world.forts.near(state.pos.x, state.pos.z) ? 'wall' : null
+        : this.wallTime > 0.6 && this.outsideWalls(state.pos.x, state.pos.z) ? 'wall' : null
     if (hold !== this.holding) {
       this.holding = hold
       this.onFortHold?.(hold)
@@ -413,11 +429,18 @@ export class GameSession {
     }
     this.cameraFx.apply(this.camera)
     this.updateTarget(dt)
+    this.horde.special = fight.cinematic
     if (frozen) this.horde.drawFor(this.camera)
     else this.horde.update(dt, this.target, this.camera)
     this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root))
     effects.shakeCamera(this.camera, dt)
     this.pipeline.render()
+  }
+
+  /** Near a fortress but outside its perimeter (the walls' hint is about the way in, not the buildings inside). */
+  private outsideWalls(x: number, z: number): boolean {
+    const fort = this.world.forts.near(x, z)
+    return fort !== null && !fort.inside(x, z)
   }
 
   /** Where the player's body stands for the soldiers: the robot's standing point, or the car. */
@@ -448,4 +471,8 @@ export class GameSession {
     this.input.dispose()
     this.cameraRig.dispose()
   }
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()) })
 }

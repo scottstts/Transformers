@@ -82,6 +82,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 
 - Each move's effect on enemies is data beside its keys (`<character>/combat/hits.ts`, types in `transformer/combat/hits.ts`): sector strikes at a time, sweeps over a window, radial blasts at ground points. `RobotCombat` emits them as `HitEvent`s at the move's own time, in its ground frame, through `onHit`.
 - Blows are volumes on the ground in front of the robot rather than limb paths: the robots stand head and shoulders over the 3 m soldiers. See enemies.md for how soldiers take them, and `aimAssist` for the soft turn toward a nearby soldier.
+- Damage is tuned against a soldier's 300 health: a combo's first three blows leave a soldier standing (flinching blow by blow), its finisher takes it down. Retuning a move's damage changes where in the combo soldiers fall.
 
 ## Effects (`fighter.ts`, `fx/`, `audio/`)
 
@@ -105,7 +106,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - **Forming and dissolving:** a torch-like roaring hiss with crackle.
   - **Slam:** ground pressure, thump, sand thrown up and raining back.
   - **Fighting footfalls** plant the foot (`plantFoot`: dust, footprint, shake at the fighting style's share of a running step) and play the character's own footfall at the move's step strength.
-  - Nothing is a percussive "hit".
+  - The robot's side has no percussive "hit"; a blow landing on soldiers sounds from the soldiers' side (enemies.md, Sound: the blows).
 
 ## The moves
 

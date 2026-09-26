@@ -66,6 +66,27 @@ export const POSES = {
     'L.pitch': 20, 'L.out': 26, 'L.elbow': 40, 'L.wrist': 0,
     'L.fwd': 0.62, 'L.lat': 0.1, 'R.fwd': -0.36, 'R.lat': 0.06, 'L.yaw': 16, 'R.yaw': -10,
   }),
+  /**
+   * A blow to the head and chest: snapped back from it, the head thrown
+   * back, the blade arm flung wide and low, the free forearm up across the
+   * face, the rear wheel skidding back under the weight.
+   */
+  hitHigh: pose({
+    crouch: 0.2, lean: -16, bend: -10, side: 5, twist: 12, headPitch: -24, headYaw: -14,
+    'R.pitch': 30, 'R.out': 44, 'R.twist': 10, 'R.elbow': 24, 'R.wrist': -60,
+    'L.pitch': 96, 'L.out': 18, 'L.elbow': 110, 'L.wrist': 20,
+    'L.fwd': 0.3, 'L.lat': 0.06, 'R.fwd': -0.42, 'R.lat': 0.1, 'L.yaw': 12, 'R.yaw': -18,
+  }),
+  /**
+   * A blow to the body: doubled over it and turned away, the head dropped,
+   * both arms pulled in to the stomach, low on its knees.
+   */
+  hitLow: pose({
+    crouch: 0.38, lean: 28, bend: 18, side: -6, twist: -18, headPitch: 22, headYaw: 10,
+    'R.pitch': 22, 'R.out': 8, 'R.elbow': 76, 'R.wrist': -70,
+    'L.pitch': 38, 'L.out': -4, 'L.elbow': 100, 'L.wrist': 10,
+    'L.fwd': 0.46, 'L.lat': 0.05, 'R.fwd': -0.3, 'R.lat': 0.07, 'L.yaw': 8, 'R.yaw': -8,
+  }),
   /** flat on its back: legs free and bent, arms flung out */
   down: pose({
     crouch: 0, lean: 0, headPitch: 18,

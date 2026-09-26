@@ -42,7 +42,7 @@ export interface FightSheet {
   views: string[]
   /** scale of the views' distances (the F1 robot is smaller) */
   zoom?: number
-  /** fight a fort's garrison: the robot stands in fort `brawl`'s yard (index), the soldiers alerted */
+  /** fight a district's garrison: the robot stands in district `brawl`'s yard (index), the soldiers alerted */
   brawl?: number
 }
 
@@ -81,16 +81,17 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
   state.target = 1
   state.progress = 1
   state.yaw = 0
-  // the brawl: the garrison of a fort, the robot standing in its yard facing the hangar
+  // the brawl: a district's garrison (BRAWL is its index), the robot standing in its yard facing the citadel
   let horde: Horde | null = null
   const target: EnemyTarget = { x: 0, z: 0, radius: player.profile.robotRadius, vx: 0, vz: 0, height: player.model.dims.hipZ * 1.8, heading: 0, guard: 0, present: true }
   if (sheet.brawl !== undefined) {
     const [sm, sb] = read('soldier')
     horde = new Horde(decodeSoldierAsset(sm as SoldierManifest, sb), world.world.forts, world.contactEffects, new AudioMix())
     scene.add(horde.object)
-    const fort = world.world.forts.list[sheet.brawl]
-    const c = fort.toWorld(0, 4)
-    const h = fort.toWorld(fort.plan.hangars[0].at[0], fort.plan.hangars[0].at[1])
+    const fort = world.world.forts.list[0]
+    const yard = fort.plan.sectors[sheet.brawl].yard.at
+    const c = fort.toWorld(yard[0], yard[1])
+    const h = fort.toWorld(fort.plan.centre[0], fort.plan.centre[1])
     state.yaw = Math.atan2(h.x - c.x, h.z - c.z)
     state.pos.set(c.x - Math.sin(state.yaw) * player.robotOffset, 0, c.z - Math.cos(state.yaw) * player.robotOffset)
   }

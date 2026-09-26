@@ -1,22 +1,22 @@
 import { Group, Matrix4, Mesh, type Material } from 'three/webgpu'
 import { MeshWriter } from './mesh'
-import type { FortPlan, Module, Xz } from './plan'
-import { T_WALL } from './plan'
+import { T_WALL, sectorAt, type FortPlan, type Module, type Xz } from './plan'
 import { blastWall, concertina, cornerPillar, gate, tWall, tWallLoops, wallLamp } from './walls'
 import { watchtower } from './tower'
 import { hangar } from './hangar'
 import { bunker, container, crates, drums, fuelTank, gabion, jerseyBarrier, latrine, mast, sandbags, tires, waterTank } from './props'
 import { boom, booth, canopy, chu, generator, hq, sail } from './buildings'
-import { bund, cables, helipad, pole, radioMast, waterTower } from './utility'
+import { bund, cables, flagpole, helipad, pole, radioMast, waterTower } from './utility'
+import { rampart, rampStair } from './rampart'
+import { gatehouse } from './gatehouse'
+import { keep } from './keep'
+import { garage } from './garage'
+import { radar } from './radar'
+import { apron } from './paving'
 
 /** Module frame to fort frame: at (x, z) on the sand, its front (+z) turned to `yaw`. */
 function at(p: Xz, yaw: number, y = 0): Matrix4 {
   return new Matrix4().makeRotationY(yaw).setPosition(p[0], y, p[1])
-}
-
-/** The quadrant a fort-frame point falls in (0..3): the geometry's spatial buckets. */
-function quadrant(x: number, z: number): number {
-  return Math.min(3, Math.floor((Math.atan2(x, z) + Math.PI) / (Math.PI / 2)))
 }
 
 /** A built fort: its meshes in the fort frame, which of them are detail, and its triangle count. */
@@ -29,16 +29,17 @@ export interface BuiltFort {
 
 /**
  * Compile a fort plan into meshes, one per material slot per bucket, in the
- * fort frame (the group carries the site's placement). Buckets are the four
- * quadrants, each split into its main geometry and its detail (small parts
- * and clutter, drawn only from near): the view and each shadow cascade
- * draw only the quadrants near them. Deterministic: per-slab tone and the
- * slabs' few millimetres of settling come from the slab's index.
+ * fort frame (the group carries the site's placement). Buckets are the
+ * districts (and the ground outside the perimeter), each split into its
+ * main geometry and its detail (small parts and clutter, drawn only from
+ * near): the view and each shadow cascade draw only the districts near
+ * them. Deterministic: per-slab tone and the slabs' few millimetres of
+ * settling come from the slab's index.
  */
 export function buildFort(plan: FortPlan, materials: Record<string, Material>): BuiltFort {
   const w = new MeshWriter()
-  const bucket = (p: Xz, detail: boolean): void => { w.bucket(`q${quadrant(p[0], p[1])}${detail ? 'd' : ''}`) }
-  // perimeter slabs, each settled a little out of line as placed slabs are; a lamp on every tenth
+  const bucket = (p: Xz, detail: boolean): void => { w.bucket(`s${sectorAt(plan, p[0], p[1])}${detail ? 'd' : ''}`) }
+  // the T-wall lines, each slab settled a little out of line as placed slabs are; a lamp on every tenth
   for (const run of plan.walls) {
     const dx = run.b[0] - run.a[0], dz = run.b[1] - run.a[1]
     const len = Math.hypot(dx, dz)
@@ -50,28 +51,29 @@ export function buildFort(plan: FortPlan, materials: Record<string, Material>): 
       const h = hash(run.a[0] * 13.1 + run.a[1] * 7.7 + i)
       const p: Xz = [run.a[0] + ux * t + (h - 0.5) * 0.03 * uz, run.a[1] + uz * t - (h - 0.5) * 0.03 * ux]
       const S = at(p, yaw + (h - 0.5) * 0.012)
-      bucket(p, false)
+      // the slab's own district: nudged off the line toward the side it faces into
+      bucket([p[0] - uz * 2, p[1] + ux * 2], false)
       w.shade(hash(i * 3.7 + run.b[0]))
       tWall(w, S)
-      bucket(p, true)
+      bucket([p[0] - uz * 2, p[1] + ux * 2], true)
       tWallLoops(w, S)
       if (i % 10 === 5) wallLamp(w, S)
     }
     w.shade(0.5)
-    const mid: Xz = [(run.a[0] + run.b[0]) / 2, (run.a[1] + run.b[1]) / 2]
-    bucket(mid, true)
-    concertina(w, run)
+    if (run.wire) {
+      const mid: Xz = [(run.a[0] + run.b[0]) / 2 - uz * 2, (run.a[1] + run.b[1]) / 2 + ux * 2]
+      bucket(mid, true)
+      concertina(w, run)
+    }
   }
   w.shade(0.5)
-  for (let k = 0; k < plan.corners.length; k++) {
-    const a = plan.corners[k], b = plan.corners[(k + 1) % plan.corners.length]
-    bucket(a, false)
-    cornerPillar(w, at(a, Math.atan2(b[0] - a[0], b[1] - a[1])))
-  }
   for (const g of plan.gates) {
-    bucket(g.at, false)
+    if (g.kind === 'citadel') continue
+    bucket([g.at[0] - g.out[0] * 2, g.at[1] - g.out[1] * 2], false)
     gate(w, at(g.at, Math.atan2(g.out[0], g.out[1])), g.leaf)
   }
+  w.bucket(`s${plan.sectors.length - 1}`)
+  plan.ramparts.forEach((run, i) => rampart(w, run, plan.site.seed * 3.1 + i * 17.3))
   for (const h of plan.hangars) {
     bucket(h.at, false)
     hangar(w, at(h.at, h.yaw), h)
@@ -81,7 +83,8 @@ export function buildFort(plan: FortPlan, materials: Record<string, Material>): 
     module(w, m)
     w.shade(0.5)
   }
-  bucket([0, 0], true)
+  const C = plan.sectors[0].bounds.at
+  bucket(C, true)
   cables(w, plan.cables)
 
   const group = new Group()
@@ -134,6 +137,14 @@ function module(w: MeshWriter, m: Module): void {
     case 'crates': crates(w, M, m); break
     case 'tires': tires(w, M, m); break
     case 'waterTank': waterTank(w, M); break
+    case 'pillar': cornerPillar(w, M); break
+    case 'garage': garage(w, M, m); break
+    case 'keep': keep(w, M); break
+    case 'radar': radar(w, M); break
+    case 'gatehouse': gatehouse(w, M, m); break
+    case 'apron': apron(w, M, m); break
+    case 'flagpole': flagpole(w, M, m); break
+    case 'stair': rampStair(w, M, m); break
   }
 }
 

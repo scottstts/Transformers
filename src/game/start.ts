@@ -78,7 +78,6 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
     touch,
     roster: ROSTER,
     current: () => session.character.id,
-    get canSwitch() { return session.canSwitch },
     get playing() { return touch || session.cameraRig.locked },
     get standing() { return session.standingRobot },
     get specialReady() { return session.specialReady },

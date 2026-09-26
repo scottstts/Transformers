@@ -1,5 +1,5 @@
 import { DoubleSide, MeshBasicNodeMaterial, MeshStandardNodeMaterial, type Material } from 'three/webgpu'
-import { attribute, color, float, fwidth, max, min, mix, normalWorld, positionWorld, smoothstep, abs, fract, vec2 } from 'three/tsl'
+import { asin, atan, attribute, color, float, fwidth, max, min, mix, normalWorld, positionWorld, smoothstep, abs, fract, vec2 } from 'three/tsl'
 import { N } from '../../../rendering/noise'
 
 /**
@@ -205,6 +205,65 @@ function sandbag(): Material {
   return m
 }
 
+/**
+ * Cast paving: a smooth grey slab (lighter and finer than the walls), each
+ * bay its own tone (`shade`), tyre-darkened and oil-spotted in sparse broad
+ * patches, and sand drifted into it in wind-shaped bands (the walls' dust
+ * rule, which piles sand at every foot, would bury a surface at ground level).
+ */
+function pavement(): Material {
+  const p = positionWorld
+  const shade = attribute('shade', 'float')
+  const m = new MeshStandardNodeMaterial()
+  const blotch = N(p.xz.mul(0.08)).r
+  const grain = N(p.xz.mul(3.7)).b
+  const oil = smoothstep(0.74, 0.9, N(p.xz.mul(0.07).add(7.3)).g).mul(smoothstep(0.35, 0.75, N(p.xz.mul(0.33)).r))
+  const drift = smoothstep(0.52, 0.8, N(vec2(p.x.mul(0.05).add(p.z.mul(0.12)), p.z.mul(0.05).sub(p.x.mul(0.03)))).r)
+  let base = mix(color(0x9b968c), color(0xb3aea3), blotch.mul(0.5).add(shade.mul(0.5))).mul(grain.mul(0.08).add(0.95))
+  base = mix(base, color(0x57524a), oil.mul(0.4))
+  const side = smoothstep(0.5, 0.2, normalWorld.y)
+  m.colorNode = mix(base, SAND, min(float(0.85), drift.mul(0.7).add(side.mul(0.4))))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.78).add(grain.mul(0.1)).sub(oil.mul(0.3))
+  return m
+}
+
+/**
+ * A radome's GRP skin: off-white, faintly chalky, its panels' seams in a
+ * gore-and-ring pattern found from the surface's own direction (a sphere's
+ * normal is its direction from the centre), filtered by their footprint so
+ * they fade before they alias.
+ */
+function radome(): Material {
+  const p = positionWorld
+  const n = normalWorld
+  const m = new MeshStandardNodeMaterial()
+  const lat = asin(n.y).mul(7 / Math.PI)
+  const lon = atan(n.x, n.z).mul(12 / Math.PI)
+  const g = vec2(lon, lat)
+  const fw = max(fwidth(g), vec2(1e-4))
+  const d = abs(fract(g.add(0.5)).sub(0.5)).div(fw)
+  const seam = max(smoothstep(1.5, 0.5, d.x), smoothstep(1.5, 0.5, d.y)).mul(smoothstep(0.35, 0.1, max(fw.x, fw.y)))
+  const tone = mix(color(0xd9d5ca), color(0xcbc6b8), N(p.xz.mul(0.4).add(p.y.mul(0.3))).r)
+  m.colorNode = mix(mix(tone, color(0x9d988c), seam.mul(0.6)), SAND, dust(0.35))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.55).add(seam.mul(0.15))
+  return m
+}
+
+/** Flag cloth: dyed bunting (a deep red, a sand khaki, an olive by `shade`), sun-faded; both sides. */
+function flag(): Material {
+  const p = positionWorld
+  const shade = attribute('shade', 'float')
+  const m = new MeshStandardNodeMaterial()
+  const tone = mix(mix(color(0x6e1a14), color(0xa08a5e), smoothstep(0.3, 0.4, shade)), color(0x4d5237), smoothstep(0.64, 0.74, shade))
+  m.colorNode = tone.mul(N(p.xy.mul(0.9)).g.mul(0.12).add(0.9))
+  m.metalnessNode = float(0)
+  m.roughnessNode = float(0.9)
+  m.side = DoubleSide
+  return m
+}
+
 function std(hex: number, metal: number, rough: number): Material {
   const m = new MeshStandardNodeMaterial()
   m.colorNode = mix(color(hex), SAND, dust(0.5))
@@ -240,7 +299,12 @@ export function createFortMaterials(): Record<string, Material> {
     canvas: canvas(),
     poly: poly(),
     paint: paint(0xdedad0, true),
+    lineYellow: paint(0xc9a02a, true),
     signalRed: paint(0xa3261c, false),
+    safety: paint(0xc49a1c, false),
+    pavement: pavement(),
+    radome: radome(),
+    flag: flag(),
     lamp: emissive(0xfff2d8, 2.2),
     beacon: emissive(0xff3018, 6),
   }

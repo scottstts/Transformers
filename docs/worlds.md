@@ -2,7 +2,7 @@
 
 The opening environment is an effectively unbounded desert. Distant sky and ridge meshes follow the camera; rock instances repeat around the player in deterministic tiles. The world updates instance transforms only after the player moves far enough to need recentering. Large rocks expose stable collision circles whose coordinates update with the matching instance, avoiding per-frame collider allocation.
 
-The forts stand on fixed sites (forts.md); the tiled boulders are cleared from their grounds, and their walls and buildings join the world's colliders as capsules (`segments`).
+The fortress stands on a fixed site (forts.md); the tiled boulders are cleared from its grounds, and its walls and buildings join the world's colliders as capsules (`segments`).
 
 The sun casts through three cascades (`CSMShadowNode`, practical splits, blended seams) over the view out to 150 m; each cascade snaps to its texels, and their splits are recomputed whenever the camera's fov or aspect changes (the lens kicks, the director). A single 32 m box round the player left everything beyond it unshadowed, so soldiers' and buildings' shadows popped in as they came near. Environment lighting is baked from a separate sky and ground scene. The shadow cameras (cloned into every cascade) also draw `SHADOW_ONLY_LAYER` (the soldiers' shadow proxies).
 

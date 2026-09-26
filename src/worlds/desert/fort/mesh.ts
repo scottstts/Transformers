@@ -6,7 +6,7 @@ import { BufferAttribute, BufferGeometry, Matrix4, Vector3 } from 'three/webgpu'
  * a placement matrix; the writer keeps one position / normal / shade buffer
  * per slot and bucket and emits one indexed BufferGeometry for each (one draw
  * each). Buckets are chosen by the caller around whole modules (`bucket`):
- * the fort splits into quadrants, so the view and each of the sun's shadow cascades
+ * the fortress splits into its districts, so the view and each of the sun's shadow cascades
  * only draw the parts near them, and small props go into detail buckets that
  * are hidden from afar.
  *
@@ -94,6 +94,21 @@ export class MeshWriter {
     }
     for (let i = 1; i < w.length - 1; i++) s.index.push(base, base + i, base + i + 1)
     this.triangles += w.length - 2
+  }
+
+  /**
+   * A planar convex polygon wound to face `toward` (module frame): swept
+   * sections whose winding depends on their profile's direction.
+   */
+  polyFacing(slot: string, pts: Vec3[], toward: Vec3): void {
+    let nx = 0, ny = 0, nz = 0
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length]
+      nx += (p[1] - q[1]) * (p[2] + q[2])
+      ny += (p[2] - q[2]) * (p[0] + q[0])
+      nz += (p[0] - q[0]) * (p[1] + q[1])
+    }
+    this.poly(slot, nx * toward[0] + ny * toward[1] + nz * toward[2] < 0 ? pts.slice().reverse() : pts)
   }
 
   /** A quad strip / grid with per-vertex normals (module frame): rows x cols, quads between. */

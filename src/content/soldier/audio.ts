@@ -2,6 +2,7 @@ import type { AudioMix } from '../../audio/mix'
 import { noise, voice } from '../transformer/combat/audio/shots'
 import type { HitKind } from '../transformer/combat/hits'
 import { CAN_OBJECTS, CAN_STRIKES, canStrike } from './can-bank'
+import { BLOW_KINDS, HIT_VARIANTS, blowTake, type BlowKind } from './hit-bank'
 
 /**
  * The garrison's sound: small machines, heard under the robot's own. A horde
@@ -27,6 +28,10 @@ import { CAN_OBJECTS, CAN_STRIKES, canStrike } from './can-bank'
  *           dropped (can-bank.ts, synthesised against a recording of one),
  *           and on a hard landing a re-strike or two as it rocks
  *   ignite  a blade lighting: a crackle and a thin hiss
+ *   blow    the robot's blow landing (once per blow, not per soldier it
+ *           catches): a punch, a heavy stomp-like hit or a blade's chop and
+ *           ring (hit-bank.ts, synthesised against Foley recordings), fuller
+ *           the more soldiers it catches
  *
  * No filter moves (fixed filters, level envelopes only). The only tones are a
  * struck part's shell modes: a dense cluster of close, beating modes excited
@@ -48,6 +53,11 @@ export class SoldierAudio {
   /** the struck-shell bank, rendered a strike per frame: [object][strike] */
   private readonly cans: AudioBuffer[][] = Array.from({ length: CAN_OBJECTS }, () => [])
   private cansReady = 0
+  /** the blows' takes by kind, rendered after the shells, a take per frame */
+  private readonly blows: Record<BlowKind, AudioBuffer[]> = { punch: [], heavy: [], slash: [] }
+  private blowsReady = 0
+  /** when the last blow of each kind sounded (a sweep catching soldiers frame after frame is one blow, not a rattle) */
+  private readonly lastBlow: Record<BlowKind, number> = { punch: -1, heavy: -1, slash: -1 }
 
   constructor(mix: AudioMix) {
     this.mix = mix
@@ -71,6 +81,14 @@ export class SoldierAudio {
       buffer.copyToChannel(data, 0)
       this.cans[o][k] = buffer
       this.cansReady++
+    } else if (this.blowsReady < BLOW_KINDS.length * HIT_VARIANTS) {
+      // the blows first by kind (one take of each is enough to play), then their other takes
+      const kind = BLOW_KINDS[this.blowsReady % BLOW_KINDS.length], v = Math.floor(this.blowsReady / BLOW_KINDS.length)
+      const data = blowTake(kind, v, ctx.sampleRate)
+      const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate)
+      buffer.copyToChannel(data, 0)
+      this.blows[kind].push(buffer)
+      this.blowsReady++
     }
     if (!this.wheels) this.build(ctx)
     const t = ctx.currentTime
@@ -195,6 +213,30 @@ export class SoldierAudio {
     src.start(t)
   }
 
+  /**
+   * A blow of `kind` landing, `strength` 0..~1.4, catching `caught`
+   * soldiers, the nearest `distance` m away.
+   */
+  blow(kind: BlowKind, strength: number, caught: number, distance: number): void {
+    const c = this.mix.ctx
+    const takes = this.blows[kind]
+    if (!c || !this.mix.enabled || !takes.length) return
+    if (c.currentTime - this.lastBlow[kind] < BLOW_GAP) return
+    this.lastBlow[kind] = c.currentTime
+    const t = c.currentTime + 0.003 + distance / 343
+    // more soldiers caught is a fuller blow, not a louder one each
+    const level = BLOW_LEVEL * Math.min(1.4, strength) * (1 + 0.3 * Math.log2(Math.max(1, caught))) / (1 + distance * 0.05)
+    const bus = voice(this.mix, level, 0.22, 1.2)
+    const src = c.createBufferSource()
+    src.buffer = takes[Math.floor(Math.random() * takes.length)]
+    const dull = c.createBiquadFilter()
+    dull.type = 'lowpass'
+    dull.frequency.value = 18000 / (1 + distance * 0.06)
+    dull.Q.value = 0.5
+    src.connect(dull).connect(bus)
+    src.start(t)
+  }
+
   ignite(distance: number): void {
     const ctx = this.event(distance)
     if (!ctx) return
@@ -218,5 +260,8 @@ export class SoldierAudio {
 const LAND_RATE = 24
 const LAND_BURST = 8
 const LAND_FAR = 70
+/** A blow at full strength (its takes peak at 0.9), and the shortest gap between two blows of a kind (s). */
+const BLOW_LEVEL = 0.55
+const BLOW_GAP = 0.07
 /** A landing at full speed (the bank's strikes peak at 0.9). */
 const LAND_LEVEL = 0.07

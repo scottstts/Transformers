@@ -6,7 +6,7 @@ const T = (x: number, y: number, z: number): Matrix4 => new Matrix4().makeTransl
 const Ry = (a: number): Matrix4 => new Matrix4().makeRotationY(a)
 
 /** An opening in a facade: centre, width, sill and head heights above the facade's foot; a door has no sill. */
-interface Opening { x: number; w: number; sill: number; head: number }
+export interface Opening { x: number; w: number; sill: number; head: number }
 
 /**
  * A facade with openings, built as real openings: the wall between them is
@@ -15,8 +15,10 @@ interface Opening { x: number; w: number; sill: number; head: number }
  * dark room behind; a door opening is left for its leaf. The facade lies in
  * the x-y plane, its outer face at z = 0 (+z outward), `t` thick.
  */
-function facade(w: MeshWriter, slot: string, x0: number, x1: number, y0: number, y1: number, t: number, openings: Opening[]): void {
-  const edges = [x0, ...openings.flatMap((o) => [o.x - o.w / 2, o.x + o.w / 2]), x1]
+export function facade(w: MeshWriter, slot: string, x0: number, x1: number, y0: number, y1: number, t: number, openings: Opening[]): void {
+  // the piers run between consecutive openings: in order along the facade
+  const sorted = [...openings].sort((a, b) => a.x - b.x)
+  const edges = [x0, ...sorted.flatMap((o) => [o.x - o.w / 2, o.x + o.w / 2]), x1]
   // piers between the openings, full height; sill and head blocks under and over each
   for (let i = 0; i < edges.length; i += 2) if (edges[i + 1] - edges[i] > 1e-3) chamferBox(w, slot, [edges[i], y0, -t], [edges[i + 1], y1, 0], 0.02)
   for (const o of openings) {
@@ -39,10 +41,10 @@ function facade(w: MeshWriter, slot: string, x0: number, x1: number, y0: number,
   }
 }
 
-const windows = (xs: number[], w: number, sill: number, head: number): Opening[] => xs.map((x) => ({ x, w, sill, head }))
+export const windows = (xs: number[], w: number, sill: number, head: number): Opening[] => xs.map((x) => ({ x, w, sill, head }))
 
 /** A split A/C condenser: a louvred case, a fan guard, feet, its pipes. Frame: base centre, the fan facing +z. */
-function condenser(w: MeshWriter, M: Matrix4): void {
+export function condenser(w: MeshWriter, M: Matrix4): void {
   w.place(M)
   chamferBox(w, 'prefab', [-0.45, 0.05, -0.18], [0.45, 0.72, 0.18], 0.025)
   chamferBox(w, 'darkSteel', [-0.4, 0, -0.16], [-0.3, 0.05, 0.16], 0.005)

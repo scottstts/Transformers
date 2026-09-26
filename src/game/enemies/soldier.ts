@@ -9,7 +9,8 @@ import type { Debris } from './debris'
 
 /** Soldier tuning: speeds (m/s), accelerations (m/s^2), times (s). */
 export const SOLDIER = {
-  health: 70,
+  /** a combo's four blows take one down; its first three don't (the robots' hits.ts) */
+  health: 300,
   chargeSpeed: 8.5,
   engageSpeed: 3.4,
   accel: 11,
@@ -32,9 +33,15 @@ export const SOLDIER = {
   /** lying before getting up, and the getting up */
   down: [1.1, 1.9] as const,
   rise: 0.95,
+  /** a blow's flinch: how long it holds the hit pose (s), a little longer for harder blows, and how fast it snaps into it (1/s) */
+  flinch: [0.3, 0.5] as const,
+  flinchSnap: 34,
+  /** the health bar's trailing chip: how long it holds after a blow, then how fast it drains (share of full per s) */
+  chipHold: 0.4,
+  chipDrain: 0.9,
 }
 
-export type SoldierMode = 'post' | 'move' | 'attack' | 'stagger' | 'air' | 'down' | 'rise' | 'dead'
+export type SoldierMode = 'post' | 'move' | 'attack' | 'hit' | 'stagger' | 'air' | 'down' | 'rise' | 'dead'
 
 /** A blow as it reaches one soldier: which way it is thrown and how hard. */
 export interface SoldierImpact {
@@ -53,6 +60,13 @@ const Y = new Vector3(0, 1, 0)
 
 /**
  * One robot soldier: a wheeled body with a rigid-part skeleton.
+ *
+ * It has health (SOLDIER.health): a blow takes its damage off and the body
+ * flinches into a hit pose (two, alternating blow by blow, so a combo
+ * visibly rocks it back and forth), holds it a moment and recovers into its
+ * stance; a blow that empties it destroys it. Blows that must not destroy
+ * it (a special's, before its last) leave it `doomed` at zero instead: held
+ * in its hit pose (or lying where it fell) until the last blow settles it.
  *
  * Motion is physical on its two wheel pairs: driving accelerates it along its
  * heading; left alone it coasts on the wheels (little friction) but skids
@@ -100,6 +114,24 @@ export class Soldier implements HordeInstance {
   lastSweep = -1
   /** spawn serial: debris and effects key off it */
   serial = 0
+  /** its health ran out under blows that could not destroy it (a special's): held until the last one */
+  doomed = false
+  /** time since the last blow (s), the health bar's trailing chip (0..1) and how long it holds */
+  hurt = 99
+  chip = 1
+  private chipHold = 0
+  /** the hit pose this blow shows (alternates blow by blow) and how long it holds */
+  private flinchPose = 0
+  private flinchTime = 0
+  /** behaviour's bookkeeping (horde.ts): its post, where it is on the post's beat, when it may swing next,
+   * whether it is still rolling out of its spawn door, and the district it stands in */
+  post = 0
+  readonly beat = { k: -1, wait: 0, look: 0 }
+  nextSwing = 0
+  leaving = false
+  sector = -1
+  /** the rig's bones match the last update (posing is deferred to the soldiers that are drawn or hit) */
+  private posed = false
   /** its parts once destroyed (kept with the soldier and reused) */
   debris: Debris | null = null
   private readonly tilt = new Quaternion()
@@ -140,7 +172,27 @@ export class Soldier implements HordeInstance {
     this.landed = false
     this.lastSweep = -1
     this.serial = serial
+    this.doomed = false
+    this.hurt = 99
+    this.chip = 1
+    this.chipHold = 0
+    this.flinchPose = 0
+    this.flinchTime = 0
+    this.post = 0
+    this.beat.k = -1
+    this.nextSwing = 0
+    this.leaving = false
+    this.sector = -1
+    this.posed = false
     this.goal.x = x; this.goal.z = z; this.goal.face = yaw; this.goal.speed = 0; this.goal.drive = false; this.goal.ready = false
+    this.place.x = x; this.place.z = z; this.place.y = 0; this.place.yaw = yaw
+    writePose(this.anim, this.pose)
+    this.refresh()
+  }
+
+  /** Health left, 0..1 (the bar). */
+  get vitality(): number {
+    return Math.max(0, this.health / SOLDIER.health)
   }
 
   get alive(): boolean {
@@ -149,7 +201,7 @@ export class Soldier implements HordeInstance {
 
   /** Standing and able to act on the behaviour's wishes. */
   get free(): boolean {
-    return this.mode === 'post' || this.mode === 'move'
+    return !this.doomed && (this.mode === 'post' || this.mode === 'move')
   }
 
   /** Begin a slash (the horde decides when). */
@@ -160,17 +212,24 @@ export class Soldier implements HordeInstance {
     this.landed = false
   }
 
-  /** A blow reaches it. Returns true when it destroys the soldier. */
-  impact(hit: SoldierImpact): boolean {
+  /**
+   * A blow reaches it. Returns true when it destroys the soldier. A blow
+   * that may not destroy it (`hold`: a special's before its last) leaves it
+   * doomed at zero instead; `settle` finishes it.
+   */
+  impact(hit: SoldierImpact, hold = false): boolean {
     if (!this.alive) return false
-    this.health -= hit.damage
+    // the bar's chip keeps what the health was before the blow, and holds a moment
+    this.chip = Math.max(this.chip, this.vitality)
+    this.health = Math.max(0, this.health - hit.damage)
+    this.hurt = 0
+    this.chipHold = SOLDIER.chipHold
     if (hit.kind === 'blast') this.heat = Math.max(this.heat, hit.special ? 0.7 : 0.3)
     this.vx += hit.dirX * hit.knock
     this.vz += hit.dirZ * hit.knock
     if (this.health <= 0) {
-      this.mode = 'dead'
-      this.t = 0
-      return true
+      if (!hold) return this.settle()
+      this.doomed = true
     }
     // the push in the body frame: forward (+) / left (+)
     const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw)
@@ -195,15 +254,33 @@ export class Soldier implements HordeInstance {
       this.tumbleX = along * rate
       this.tumbleY = across * rate
     } else if (this.mode !== 'air' && this.mode !== 'down' && this.mode !== 'rise') {
-      this.mode = 'stagger'
-      this.t = -Math.min(0.5, 0.18 + (hit.knock + hit.damage * 0.05) * 0.03)
+      // the flinch: into the other hit pose from the last, held a moment by how hard it was
+      this.mode = 'hit'
+      this.t = 0
+      this.flinchPose ^= 1
+      const [lo, hi] = SOLDIER.flinch
+      this.flinchTime = Math.min(hi, lo + (hit.knock + hit.damage * 0.02) * 0.012)
     }
     return false
+  }
+
+  /** Destroy it now if its health is gone (a doomed soldier, at a special's last blow); returns whether it was. */
+  settle(): boolean {
+    if (!this.alive || this.health > 0) return false
+    this.refresh()
+    this.mode = 'dead'
+    this.doomed = false
+    this.t = 0
+    return true
   }
 
   /** Physics and animation for `dt`. */
   update(dt: number): void {
     this.t += dt
+    this.hurt += dt
+    // the bar's chip holds a moment after a blow, then drains to the health
+    this.chipHold -= dt
+    if (this.chipHold <= 0) this.chip = Math.max(this.vitality, this.chip - SOLDIER.chipDrain * dt)
     if (this.mode === 'dead') return
     const onGround = this.mode !== 'air'
     const g = this.goal
@@ -242,7 +319,7 @@ export class Soldier implements HordeInstance {
         fwd += accel * dt
       } else if (!steering) {
         // wheels: coast along, or brake hard when knocked about; flat on the sand it just slides
-        const along = this.mode === 'down' ? 6 : this.mode === 'stagger' || this.mode === 'rise' ? SOLDIER.brake : SOLDIER.rollFriction
+        const along = this.mode === 'down' ? 6 : this.mode === 'stagger' || this.mode === 'hit' || this.mode === 'rise' ? SOLDIER.brake : SOLDIER.rollFriction
         fwd = towardZero(fwd, along * dt)
       }
       if (!steering) side = towardZero(side, (this.mode === 'down' ? 6 : SOLDIER.skidFriction) * dt)
@@ -281,7 +358,8 @@ export class Soldier implements HordeInstance {
     this.tumbleX = this.tumbleY = 0
     const up = _v.set(0, 0, 1).applyQuaternion(this.tilt)
     if (up.z > 0.72) {
-      this.mode = 'stagger'
+      // on its wheels: it catches itself (a doomed one stays flinched)
+      this.mode = this.doomed ? 'hit' : 'stagger'
       this.t = -0.35
       this.tilt.identity()
     } else {
@@ -297,7 +375,14 @@ export class Soldier implements HordeInstance {
   private modes(): void {
     switch (this.mode) {
       case 'stagger':
-        if (this.t >= 0) this.mode = 'move'
+        if (this.t >= 0) this.mode = this.doomed ? 'hit' : 'move'
+        break
+      case 'hit':
+        // a doomed soldier holds its flinch until the special's last blow
+        if (this.t >= this.flinchTime && !this.doomed) {
+          this.mode = 'move'
+          this.t = 0
+        }
         break
       case 'attack':
         if (this.t >= SOLDIER.windup + SOLDIER.strike + SOLDIER.recover) {
@@ -306,7 +391,7 @@ export class Soldier implements HordeInstance {
         }
         break
       case 'down':
-        if (this.t >= this.downTime) {
+        if (this.t >= this.downTime && !this.doomed) {
           this.mode = 'rise'
           this.t = 0
           this.rising.copy(this.tilt)
@@ -317,7 +402,7 @@ export class Soldier implements HordeInstance {
         const e = u * u * (3 - 2 * u)
         this.tilt.slerpQuaternions(this.rising, _q.identity(), e)
         if (u >= 1) {
-          this.mode = 'move'
+          this.mode = this.doomed ? 'hit' : 'move'
           this.t = 0
           this.tilt.identity()
         }
@@ -344,6 +429,16 @@ export class Soldier implements HordeInstance {
         if (t < w) { T.set(POSES.windup); rate = 9 } else if (t < w + s) { T.set(POSES.strike); rate = 28 } else { T.set(POSES.ready); rate = 6 }
         break
       }
+      case 'hit':
+        // snapped into, held; recovery is the stance's own ease once it frees
+        T.set(this.flinchPose ? POSES.hitLow : POSES.hitHigh)
+        rate = this.t < 0.14 ? SOLDIER.flinchSnap : 10
+        if (this.doomed) {
+          // shaking in the hold
+          T[SC.lean] += Math.sin(this.t * 31) * 2.5
+          T[SC.headPitch] += Math.sin(this.t * 23 + 1) * 4
+        }
+        break
       case 'stagger':
         T.set(POSES.ready)
         rate = 5
@@ -393,11 +488,24 @@ export class Soldier implements HordeInstance {
     this.place.z = this.z
     this.place.y = this.y - lying
     this.place.yaw = this.yaw
+    this.posed = false
+  }
+
+  /**
+   * Bring the rig's bones up to the last update. Posing twenty bones is the
+   * soldier's costliest step, so it runs only for soldiers drawn this frame
+   * or read (a blow's sparks, a blade's reach, the break-up); a destroyed
+   * soldier's bones belong to its debris.
+   */
+  refresh(): void {
+    if (this.posed || this.mode === 'dead') return
     this.rig.pose(this.place, this.pose)
+    this.posed = true
   }
 
   /** Where the blade's tip and emitter are (world), after the last pose. */
   bladeEnds(base: Vector3, tip: Vector3): void {
+    this.refresh()
     const m = this.rig.world[this.rig.index.blade]
     base.setFromMatrixPosition(m)
     tip.set(0, 0, this.rig.dims.bladeLength).applyMatrix4(m)

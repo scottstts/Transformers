@@ -175,33 +175,34 @@ export function fuelTank(w: MeshWriter, M: Matrix4): void {
 }
 
 /**
- * A gabion (HESCO) cell: wire-mesh faces over geotextile, the sand fill
- * bulging the faces out and slumped at the top, steel coil posts at the
- * corners. Frame: centred, floor at y = 0.
+ * A row of gabion (HESCO) cells along x: wire-mesh faces over geotextile,
+ * each cell's sand fill bulging its faces out and slumped at its top, steel
+ * coil posts at the cells' corners. Only the row's outer faces are built:
+ * the shared walls between cells are hidden. Frame: centred, floor at
+ * y = 0; `b.size` = length, height, depth.
  */
 export function gabion(w: MeshWriter, M: Matrix4, b: Module): void {
   const [W, H, D] = b.size
-  const x = W / 2, z = D / 2
-  w.place(M)
+  const n = Math.max(1, Math.round(W / 1.07))
+  const cw = W / n
+  const z = D / 2
   const bulge = 0.08
-  const seg = 5
-  for (let f = 0; f < 4; f++) {
-    const R = M.clone().multiply(new Matrix4().makeRotationY((f * Math.PI) / 2))
-    w.place(R)
-    const hw = f % 2 ? z : x
-    const hd = f % 2 ? x : z
+  const seg = 4
+  // one bulged face of half-width hw at distance hd along the frame's +z
+  const face = (F: Matrix4, hw: number, hd: number): void => {
+    w.place(F)
     const rows: Vec3[][] = []
     const normals: Vec3[][] = []
     for (let j = 0; j <= seg; j++) {
       const v = j / seg
+      const sv = Math.sin(Math.PI * Math.min(1, v * 1.1)), cv = Math.cos(Math.PI * Math.min(1, v * 1.1))
       const row: Vec3[] = []
       const nrow: Vec3[] = []
       for (let i = 0; i <= seg; i++) {
         const u = (i / seg) * 2 - 1
-        const b0 = bulge * (1 - u * u) * Math.sin(Math.PI * Math.min(1, v * 1.1))
-        row.push([u * hw, v * H, hd + b0])
-        const du = -2 * u * bulge * Math.sin(Math.PI * Math.min(1, v * 1.1)) / hw
-        const dv = bulge * (1 - u * u) * Math.PI * Math.cos(Math.PI * Math.min(1, v * 1.1)) / H
+        row.push([u * hw, v * H, hd + bulge * (1 - u * u) * sv])
+        const du = (-2 * u * bulge * sv) / hw
+        const dv = (bulge * (1 - u * u) * Math.PI * cv) / H
         const l = Math.hypot(du, dv, 1)
         nrow.push([-du / l, -dv / l, 1 / l])
       }
@@ -210,12 +211,24 @@ export function gabion(w: MeshWriter, M: Matrix4, b: Module): void {
     }
     w.grid('gabion', rows, normals)
   }
-  w.place(M)
-  // slumped sand top and corner coil posts
-  prismY(w, 'sandbag', rect(W - 0.04, D - 0.04), H - 0.3, H - 0.12, 0.12)
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    w.place(T(sx * x, 0, sz * z).premultiply(M))
-    cylinderY(w, 'galvanized', 0.035, 0, H + 0.02, 6, 0.005)
+  for (let i = 0; i < n; i++) {
+    const cx = -W / 2 + (i + 0.5) * cw
+    const C = M.clone().multiply(T(cx, 0, 0))
+    face(C, cw / 2, z)
+    face(C.clone().multiply(new Matrix4().makeRotationY(Math.PI)), cw / 2, z)
+    if (i === 0) face(C.clone().multiply(new Matrix4().makeRotationY(-Math.PI / 2)), z, cw / 2)
+    if (i === n - 1) face(C.clone().multiply(new Matrix4().makeRotationY(Math.PI / 2)), z, cw / 2)
+    w.place(C)
+    w.shade(hash(cx * 3.1 + b.at[0]) * 0.6 + 0.2)
+    prismY(w, 'sandbag', rect(cw - 0.05, D - 0.05), H - 0.3, H - 0.12, 0.12)
+    w.shade(0.5)
+  }
+  // coil posts at every cell corner on both faces
+  for (let i = 0; i <= n; i++) {
+    for (const sz of [-1, 1]) {
+      w.place(T(-W / 2 + i * cw, 0, sz * z).premultiply(M))
+      cylinderY(w, 'galvanized', 0.035, 0, H + 0.02, 6, 0.005)
+    }
   }
   w.place(M)
 }

@@ -14,10 +14,20 @@ interface Sample {
   look: [number, number, number]
   /** world seconds to run before the shot */
   at: number
-  setup(scene: Scene, surface: ReturnType<typeof createDesertWorld>['contactEffects'], billows: Billows): void
+  /** may place the view itself (a sample staged in the world, not at its origin) */
+  setup(scene: Scene, surface: ReturnType<typeof createDesertWorld>['contactEffects'], billows: Billows, world: ReturnType<typeof createDesertWorld>['world']): void | { eye: [number, number, number]; look: [number, number, number] }
 }
 
 const UP = new Vector3(0, 1, 0)
+
+/** A point on the long edge of the fortress's longest paved strip (its main road), in the world. */
+function roadEdge(world: ReturnType<typeof createDesertWorld>['world']): Vector3 {
+  const road = [...world.forts.paving.shapes].filter((s) => !s.round).sort((a, b) => b.hz - a.hz)[0]
+  // its +x edge in its own frame, a third of the way along
+  const x = road.hx, z = road.hz * 0.3
+  const c = Math.cos(road.yaw), s = Math.sin(road.yaw)
+  return new Vector3(road.x + x * c + z * s, 0, road.z - x * s + z * c)
+}
 
 const SAMPLES: Record<string, Sample> = {
   // the sun and the sky around it: banding in the glow shows here first
@@ -42,6 +52,24 @@ const SAMPLES: Record<string, Sample> = {
     eye: [0, 11, 9], look: [0, 0, 0], at: 25,
     setup: (_scene, surface) => surface.crater(new Vector3(), 4.4, 1),
   },
+  // a crater straddling the edge of the fortress's main road: concrete's marks on the slabs, sand's beside them
+  ...Object.fromEntries([['crater-paved', 0.8], ['crater-paved-cold', 25]].map(([name, at]) => [name, {
+    eye: [0, 0, 0], look: [0, 0, 0], at: at as number,
+    setup: (_scene, surface, _b, world) => {
+      const c = roadEdge(world)
+      surface.crater(c, 4.4, 1)
+      return { eye: [c.x + 2, 11, c.z + 9], look: [c.x, 0, c.z] }
+    },
+  } satisfies Sample])),
+  // furrows cut across the road's edge, hot
+  'furrows-paved': {
+    eye: [0, 0, 0], look: [0, 0, 0], at: 0.6,
+    setup: (_scene, surface, _b, world) => {
+      const c = roadEdge(world)
+      for (const a of [0, 0.8, 1.6, 2.4]) surface.furrow(new Vector3(c.x + Math.sin(a) * 6, 0, c.z + Math.cos(a) * 6), c.clone(), 0.4, 1)
+      return { eye: [c.x + 2, 9, c.z + 10], look: [c.x, 0, c.z] }
+    },
+  },
   // four furrows meeting, just cut and reignited from their ends
   furrows: {
     eye: [0, 9, 10], look: [0, 0, 0], at: 0.6,
@@ -65,17 +93,17 @@ export async function renderFx(out: string, names: string[]): Promise<void> {
     configureRenderer(renderer)
     bakeEnvironment(renderer, scene, world.environmentScene())
     const camera = new PerspectiveCamera(50, W / H, 0.1, 6000)
-    camera.position.set(...sample.eye)
-    camera.lookAt(...sample.look)
-    const pipeline = createPostPipeline(renderer, scene, camera, process.env.FX_LENS === '0' ? undefined : new Lens())
     const billows = new Billows()
     scene.add(billows.mesh)
-    sample.setup(scene, world.contactEffects, billows)
+    const view = sample.setup(scene, world.contactEffects, billows, world.world) ?? sample
+    camera.position.set(...view.eye)
+    camera.lookAt(...view.look)
+    const pipeline = createPostPipeline(renderer, scene, camera, process.env.FX_LENS === '0' ? undefined : new Lens())
     for (let t = 0; t < sample.at; t += 1 / 30) {
       billows.update(1 / 30)
       world.contactEffects.update(1 / 30)
     }
-    world.world.update(camera, new Vector3(...sample.look))
+    world.world.update(camera, new Vector3(...view.look))
     await renderer.compileAsync(scene, camera)
     pipeline.render()
     writePng(`${out}-${name}.png`, W, H, await grab())

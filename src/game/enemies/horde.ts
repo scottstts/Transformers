@@ -1,6 +1,7 @@
 import { Frustum, Group, Matrix4, Sphere, Vector3, type PerspectiveCamera } from 'three/webgpu'
 import type { SoldierAsset } from '../../content/soldier/asset'
 import { HordeRenderer, HORDE_CAPACITY, SHADOW_FAR } from '../../content/soldier/horde-renderer'
+import { HealthBars } from '../../content/soldier/health-bars'
 import { SoldierAudio } from '../../content/soldier/audio'
 import { Sparks } from '../../content/transformer/combat/fx/sparks'
 import { Billows } from '../../content/transformer/combat/fx/billows'
@@ -8,39 +9,33 @@ import type { HitEvent } from '../../content/transformer/combat/hits'
 import type { AudioMix } from '../../audio/mix'
 import type { ContactEffects } from '../contact-effects'
 import type { Fort, Forts } from '../../worlds/desert/fort'
-import { pushOut, type Contact } from '../collide'
+import type { Contact } from '../collide'
 import { wrap } from '../math'
 import { Soldier, SOLDIER, type SoldierImpact } from './soldier'
 import { Debris, DEBRIS_FADE, DEBRIS_LIE } from './debris'
+import { aliveIn, createGarrison, patrol, reinforce, station, updateAlert, type Garrison } from './garrison'
+import { engage, REEL } from './engage'
+import { FortNav } from './navigation'
 
-/** Garrison size at peace, the level at which reinforcements roll out during a fight, and the most alive at once. */
-export const GARRISON = 28
-export const REINFORCE_BELOW = 16
-const MAX_ALIVE = 32
-/** Seconds between reinforcements during a fight, and while the fort refills at peace. */
-const REINFORCE_EVERY = 0.6
-const REFILL_EVERY = 3
-/** How many may be swinging at once, and how many close in to the ring at all. */
-const ATTACKERS = 4
-const RING = 9
-/** Share of the way round the ring the fighting soldiers move toward the robot's front. */
-const FRONT_BIAS = 0.3
-/** Distance beyond the robot's body where the ring stands, and the outer holding ring (m). */
-const ENGAGE_GAP = 1.55
-const HOLD_GAP = 5.0
 /** The slash's reach past the robot's body (m) and its cone (rad) either side of the soldier's heading. */
 const SLASH_REACH = 2.1
 const SLASH_CONE = 1.05
-/** Draw and simulate forts within these distances of the camera (m); beyond `SIM_FAR` they tick slowly. */
+/**
+ * Simulation rates by a district's distance from the camera (m, from its
+ * bounds): every frame near (or fighting), every other frame across the
+ * fortress, every sixth beyond; nothing past DRAW_FAR.
+ */
+const SIM_NEAR = 90
+const SIM_MID = 200
 const DRAW_FAR = 460
-const SIM_FAR = 170
-/** At peace: rolling speed on a beat (m/s), how near a point counts as there (m), pauses there (s) on a patrol and on a sentry's pacing. */
-const PATROL_SPEED = 1.8
-const PATROL_ARRIVE = 1.0
-const PATROL_PAUSE: readonly [number, number] = [0.6, 2.8]
-const SENTRY_PAUSE: readonly [number, number] = [2.2, 6]
 /** How far a soldier's shadow can reach from it across the sand (m): a 3 m body under a sun 25 degrees up. */
 const SHADOW_REACH = 7
+/** Health bars: drawn within BAR_FAR m, fading out from BAR_FADE; their anchor above the head bone (m). */
+const BAR_FAR = 62
+const BAR_FADE = 46
+const BAR_LIFT = 0.78
+/** A hit's flash on the bar (s). */
+const BAR_FLASH = 0.18
 
 /** What the soldiers fight: the player's body on the ground this frame. */
 export interface EnemyTarget {
@@ -61,41 +56,34 @@ export interface EnemyTarget {
   present: boolean
 }
 
-interface Garrison {
+/** A fortress, the soldiers' way-finding in it and its districts' garrisons. */
+interface Stronghold {
   fort: Fort
-  soldiers: Soldier[]
-  alert: boolean
-  /** a wave of reinforcements is rolling out (started below REINFORCE_BELOW, runs until the garrison is whole) */
-  wave: boolean
-  spawnClock: number
-  /** per soldier: next time it may swing (s of garrison clock), post index */
-  clock: number
-  cooldown: Map<Soldier, number>
-  post: Map<Soldier, number>
-  /** at peace: where each soldier is on its post's beat (point index), until when it waits there, where it looks */
-  beat: Map<Soldier, { k: number; wait: number; look: number }>
-  /** each soldier's destination when it came out of the hangar (it rolls out before it fights) */
-  leaving: Set<Soldier>
+  nav: FortNav
+  garrisons: Garrison[]
 }
 
 /**
- * The forts' garrisons of robot soldiers and everything they do.
+ * The fortress's garrisons of robot soldiers and everything they do.
  *
- * Each fort keeps a garrison standing at its posts. When the robot comes
- * inside the walls the fort is alerted: every soldier lights its blade and
- * charges; the nearest close in on a ring round the robot and a few at a time
- * wind up and slash, the rest hold further out, circling for an opening.
- * Leaving the fort's grounds calls them back to their posts. While the fight
- * lasts, reinforcements roll out of the hangar whenever the garrison drops
- * below REINFORCE_BELOW; at peace it slowly refills.
+ * Every district keeps its own garrison (garrison.ts): at peace its soldiers
+ * walk their beats; when the robot comes into the district they light their
+ * blades and fight (engage.ts), following it one district over through the
+ * gates, and they stand down a moment after it leaves the fortress or goes
+ * further (garrison.ts `updateAlert`), finding their way back to their
+ * beats. While a fight lasts, reinforcements roll out of the district's
+ * spawn doors whenever the garrison runs low; at peace it slowly refills.
  *
- * Blows from the robot (hits.ts) reach every soldier in their shape; a
- * soldier is thrown, staggered, launched or destroyed (soldier.ts), and a
- * destroyed one breaks into its parts (debris.ts), which lie for four
- * seconds and burn away. Flying bodies bowl over the soldiers they hit.
+ * Blows from the robot (hits.ts) take a soldier's health: it flinches and
+ * recovers, is thrown, or, with its health gone, breaks into its parts
+ * (debris.ts), which lie for four seconds and burn away. A special's blows
+ * before its last leave an emptied soldier doomed in its flinch; the last
+ * one breaks every doomed soldier at once. Flying bodies bowl over the
+ * soldiers they hit.
  *
- * Everything is drawn by one HordeRenderer for all forts: culled to the view,
- * sorted by distance for its detail tiers, capacity HORDE_CAPACITY.
+ * Everything is drawn by one HordeRenderer: culled to the view, sorted by
+ * distance for its detail tiers, capacity HORDE_CAPACITY; the health bars
+ * are one more draw over the nearest.
  */
 export class Horde {
   readonly object = new Group()
@@ -103,80 +91,124 @@ export class Horde {
   destroyed = 0
   /** a soldier's blade lands on the robot: where (world), from where, how hard 0..1 */
   onStruck: ((at: Vector3, from: Vector3, strength: number) => void) | null = null
+  /**
+   * A special is playing: nothing destroys a soldier until its last blow
+   * (walls and bowling bodies included); an emptied one is held doomed.
+   */
+  special = false
   private readonly asset: SoldierAsset
   private readonly renderer: HordeRenderer
+  private readonly bars = new HealthBars(HORDE_CAPACITY)
   private readonly audio: SoldierAudio
   private readonly sparks = new Sparks()
   private readonly billows = new Billows()
   private readonly contact: ContactEffects
+  private readonly strongholds: Stronghold[] = []
   private readonly garrisons: Garrison[] = []
   private readonly pool: Soldier[] = []
   private readonly drawList: Soldier[] = []
   /** scratch: soldiers off screen whose shadows may fall into view */
   private readonly shadowList: Soldier[] = []
-  /** scratch: a garrison's standing soldiers this frame */
-  private readonly standing: Soldier[] = []
+  /** scratch: the alerted garrisons' standing soldiers; every soldier stepped this frame and its fort */
+  private readonly fighters: Soldier[] = []
+  private readonly stepped: Soldier[] = []
+  private readonly steppedFort: Fort[] = []
   private serial = 0
+  private clock = 0
+  private frame = 0
   private readonly frustum = new Frustum()
   private readonly sphere = new Sphere()
   private readonly projScreen = new Matrix4()
   private readonly listener = new Vector3()
-  private slowTick = 0
 
   constructor(asset: SoldierAsset, forts: Forts, contact: ContactEffects, mix: AudioMix) {
     this.asset = asset
     this.contact = contact
     this.renderer = new HordeRenderer(asset)
     this.audio = new SoldierAudio(mix)
-    this.object.add(this.renderer.object, this.sparks.mesh, this.billows.mesh)
+    this.object.add(this.renderer.object, this.sparks.mesh, this.billows.mesh, this.bars.mesh)
     for (const fort of forts.list) {
-      const g: Garrison = { fort, soldiers: [], alert: false, wave: false, spawnClock: 0, clock: 0, cooldown: new Map(), post: new Map(), beat: new Map(), leaving: new Set() }
-      this.garrisons.push(g)
-      for (let i = 0; i < GARRISON; i++) this.station(g, i)
+      const nav = new FortNav(fort.plan, SOLDIER.radius)
+      const garrisons = fort.plan.sectors.map((sector) => createGarrison(fort, nav, sector))
+      this.strongholds.push({ fort, nav, garrisons })
+      for (const g of garrisons) {
+        this.garrisons.push(g)
+        if (!g.posts.length) continue
+        for (let i = 0; i < g.sector.garrison; i++) station(g, this.soldier(), i, this.serial++, this.clock)
+      }
     }
   }
 
-  /** How many soldiers are alive in the fort the target is in (or nearest), and whether it is alerted. */
+  /** How many soldiers are alive in the district of (x, z), and whether it is fighting; null outside every fortress. */
   status(x: number, z: number): { alive: number; alert: boolean } | null {
-    for (const g of this.garrisons) {
-      const s = g.fort.plan.site
-      if (Math.hypot(x - s.x, z - s.z) < g.fort.plan.barrier + 20) return { alive: g.soldiers.filter((k) => k.alive).length, alert: g.alert }
+    for (const { fort, garrisons } of this.strongholds) {
+      const k = fort.sector(x, z)
+      if (k < garrisons.length) return { alive: aliveIn(garrisons[k]), alert: garrisons[k].alert }
     }
     return null
   }
 
   update(dt: number, target: EnemyTarget, camera: PerspectiveCamera): void {
     this.listener.copy(camera.position)
-    this.slowTick = (this.slowTick + 1) % 6
-    let rolling = 0
-    let lit = 0
-    for (const g of this.garrisons) {
-      const site = g.fort.plan.site
-      const camDist = Math.hypot(camera.position.x - site.x, camera.position.z - site.z)
-      if (camDist > DRAW_FAR + g.fort.plan.outer) continue
-      // far forts only stand guard: their soldiers tick at a sixth of the rate
-      const near = camDist < SIM_FAR + g.fort.plan.outer || g.alert
-      if (!near && this.slowTick !== this.garrisons.indexOf(g) % 6) continue
-      const step = near ? dt : dt * 6
-      g.clock += step
-      this.alert(g, target)
-      this.spawn(g, step)
-      this.think(g, target)
-      for (const s of g.soldiers) {
-        if (s.alive) s.update(step)
-      }
-      this.collide(g, target)
-      this.strikes(g, target)
-      this.decay(g, step)
-      if (near) {
+    this.clock += dt
+    this.frame++
+    const stepped = this.stepped, steppedFort = this.steppedFort
+    stepped.length = 0
+    steppedFort.length = 0
+    let rolling = 0, lit = 0
+    for (const { fort, nav, garrisons } of this.strongholds) {
+      const targetSector = fort.sector(target.x, target.z)
+      const fighters = this.fighters
+      fighters.length = 0
+      let swinging = 0
+      garrisons.forEach((g, gi) => {
+        const camDist = Math.max(0, Math.hypot(camera.position.x - g.cx, camera.position.z - g.cz) - g.radius)
+        if (camDist > DRAW_FAR && !g.alert) return
+        const rate = g.alert || camDist < SIM_NEAR ? 1 : camDist < SIM_MID ? 2 : 6
+        if (this.frame % rate !== gi % rate) return
+        const step = dt * rate
+        if (updateAlert(g, target, targetSector, step)) {
+          for (const s of g.soldiers) if (s.alive) this.audio.ignite(this.listener.distanceTo(_v.set(s.x, 1.5, s.z)))
+        }
+        const fresh = reinforce(g, step, () => this.soldier(), this.serial, this.clock)
+        if (fresh) {
+          this.serial++
+          if (g.alert) this.audio.ignite(this.listener.distanceTo(_v.set(fresh.x, 1.5, fresh.z)))
+        }
         for (const s of g.soldiers) {
           if (!s.alive) continue
-          const d = Math.max(4, Math.hypot(s.x - camera.position.x, s.z - camera.position.z))
-          rolling += Math.min(1, Math.hypot(s.vx, s.vz) / SOLDIER.chargeSpeed) * (8 / d)
-          lit += s.blade * (6 / d)
+          s.sector = fort.sector(s.x, s.z)
+          if (s.leaving) {
+            if (Math.hypot(s.goal.x - s.x, s.goal.z - s.z) > 2 || !s.free) continue
+            s.leaving = false
+          }
+          if (!s.free && s.mode !== 'attack') continue
+          if (g.alert) {
+            fighters.push(s)
+            if (s.mode === 'attack') swinging++
+          } else if (s.free) patrol(g, s, this.clock)
         }
-      }
+        for (const s of g.soldiers) {
+          if (!s.alive) continue
+          s.update(step)
+          stepped.push(s)
+          steppedFort.push(fort)
+          if (rate === 1) {
+            const d = Math.max(4, Math.hypot(s.x - camera.position.x, s.z - camera.position.z))
+            rolling += Math.min(1, Math.hypot(s.vx, s.vz) / SOLDIER.chargeSpeed) * (8 / d)
+            lit += s.blade * (6 / d)
+          }
+        }
+        this.decay(g, step)
+      })
+      // the fight: mid-swing soldiers keep their swing; the others take their places round the robot
+      let k = 0
+      for (let i = 0; i < fighters.length; i++) if (fighters[i].mode !== 'attack') fighters[k++] = fighters[i]
+      fighters.length = k
+      engage(fort, nav, fighters, target, targetSector, this.clock, swinging, (s) => this.audio.swing(this.listener.distanceTo(_v.set(s.x, 1.5, s.z))))
     }
+    this.collide(target)
+    this.strikes(target)
     this.sparks.update(dt)
     this.billows.update(dt)
     this.audio.update(rolling, lit)
@@ -186,9 +218,11 @@ export class Horde {
   /** A blow of the robot's (hits.ts) reaches the world: returns how many soldiers it caught. */
   hit(e: HitEvent): number {
     let n = 0
+    let nearest = Infinity
+    // a special's blows before its last cannot destroy: an emptied soldier is held doomed until then
+    const hold = (e.special || this.special) && !e.final
+    // (every garrison: a soldier may have followed the fight out of its own district)
     for (const g of this.garrisons) {
-      const site = g.fort.plan.site
-      if (Math.hypot(e.x - site.x, e.z - site.z) > g.fort.plan.barrier + e.reach + 10) continue
       for (const s of g.soldiers) {
         if (!s.alive) continue
         const dx = s.x - e.x, dz = s.z - e.z
@@ -224,11 +258,34 @@ export class Horde {
         }
         const l = Math.hypot(dirX, dirZ) || 1
         const lift = e.lift * (e.radial ? 1 - 0.5 * Math.min(1, d / e.reach) : 1)
-        this.impact(s, { dirX: dirX / l, dirZ: dirZ / l, knock, lift, damage, kind: e.kind, special: e.special })
+        this.impact(s, { dirX: dirX / l, dirZ: dirZ / l, knock, lift, damage, kind: e.kind, special: e.special }, hold)
+        nearest = Math.min(nearest, this.listener.distanceTo(_v.set(s.x, 1.5, s.z)))
         n++
       }
     }
+    if (n > 0) {
+      // the blow itself, once: a blade's chop and ring, a heavy hit, or a punch
+      const kind = e.kind === 'cut' ? 'slash' : e.kind === 'blast' || e.knock >= 13 || e.lift >= 3 ? 'heavy' : 'punch'
+      this.audio.blow(kind, Math.min(1.4, 0.55 + (e.knock + e.damage * 0.02) / 20), n, nearest)
+    }
+    if (e.final) this.settle(e.x, e.z)
     return n
+  }
+
+  /**
+   * Break apart every doomed soldier (a special's last blow has landed, or
+   * the special ended): thrown out from (x, z), where the blow fell.
+   */
+  settle(x = NaN, z = NaN): void {
+    for (const g of this.garrisons) {
+      for (const s of g.soldiers) {
+        if (!s.doomed || !s.settle()) continue
+        const dx = s.x - x, dz = s.z - z
+        const d = Math.hypot(dx, dz)
+        const ux = d > 1e-3 ? dx / d : Math.sin(s.yaw + Math.PI), uz = d > 1e-3 ? dz / d : Math.cos(s.yaw + Math.PI)
+        this.breakup(s, { dirX: ux, dirZ: uz, knock: 6, lift: 3, damage: 0, kind: 'blast', special: true })
+      }
+    }
   }
 
   /**
@@ -242,7 +299,7 @@ export class Horde {
     for (const g of this.garrisons) {
       if (!g.alert) continue
       for (const s of g.soldiers) {
-        if (!s.alive || s.mode === 'down' || s.mode === 'air') continue
+        if (!s.alive || s.doomed || s.mode === 'down' || s.mode === 'air') continue
         const d = Math.hypot(s.x - x, s.z - z)
         if (d >= bd) continue
         const bearing = Math.atan2(s.x - x, s.z - z)
@@ -266,6 +323,7 @@ export class Horde {
     this.renderer.warm(on)
     this.sparks.mesh.visible = on
     this.billows.warm(on)
+    this.bars.warm(on)
   }
 
   // ------------------------------------------------------------ garrison
@@ -274,203 +332,13 @@ export class Horde {
     return this.pool.pop() ?? new Soldier(this.asset.manifest)
   }
 
-  /** A soldier standing at post `i` of the fort. */
-  private station(g: Garrison, i: number): Soldier {
-    const plan = g.fort.plan
-    const post = plan.posts[i % plan.posts.length]
-    const ring = Math.floor(i / plan.posts.length)
-    const p = g.fort.toWorld(post.at[0] + ring * 1.8, post.at[1] - ring * 1.8)
-    const s = this.soldier()
-    s.reset(p.x, p.z, post.yaw + plan.site.yaw, this.serial++)
-    g.soldiers.push(s)
-    g.post.set(s, i)
-    g.cooldown.set(s, g.clock + 1 + Math.random() * 2)
-    return s
-  }
-
-  /** Alerted while the target is inside the walls; called off once it leaves the grounds. */
-  private alert(g: Garrison, t: EnemyTarget): void {
-    const site = g.fort.plan.site
-    const d = Math.hypot(t.x - site.x, t.z - site.z)
-    if (!g.alert && t.present && g.fort.inside(t.x, t.z)) {
-      g.alert = true
-      for (const s of g.soldiers) if (s.alive) this.audio.ignite(this.listener.distanceTo(_v.set(s.x, 1.5, s.z)))
-    } else if (g.alert && d > g.fort.plan.barrier + 25) {
-      g.alert = false
-      // back to their beats wherever the fight left them
-      g.beat.clear()
-    }
-  }
-
-  /**
-   * Reinforcements out of the hangar during a fight: once the garrison is cut
-   * below REINFORCE_BELOW a wave rolls out, one at a time, until it is whole
-   * again. At peace it slowly refills.
-   */
-  private spawn(g: Garrison, dt: number): void {
-    const alive = g.soldiers.reduce((n, s) => n + (s.alive ? 1 : 0), 0)
-    g.spawnClock += dt
-    if (g.alert && alive < REINFORCE_BELOW) g.wave = true
-    if (alive >= GARRISON || !g.alert) g.wave = false
-    const every = g.alert ? REINFORCE_EVERY : REFILL_EVERY
-    const want = g.alert ? g.wave : alive < GARRISON
-    if (!want || alive >= MAX_ALIVE || g.spawnClock < every || g.soldiers.length >= MAX_ALIVE + 12) return
-    g.spawnClock = 0
-    const plan = g.fort.plan
-    const door = plan.spawns[this.serial % plan.spawns.length]
-    const p = g.fort.toWorld(door.at[0], door.at[1])
-    const e = g.fort.toWorld(door.exit[0], door.exit[1])
-    const s = this.soldier()
-    s.reset(p.x, p.z, Math.atan2(e.x - p.x, e.z - p.z), this.serial++)
-    s.goal.x = e.x
-    s.goal.z = e.z
-    s.goal.drive = true
-    s.goal.speed = SOLDIER.chargeSpeed * 0.7
-    s.goal.face = s.yaw
-    g.soldiers.push(s)
-    g.leaving.add(s)
-    // a free post to return to at peace
-    const taken = new Set(g.post.values())
-    let post = 0
-    while (taken.has(post)) post++
-    g.post.set(s, post)
-    g.cooldown.set(s, g.clock + 1.5)
-    if (g.alert) this.audio.ignite(this.listener.distanceTo(_v.set(p.x, 1.5, p.z)))
-  }
-
-  /** Where each soldier wants to be and whether it swings. */
-  private think(g: Garrison, t: EnemyTarget): void {
-    const alive = this.standing
-    alive.length = 0
-    for (const s of g.soldiers) {
-      if (!s.alive) continue
-      if (g.leaving.has(s)) {
-        if (Math.hypot(s.goal.x - s.x, s.goal.z - s.z) > 2 || !s.free) continue
-        g.leaving.delete(s)
-      }
-      alive.push(s)
-    }
-    if (!g.alert) {
-      for (const s of alive) this.patrol(g, s)
-      return
-    }
-    // alerted: the nearest RING close in on the ring round the target, the rest hold further out
-    for (const s of alive) s.distance = Math.hypot(s.x - t.x, s.z - t.z)
-    alive.sort((a, b) => a.distance - b.distance)
-    const engage = Math.max(t.radius + ENGAGE_GAP, t.guard + 0.45) + SOLDIER.radius
-    let swinging = 0
-    for (const s of g.soldiers) if (s.alive && s.mode === 'attack') swinging++
-    const targetInside = g.fort.inside(t.x, t.z)
-    alive.forEach((s, k) => {
-      s.goal.ready = true
-      s.goal.drive = true
-      const bearing = Math.atan2(t.x - s.x, t.z - s.z)
-      s.goal.face = bearing
-      // through a gate when the target is on the other side of the walls
-      if (targetInside !== g.fort.inside(s.x, s.z)) {
-        const gate = this.nearestGate(g, s)
-        const inside = g.fort.inside(s.x, s.z)
-        const nearSide = g.fort.toWorld(inside ? gate.inside[0] : gate.outside[0], inside ? gate.inside[1] : gate.outside[1])
-        const farSide = g.fort.toWorld(inside ? gate.outside[0] : gate.inside[0], inside ? gate.outside[1] : gate.inside[1])
-        const p = Math.hypot(nearSide.x - s.x, nearSide.z - s.z) > 2.5 ? nearSide : farSide
-        s.goal.x = p.x
-        s.goal.z = p.z
-        s.goal.speed = SOLDIER.chargeSpeed
-        return
-      }
-      const r = k < RING ? engage : engage + HOLD_GAP
-      const ux = s.distance > 1e-3 ? (s.x - t.x) / s.distance : 1
-      const uz = s.distance > 1e-3 ? (s.z - t.z) / s.distance : 0
-      // the ring leans round toward the robot's front (they come at it where it can see them);
-      // those holding back drift round for an opening
-      const around = Math.atan2(ux, uz)
-      const front = k < RING ? wrap(t.heading - around) * FRONT_BIAS : Math.sin(g.clock * 0.4 + s.serial) * 0.5
-      const a = around + front
-      s.goal.x = t.x + Math.sin(a) * r
-      s.goal.z = t.z + Math.cos(a) * r
-      s.goal.speed = s.distance > r + 4 ? SOLDIER.chargeSpeed : SOLDIER.engageSpeed
-      // a swing when close, facing it, off cooldown and a token is free
-      const close = s.distance < engage + 0.7
-      const facing = Math.abs(wrap(bearing - s.yaw)) < 0.5
-      if (k < RING && close && facing && s.free && swinging < ATTACKERS && (g.cooldown.get(s) ?? 0) < g.clock) {
-        s.attack()
-        swinging++
-        g.cooldown.set(s, g.clock + SOLDIER.windup + SOLDIER.strike + SOLDIER.recover + 0.8 + Math.random() * 1.8)
-        this.audio.swing(this.listener.distanceTo(_v.set(s.x, 1.5, s.z)))
-      }
-    })
-  }
-
-  /**
-   * At peace a soldier walks its post's beat (plan.ts `Post`): it rolls
-   * slowly to each point in turn, stops there a moment and looks about (out
-   * over the yard on a patrol loop, along its watch on a sentry's pacing),
-   * then goes on; pacing turns back at the end of its two points.
-   */
-  private patrol(g: Garrison, s: Soldier): void {
-    const plan = g.fort.plan
-    const i = g.post.get(s) ?? 0
-    const post = plan.posts[i % plan.posts.length]
-    const shift = Math.floor(i / plan.posts.length) * 1.8
-    const beat = post.beat
-    let b = g.beat.get(s)
-    if (!b) {
-      // join the beat at its nearest point
-      let k = 0, best = Infinity
-      for (let j = 0; j < beat.length; j++) {
-        const p = g.fort.toWorld(beat[j][0] + shift, beat[j][1] - shift, _q)
-        const d = Math.hypot(p.x - s.x, p.z - s.z)
-        if (d < best) { best = d; k = j }
-      }
-      b = { k, wait: 0, look: 0 }
-      g.beat.set(s, b)
-    }
-    const p = g.fort.toWorld(beat[b.k][0] + shift, beat[b.k][1] - shift, _q)
-    const d = Math.hypot(p.x - s.x, p.z - s.z)
-    s.goal.x = p.x
-    s.goal.z = p.z
-    s.goal.drive = true
-    s.goal.ready = false
-    if (d > PATROL_ARRIVE) {
-      s.goal.face = Math.atan2(p.x - s.x, p.z - s.z)
-      s.goal.speed = PATROL_SPEED
-      return
-    }
-    const pacing = beat.length === 2
-    if (b.wait === 0) {
-      const [lo, hi] = pacing ? SENTRY_PAUSE : PATROL_PAUSE
-      b.wait = g.clock + lo + Math.random() * (hi - lo)
-      // a patrol looks out from the yard's middle, a sentry along its watch
-      const out = pacing ? post.yaw : Math.atan2(beat[b.k][0], beat[b.k][1])
-      b.look = out + plan.site.yaw + (Math.random() - 0.5) * 1.6
-    }
-    s.goal.face = b.look
-    s.goal.speed = SOLDIER.engageSpeed
-    if (g.clock >= b.wait) {
-      b.k = (b.k + 1) % beat.length
-      b.wait = 0
-    }
-  }
-
-  private nearestGate(g: Garrison, s: Soldier): { inside: [number, number]; outside: [number, number] } {
-    let best = g.fort.plan.gates[0]
-    let bd = Infinity
-    for (const gate of g.fort.plan.gates) {
-      const p = g.fort.toWorld(gate.at[0], gate.at[1])
-      const d = Math.hypot(p.x - s.x, p.z - s.z)
-      if (d < bd) { bd = d; best = gate }
-    }
-    return best
-  }
-
-  /** Walls and props, the robot's body, and each other. */
-  private collide(g: Garrison, t: EnemyTarget): void {
-    const list = g.soldiers
-    const fort = g.fort
-    for (const s of list) {
-      if (!s.alive) continue
+  /** Walls and props, the robot's body, and each other (every soldier stepped this frame). */
+  private collide(t: EnemyTarget): void {
+    const list = this.stepped
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i]
       _p.x = s.x; _p.z = s.z
-      const c = pushOut(_p, SOLDIER.radius, fort.segments, fort.circles, _contact)
+      const c = this.steppedFort[i].grid.pushOut(_p, SOLDIER.radius, _contact)
       if (c) {
         s.x = _p.x; s.z = _p.z
         const into = s.vx * c.nx + s.vz * c.nz
@@ -478,7 +346,7 @@ export class Horde {
           // a body thrown into a wall stops against it (a little bounce)
           s.vx -= c.nx * into * 1.25
           s.vz -= c.nz * into * 1.25
-          if (into < -7) this.impact(s, { dirX: c.nx, dirZ: c.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false })
+          if (into < -7) this.impact(s, { dirX: c.nx, dirZ: c.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false }, this.special)
         }
       }
       // the robot's body: soldiers give way; a body moving fast into them shoves them
@@ -492,7 +360,7 @@ export class Horde {
           s.z = t.z + nz * min
           const push = t.vx * nx + t.vz * nz
           const rel = push - (s.vx * nx + s.vz * nz)
-          if (rel > 2.5 && s.free) this.impact(s, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false })
+          if (rel > 2.5 && s.free) this.impact(s, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false }, this.special)
           else if (rel > 0) { s.vx += nx * rel; s.vz += nz * rel }
         }
       }
@@ -505,8 +373,9 @@ export class Horde {
         const b = list[j]
         if (!b.alive) continue
         const dx = b.x - a.x, dz = b.z - a.z
-        const d2 = dx * dx + dz * dz
         const min = SOLDIER.radius * 2
+        if (dx > min || dx < -min || dz > min || dz < -min) continue
+        const d2 = dx * dx + dz * dz
         if (d2 >= min * min || d2 < 1e-8) continue
         const d = Math.sqrt(d2)
         const nx = dx / d, nz = dz / d
@@ -519,7 +388,7 @@ export class Horde {
           // momentum shared: the struck one is thrown on, the thrown one slowed
           const share = rel * 0.55
           a.vx -= nx * share; a.vz -= nz * share
-          this.impact(b, { dirX: nx, dirZ: nz, knock: share, lift: share * 0.15, damage: share * 3, kind: 'blunt', special: false })
+          this.impact(b, { dirX: nx, dirZ: nz, knock: share, lift: share * 0.15, damage: share * 3, kind: 'blunt', special: false }, this.special)
         } else {
           const k = rel * 0.5
           a.vx -= nx * k; a.vz -= nz * k
@@ -530,9 +399,9 @@ export class Horde {
   }
 
   /** Blades landing on the robot, at the moment in each swing they reach it. */
-  private strikes(g: Garrison, t: EnemyTarget): void {
+  private strikes(t: EnemyTarget): void {
     if (!t.present) return
-    for (const s of g.soldiers) {
+    for (const s of this.stepped) {
       if (s.mode !== 'attack' || s.landed || s.t < SOLDIER.windup + SOLDIER.strike * SOLDIER.landsAt) continue
       s.landed = true
       const dx = t.x - s.x, dz = t.z - s.z
@@ -571,18 +440,15 @@ export class Horde {
         if (debris.age < DEBRIS_LIE + DEBRIS_FADE) continue
       }
       g.soldiers.splice(i, 1)
-      g.post.delete(s)
-      g.beat.delete(s)
-      g.cooldown.delete(s)
-      g.leaving.delete(s)
       this.pool.push(s)
     }
   }
 
-  /** A blow on one soldier: reaction or destruction, and its sparks and sound. */
-  private impact(s: Soldier, hit: SoldierImpact): void {
-    const destroyed = s.impact(hit)
+  /** A blow on one soldier: a flinch, a throw or its destruction, and its sparks and sound. */
+  private impact(s: Soldier, hit: SoldierImpact, hold: boolean): void {
+    s.refresh()
     const chest = _c.setFromMatrixPosition(s.rig.world[s.rig.index.chest])
+    const destroyed = s.impact(hit, hold)
     const dist = this.listener.distanceTo(chest)
     const strength = Math.min(1.5, (hit.knock + hit.damage * 0.04) / 10)
     _d.set(hit.dirX, 0.35, hit.dirZ).normalize()
@@ -591,12 +457,21 @@ export class Horde {
       size: 0.014, drag: 2.4, gravity: 0.8, palette: 0, jitter: 0.25,
     })
     if (!destroyed) {
+      // it reels: no swing back while the blows keep coming
+      s.nextSwing = Math.max(s.nextSwing, this.clock + REEL)
       this.audio.impact(hit.kind, strength, dist)
       if (hit.knock > 6) this.contact.burst(_v.set(s.x, 0, s.z), Math.min(1.2, hit.knock / 12), 8)
       return
     }
-    // broken apart where it stands: the joints give, the parts fly
+    this.breakup(s, hit)
+  }
+
+  /** Broken apart where it stands: the joints give, the parts fly. */
+  private breakup(s: Soldier, hit: SoldierImpact): void {
     this.destroyed++
+    const chest = _c.setFromMatrixPosition(s.rig.world[s.rig.index.chest])
+    const dist = this.listener.distanceTo(chest)
+    const strength = Math.min(1.5, (hit.knock + hit.damage * 0.04) / 10)
     const debris = s.debris ??= new Debris(s.rig, this.asset.manifest.pieces)
     const burst = hit.kind === 'blast' ? 2.4 : hit.kind === 'cut' ? 1.3 : 1.6
     _push.set(hit.dirX * hit.knock, hit.lift * 0.6, hit.dirZ * hit.knock).multiplyScalar(hit.special ? 1.3 : 1)
@@ -609,10 +484,11 @@ export class Horde {
   }
 
   /**
-   * Cull to the view, sort near to far, hand to the renderer (`update` does
-   * this for its camera). Soldiers just off screen whose shadows can reach
-   * into view (within SHADOW_REACH of it, and SHADOW_FAR of the camera) go
-   * after the visible ones: they only cast.
+   * Cull to the view, sort near to far, pose what is drawn and hand it to
+   * the renderer (`update` does this for its camera); the health bars of the
+   * nearest living ones go over them. Soldiers just off screen whose shadows
+   * can reach into view (within SHADOW_REACH of it, and SHADOW_FAR of the
+   * camera) go after the visible ones: they only cast.
    */
   drawFor(camera: PerspectiveCamera): void {
     camera.updateMatrixWorld()
@@ -642,7 +518,19 @@ export class Horde {
     const visible = list.length
     extra.sort((a, b) => a.distance - b.distance)
     for (let i = 0; i < extra.length && list.length < HORDE_CAPACITY; i++) list.push(extra[i])
+    for (const s of list) s.refresh()
     this.renderer.draw(list, visible)
+    const bars = this.bars
+    bars.begin()
+    for (let i = 0; i < visible; i++) {
+      const s = list[i]
+      if (s.distance > BAR_FAR) break
+      if (!s.alive) continue
+      const head = _c.setFromMatrixPosition(s.rig.world[s.rig.index.head])
+      const fade = 1 - Math.min(1, Math.max(0, (s.distance - BAR_FADE) / (BAR_FAR - BAR_FADE)))
+      bars.add(head.x, head.y + BAR_LIFT, head.z, fade, s.vitality, s.chip, Math.max(0, 1 - s.hurt / BAR_FLASH))
+    }
+    bars.end()
   }
 }
 
@@ -657,5 +545,4 @@ const _from = new Vector3()
 const _push = new Vector3()
 const _base = new Vector3()
 const _p = { x: 0, z: 0 }
-const _q = { x: 0, z: 0 }
 const _contact: Contact = { nx: 0, nz: 0, depth: 0 }
