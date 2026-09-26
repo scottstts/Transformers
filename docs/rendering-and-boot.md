@@ -6,6 +6,8 @@ Startup remains observed through dynamic module loading, renderer initialization
 
 The shader-compile stage (`GameSession.compile`) warms everything the world can show, not just the start view: effects, the soldiers' every tier and their health bars, and the fortress are made visible and frustum culling is switched off for one `compileAsync` and one real hidden draw (`rendering/warm.ts`). `compileAsync` and a render only prepare what the camera and the sun's shadow camera see, so the forts (far off the start view) used to compile and upload the first time they came into view, as a hitch.
 
+Safari uses a platform-only r186 WGSL code-generation workaround (`platform/safari-wgsl.ts`). Safari/Metal enforces an 8 KiB limit on both module-private shader storage and variables owned by one function, while r186 normally emits all TSL flow temporaries as `var<private>`. On Safari only, helper-visible temporaries remain module-private and main-only temporaries are divided between module-private and entry-point-local storage so neither class approaches the 8 KiB validator limit. The shader math, materials and rendering quality are unchanged, and Chromium keeps Three's unmodified code path.
+
 While a car switch loads (`switchCharacter`), the world's clock is stopped: the fight, the soldiers and their debris stand still until the new car is in, so nothing happens behind the cover that the player could not answer.
 
 `#app` is `position: fixed; inset: 0`: the canvas always covers the viewport, and the page background never shows beneath it, even if the document scrolls or resizes oddly.

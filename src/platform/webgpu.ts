@@ -1,5 +1,6 @@
 import { WebGPURenderer, type PerspectiveCamera } from 'three/webgpu'
 import { showBootError, setBootStage } from './boot-ui'
+import { installSafariWgslPrivateMemoryWorkaround } from './safari-wgsl'
 
 type BackendWithDevice = { isWebGPUBackend?: boolean; device?: GPUDevice }
 
@@ -25,6 +26,7 @@ export class GpuHost {
     this.mount = mount
     if (!navigator.gpu) throw new Error('WebGPU is not supported by this browser')
     const renderer = new WebGPURenderer({ antialias: true })
+    installSafariWgslPrivateMemoryWorkaround(renderer)
     // Three's default WebGPURenderer installs a WebGL fallback. This game is WebGPU only.
     Object.assign(renderer, { _getFallback: null })
     const originalLost = renderer.onDeviceLost.bind(renderer)
