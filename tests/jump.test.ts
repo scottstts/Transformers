@@ -87,7 +87,8 @@ describe('jump choreography', () => {
         expect(Math.abs(pose.arms[side] - previous.arms[side]) / dt).toBeLessThan(550)
         // Running starts with deeply bent elbows, so opening them spans a larger arc.
         expect(Math.abs(pose.elbow[side] - previous.elbow[side]) / dt).toBeLessThan(800)
-        expect(Math.abs(pose.legs[side].step - previous.legs[side].step) / dt).toBeLessThan(12)
+        // Longer steps return through a larger arc during the same jump handover.
+        expect(Math.abs(pose.legs[side].step - previous.legs[side].step) / dt).toBeLessThan(16)
         expect(Math.abs(pose.legs[side].up - previous.legs[side].up) / dt).toBeLessThan(8)
       }
       if (p.weight === 1) {

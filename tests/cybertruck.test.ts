@@ -3,7 +3,7 @@ import { Box3, Euler, Matrix4, Quaternion, Vector3, type Mesh } from 'three/webg
 import { RobotRig } from '../src/content/transformer/model/rig.ts'
 import { RobotGait } from '../src/content/transformer/animation/gait.ts'
 import { buildCues } from '../src/content/transformer/cues.ts'
-import { createCybertruck } from '../src/content/cybertruck/index.ts'
+import { createCybertruck, CYBERTRUCK_PROFILE } from '../src/content/cybertruck/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { NO_CONTACT, REST_GAIT, readAsset } from './support/assets.ts'
 import { Thrusters } from '../src/content/cybertruck/fx/thrusters.ts'
@@ -137,7 +137,7 @@ describe('cybertruck locomotion', () => {
     const gait = new RobotGait()
     let footfalls = 0
     let lowest = Infinity
-    for (const [speed, running] of [[3.4, false], [7.5, true]] as const) {
+    for (const [speed, running] of [[CYBERTRUCK_PROFILE.robot.walkSpeed, false], [CYBERTRUCK_PROFILE.robot.runSpeed, true]] as const) {
       for (let frame = 0; frame < 180; frame++) {
         model.pose(1, gait.update(1 / 60, speed, 0, running, true))
         expect(Number.isFinite(model.lift)).toBe(true)
@@ -155,7 +155,7 @@ describe('cybertruck locomotion', () => {
     const gait = new RobotGait()
     let flights = 0
     for (let frame = 0; frame < 300; frame++) {
-      const pose = gait.update(1 / 60, 7.5, 0, true, true)
+      const pose = gait.update(1 / 60, CYBERTRUCK_PROFILE.robot.runSpeed, 0, true, true)
       if (frame < 120) continue
       model.pose(1, pose)
       const feet = model.contacts().feet

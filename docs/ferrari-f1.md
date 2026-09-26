@@ -35,13 +35,14 @@ The export rebuilds the scene from the scripts (they reproduce the working `.ble
 - **Live rig handover** (shared rig):
   - Gait channels for spine, chest, neck and head act on top of the exported stand, because the racer's stand leans its spine 8° and levels its head.
   - The leg IK takes its hinge axis from the leg plane. It is identical to the old pole-projection frame whenever the thigh does not pass the pole, and never flips the twist when it does.
+  - Locomotion blends the transformation's upward knee pole toward pelvis-forward. The pelvis accommodates the longer foot targets before IK, retaining soft knees without shortening the steps. The neutral pose still uses the exported pole and pelvis height.
   - Tests assert the TypeScript stand reproduces the baked T = 1 pose, and that the soles stay on the ground through the 0.9–1 blend.
 - **Soles:** every node the foot bones carry except carrier struts: the foot and toe structure, the sole platform and flaps, and the wing halves and nose tip that dock on the foot.
 - **Profile** (`F1_PROFILE`):
   - drive: 3.6 m wheelbase, 0.36 m rolling radius, 58 / 80 m/s top speed (Shift), 11 / 15 m/s² drive, 34 m/s² braking;
   - handling: rear drive, grip 1.45 plus downforce (+75 % at 50 m/s), a small steering lock, so its drifts hold shallower angles than the truck's (car-handling.md);
   - chassis: a stiff low car (a third of the truck's pitch and roll) pivoting at 0.3 m;
-  - robot: walk 3.2 m/s, run 7.8 m/s; its hips are two thirds as high as the truck robot's, so the gait style scales stride, lift, sway and jump crouch down and rolls on a longer sole (heel 0.43, toe 0.78 m from the ankle; the wing halves dock on the foot). Its own carriage brings the wide-built stand's feet and arms in while it moves (robot-locomotion.md, "Carriage per robot");
+  - robot: walk 4.8 m/s with 1.575 m steps, run 15.6 m/s with 3.8 m steps, preserving the original walking and running step rates. Running support occupies 28 % of each leg's cycle, allowing the long stride without an excessive planted-leg reach. Its gait rolls on a long sole (heel 0.43, toe 0.78 m from the ankle; the wing halves dock on the foot). Parallel foot tracks, forward knee alignment, restrained torso motion and narrow arm pumps provide its moving carriage (robot-locomotion.md, "Carriage per robot");
   - camera: 7.2 m behind the car and 10.2 m from the robot.
 - **Materials** (`materials.ts`), one per `f1b/mats.py` slot:
   - Paint is clearcoated, with faint orange peel in the coat.
