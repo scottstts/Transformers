@@ -157,18 +157,23 @@ describe('ferrari f1 locomotion', () => {
     const gait = f1.gait
     let footfalls = 0
     let lowest = Infinity
+    let groundedFrames = 0
     for (const [speed, running] of [[F1_PROFILE.robot.walkSpeed, false], [F1_PROFILE.robot.runSpeed, true]] as const) {
       for (let frame = 0; frame < 180; frame++) {
         model.pose(1, gait.update(1 / 60, speed, 0, running, true))
         expect(Number.isFinite(model.lift)).toBe(true)
         const feet = model.contacts().feet
         lowest = Math.min(lowest, feet.L.y, feet.R.y)
+        const clearance = Math.min(model.footClearance('L'), model.footClearance('R'))
+        expect(clearance).toBeGreaterThan(-0.001)
+        if (clearance < 0.03) groundedFrames++
         footfalls += gait.events.length
         gait.events.length = 0
       }
     }
     expect(footfalls).toBeGreaterThanOrEqual(2)
-    expect(Math.min(model.footClearance('L'), model.footClearance('R'))).toBeLessThan(0.1)
+    // Contact recurs throughout the cycle; the final sampled frame may be in flight.
+    expect(groundedFrames).toBeGreaterThan(180)
     expect(Number.isFinite(lowest)).toBe(true)
   })
 

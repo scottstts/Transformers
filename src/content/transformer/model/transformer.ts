@@ -209,7 +209,16 @@ export class TransformerModel {
 
     // ground: baked contact through the transformation, live foot contact at the stand
     const baked = this.liftTrack[f0] + (this.liftTrack[f0 + 1] - this.liftTrack[f0]) * a
-    this.lift = gw > 0 && gait ? baked + (this.liveLift() + (gait.air ?? 0) - baked) * gw : baked
+    if (gw > 0 && gait) {
+      const contactLift = this.liveLift()
+      // Ground projection must not drag a running body after its recovering
+      // feet. Keep the exported sole datum, retain upward penetration correction,
+      // and blend at run/jump handoff.
+      const flight = (gait.freeFlight ?? 0) * (1 - (this.overlay?.weight ?? 0))
+      const soleDatum = this.liftTrack[this.frames - 1]
+      const groundLift = contactLift + (Math.max(soleDatum, contactLift) - contactLift) * flight
+      this.lift = baked + (groundLift + (gait.air ?? 0) - baked) * gw
+    } else this.lift = baked
 
     // body on the suspension in car mode; wheels unsprung
     _s1.copy(FROM_THREE).multiply(this.suspension).multiply(TO_THREE)

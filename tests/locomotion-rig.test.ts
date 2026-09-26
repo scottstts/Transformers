@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { Quaternion, Vector3 } from 'three/webgpu'
-import { F1_PROFILE, RACER_GAIT } from '../src/content/ferrari-f1/index.ts'
+import { createF1, F1_PROFILE, RACER_GAIT } from '../src/content/ferrari-f1/index.ts'
+import { AudioMix } from '../src/audio/mix.ts'
 import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck/index.ts'
 import { HEAVY_GAIT, RobotGait } from '../src/content/transformer/animation/gait.ts'
 import { RobotRig } from '../src/content/transformer/model/rig.ts'
-import { readAsset } from './support/assets.ts'
+import { NO_CONTACT, readAsset } from './support/assets.ts'
 
 const cases = [
   { name: 'ferrari-f1', style: RACER_GAIT, speeds: [F1_PROFILE.robot.walkSpeed, F1_PROFILE.robot.runSpeed], steps: [1.575, 3.8], cadence: [3.2 / 1.05, 7.8 / 1.9] },
@@ -132,6 +133,32 @@ describe.each(cases)('$name locomotion rig', ({ name, style, speeds, steps, cade
 describe('F1 carriage', () => {
   const { rig: data } = readAsset('ferrari-f1').manifest
 
+  it('keeps the rendered running pelvis afloat when both soles leave the ground', () => {
+    const robot = createF1(readAsset('ferrari-f1'), NO_CONTACT, new AudioMix())
+    const speed = F1_PROFILE.robot.runSpeed
+    for (let i = 0; i < 2400; i++) robot.gait.update(dt, speed, 0, true, true)
+    const heights: number[] = []
+    for (let i = 0; i < 240; i++) {
+      const pose = robot.gait.update(dt, speed, 0, true, true)
+      robot.model.pose(1, pose)
+      const pelvis = robot.model.rig.world[robot.model.rig.index.pelvis].elements[14]
+      heights.push(pelvis + robot.model.lift)
+      expect(Math.min(robot.model.footClearance('L'), robot.model.footClearance('R'))).toBeGreaterThan(-0.001)
+    }
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.14)
+  })
+
+  it('keeps running arm pumps half a cycle apart instead of driving both arms forward', () => {
+    const gait = new RobotGait(RACER_GAIT)
+    for (let i = 0; i < 2400; i++) gait.update(dt, F1_PROFILE.robot.runSpeed, 0, true, true)
+    const sums: number[] = []
+    for (let i = 0; i < 240; i++) {
+      const pose = gait.update(dt, F1_PROFILE.robot.runSpeed, 0, true, true)
+      sums.push(pose.arms.L + pose.arms.R)
+    }
+    expect(Math.max(...sums) - Math.min(...sums)).toBeLessThan(0.1)
+  })
+
   it.each([false, true])('bends the knees forward and pumps the arms in narrow opposing arcs (running %s)', (running) => {
     const gait = new RobotGait(RACER_GAIT)
     const rig = new RobotRig(data.bones, data.stand, data.dims)
@@ -164,8 +191,8 @@ describe('F1 carriage', () => {
   it.each([
     // walking: near-straight stance, the swing knee folds to about 60 degrees, the hip extends behind
     { running: false, stanceKnee: [15, 35], swingKnee: 55, thigh: [30, -10] },
-    // running: soft landing, about 45 degrees at mid-stance, heel recovery past 110 and a high knee drive
-    { running: true, stanceKnee: [20, 55], swingKnee: 110, thigh: [60, -15] },
+    // running: heel recovery past 110, then a lower knee drive as the foot continuously descends
+    { running: true, stanceKnee: [20, 55], swingKnee: 110, thigh: [45, -15] },
   ])('moves its legs through human ranges (running $running)', ({ running, stanceKnee, swingKnee, thigh }) => {
     const gait = new RobotGait(RACER_GAIT)
     const rig = new RobotRig(data.bones, data.stand, data.dims)
@@ -191,6 +218,7 @@ describe('F1 carriage', () => {
     expect(stance[1]).toBeLessThan(stanceKnee[1])
     expect(swing).toBeGreaterThan(swingKnee)
     expect(flexed).toBeGreaterThan(thigh[0])
+    if (running) expect(flexed).toBeLessThan(60)
     expect(extended).toBeLessThan(thigh[1])
   })
 })
