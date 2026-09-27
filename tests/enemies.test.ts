@@ -170,6 +170,20 @@ describe('car barrier', () => {
   const fort = forts.list[0]
   const s = fort.plan.site
 
+  it('exposes distance-hidden fort detail for entry warmup and restores visibility afterward', () => {
+    const camera = new PerspectiveCamera()
+    camera.position.set(s.x + 10_000, 10, s.z)
+    forts.update(camera)
+    const detail = fort.group.children.filter((child) => child.name.endsWith('d'))
+    expect(detail.length).toBeGreaterThan(0)
+    expect(detail.some((mesh) => !mesh.visible)).toBe(true)
+    const before = detail.map((mesh) => mesh.visible)
+    const restore = forts.showAllDetail()
+    expect(detail.every((mesh) => mesh.visible)).toBe(true)
+    restore()
+    expect(detail.map((mesh) => mesh.visible)).toEqual(before)
+  })
+
   const driveAt = (carForm: boolean, frames: number): { state: ReturnType<typeof createMotionState>; closest: number } => {
     const state = createMotionState()
     const start = fort.plan.barrier + 80

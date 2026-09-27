@@ -40,7 +40,7 @@ One fortress stands in the desert (`FORT_SITES` in `src/worlds/desert/fort/plan.
 ## Draw cost
 
 - ~940k triangles in ~177 meshes. Geometry is bucketed by district (`MeshWriter.bucket`), one mesh per material slot per bucket, main and detail; detail (slab loops, razor wire, clutter, poles and cables) draws only within 120 m of its bucket's bounds (`Forts.update`). A T-wall slab is bucketed by the district it faces into.
-- Nothing in the fortress is hidden from the boot warm-up (`rendering/warm.ts`).
+- Entry warm-up explicitly exposes every district's distance-hidden detail (`Forts.showAllDetail`) and disables frustum culling for the hidden draw. It restores the normal detail visibility afterward.
 
 ## Collision and the barrier
 

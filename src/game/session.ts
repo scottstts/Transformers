@@ -207,8 +207,9 @@ export class GameSession {
           await this.renderer.compileAsync(next.effects.object, this.camera, this.scene)
           this.built.set(entry.id, next)
           this.swap(next)
-          // Keep combat warm during the hidden first frames: this forces the
-          // weapon geometry and its cast-shadow path through real GPU draws.
+          // Draw once before the frame update hides idle effects again. This
+          // uploads the gun's flashes, tracers and casings under the cover.
+          this.pipeline.render()
           await this.settleFrames(SWITCH_SETTLE_FRAMES)
           return true
         } finally {
@@ -244,6 +245,7 @@ export class GameSession {
     effects.warm(true)
     this.environment.contactEffects.warm(true)
     this.horde.warm(true)
+    const restoreFortDetail = this.world.forts.showAllDetail()
     const restoreCulling = disableCulling(this.scene)
     try {
       await this.renderer.compileAsync(this.scene, this.camera)
@@ -253,6 +255,7 @@ export class GameSession {
       await this.waitForGpu()
     } finally {
       restoreCulling()
+      restoreFortDetail()
       effects.warm(false)
       this.environment.contactEffects.warm(false)
       this.horde.warm(false)

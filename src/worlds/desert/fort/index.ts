@@ -44,7 +44,7 @@ export class Forts {
   readonly list: Fort[] = []
   /** Solid fort meshes used to keep the normal camera clear of walls and buildings. */
   readonly cameraMeshes: Mesh[] = []
-  private readonly detail: Array<{ mesh: Mesh; centre: Vector3; radius: number }> = []
+  private readonly detail: Array<{ mesh: Mesh; centre: Vector3; reachSq: number }> = []
   readonly circles: CircleCollider[] = []
   readonly segments: SegmentCollider[] = []
   /** world circles the tiled scatter keeps out of */
@@ -68,7 +68,7 @@ export class Forts {
       }
       for (const mesh of detail) {
         const sphere = mesh.geometry.boundingSphere!
-        this.detail.push({ mesh, centre: sphere.center.clone().applyMatrix4(group.matrixWorld), radius: sphere.radius })
+        this.detail.push({ mesh, centre: sphere.center.clone().applyMatrix4(group.matrixWorld), reachSq: (DETAIL_FAR + sphere.radius) ** 2 })
       }
       const c = Math.cos(site.yaw), s = Math.sin(site.yaw)
       const toWorld = (x: number, z: number, out = { x: 0, z: 0 }): { x: number; z: number } => {
@@ -116,7 +116,16 @@ export class Forts {
   /** Show each district's detail only while the camera is near it. */
   update(camera: Camera): void {
     const p = camera.position
-    for (const d of this.detail) d.mesh.visible = p.distanceTo(d.centre) - d.radius < DETAIL_FAR
+    for (const d of this.detail) d.mesh.visible = p.distanceToSquared(d.centre) < d.reachSq
+  }
+
+  /** Draw distance-hidden detail once under the entry cover, then restore its previous visibility. */
+  showAllDetail(): () => void {
+    const visibility = this.detail.map((d) => d.mesh.visible)
+    for (const d of this.detail) d.mesh.visible = true
+    return () => {
+      this.detail.forEach((d, i) => { d.mesh.visible = visibility[i] })
+    }
   }
 
   /** The fort whose car ring (plan.barrier) the world point is inside, if any: no car form there. */

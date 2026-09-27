@@ -67,7 +67,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
   - The racer's sword forms from white-hot metal as it is drawn from the left hip, the draw becoming the slash. Sword draws are horizontal yaw sweeps: going through upright whipped the blade over the shoulder and through the torso.
   - The Semi's gun forms from the coils' violet discharge. Its coils (`glow`) glow with their charge.
 - **No trail for a gun:** `FighterStyle.trail` is optional; the Semi has none (a swung gun is not an edge).
-- **Materials:** each weapon has forged copies of its character's materials. Compiling skips invisible objects, so the session warms the weapon, trail and sparks during boot and first-time car switches. Warmup forces the complete weapon and its cast-shadow path visible under the loading cover and submits real hidden frames, so shader pipelines and geometry uploads are complete before play resumes.
+- **Materials:** each weapon has forged copies of its character's materials. Compiling skips invisible objects, so the session warms the weapon, trail and sparks during boot and first-time car switches. Warmup forces the complete weapon and its cast-shadow path visible under the loading cover and submits a real hidden draw, so shader pipelines and geometry uploads are complete before play resumes. On a first car switch that draw happens before ordinary frame updates can hide idle effects again; this also covers the Semi's flashes, tracers and casings before combo 3 fires.
 
 ## Guard
 
