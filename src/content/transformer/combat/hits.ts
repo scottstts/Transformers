@@ -26,6 +26,8 @@ export type HitKind = 'blunt' | 'cut' | 'blast'
 export interface StrikeHit {
   t: number
   kind: HitKind
+  /** Optional sound of the blow, independent of how it damages the target. */
+  blowSound?: 'punch' | 'heavy' | 'slash'
   reach: number
   arc: number
   aim?: number
@@ -79,6 +81,7 @@ export interface CombatHits {
 export interface HitEvent {
   shape: 'sector' | 'circle'
   kind: HitKind
+  blowSound?: 'punch' | 'heavy' | 'slash'
   x: number
   z: number
   heading: number

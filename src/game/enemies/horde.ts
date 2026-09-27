@@ -272,7 +272,7 @@ export class Horde {
     }
     if (n > 0) {
       // the blow itself, once: a blade's chop and ring, a heavy hit, or a punch
-      const kind = e.kind === 'cut' ? 'slash' : e.kind === 'blast' || e.knock >= 13 || e.lift >= 3 ? 'heavy' : 'punch'
+      const kind = e.blowSound ?? (e.kind === 'cut' ? 'slash' : e.kind === 'blast' || e.knock >= 13 || e.lift >= 3 ? 'heavy' : 'punch')
       this.audio.blow(kind, Math.min(1.4, 0.55 + (e.knock + e.damage * 0.02) / 20), n, nearest)
     }
     if (e.final) this.settle(e.x, e.z)

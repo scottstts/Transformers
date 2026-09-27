@@ -16,6 +16,7 @@ import { CYBERTRUCK_MOVES, CYBERTRUCK_GUARD } from './moves'
 import { CYBERTRUCK_HITS } from './hits'
 import { CYBERTRUCK_SPECIAL } from './special'
 import { SkyfallFx } from './special-fx'
+import { slam } from '../../transformer/combat/audio/shots'
 
 /** The axe's light bar at rest and at a flare (emissive scale). */
 const LIGHTBAR = { rest: 5, flare: 16 }
@@ -73,6 +74,7 @@ class CybertruckFighter extends Fighter {
     if (cue.cue === 'boost') this.jet('back', v)
     else if (cue.cue === 'lift') this.jet('down', v)
     else if (cue.cue === 'dive') this.jet('up', v)
+    else if (cue.cue === 'axe-stump') slam(this.mix, v)
     else if (!this.skyfall.cue(cue, frame)) super.cue(cue, frame)
   }
 

@@ -163,6 +163,7 @@ const CLEAVE: CombatMove = {
     { t: 0.04, cue: 'servo', value: 0.5 },
     { t: 0.26, cue: 'weapon-in', value: 0.34 },
     { t: 0.5, cue: 'servo', value: 0.35 },
+    { t: 0.72, cue: 'axe-stump', value: 1 },
     { t: 0.72, cue: 'kick', value: 0.45 },
     { t: 0.74, cue: 'shake', value: 0.2 },
   ],

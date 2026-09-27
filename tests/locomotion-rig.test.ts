@@ -136,6 +136,21 @@ describe.each(cases)('$name locomotion rig', ({ name, style, speeds, steps, cade
 describe('F1 carriage', () => {
   const { rig: data } = readAsset('ferrari-f1').manifest
 
+  it('drives the trunk forward and clears the ground during the running flight', () => {
+    const gait = new RobotGait(RACER_GAIT)
+    const speed = F1_PROFILE.robot.runSpeed
+    for (let i = 0; i < 2400; i++) gait.update(dt, speed, 0, true, true)
+    let highestFlight = 0
+    let lowestLean = Infinity
+    for (let i = 0; i < 240; i++) {
+      const pose = gait.update(dt, speed, 0, true, true)
+      highestFlight = Math.max(highestFlight, pose.air ?? 0)
+      lowestLean = Math.min(lowestLean, pose.lean)
+    }
+    expect(highestFlight).toBeGreaterThan(0.08)
+    expect(lowestLean).toBeGreaterThan(9)
+  })
+
   it('keeps the rendered running pelvis afloat when both soles leave the ground', () => {
     const robot = createF1(readAsset('ferrari-f1'), NO_CONTACT, new AudioMix())
     const speed = F1_PROFILE.robot.runSpeed

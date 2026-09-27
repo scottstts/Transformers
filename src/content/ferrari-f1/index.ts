@@ -70,9 +70,9 @@ export const F1_PROFILE: CharacterProfile = {
 export const RACER_GAIT: GaitStyle = {
   stride: [1.575, 3.8],
   stance: [0.6, 0.25],
-  lift: [0.22, 0.7],
-  runFlight: 0.06,
-  runCompression: 0.05,
+  lift: [0.22, 0.79],
+  runFlight: 0.09,
+  runCompression: 0.025,
   runCrouch: 0.03,
   sway: 0.035,
   bob: 0,
@@ -92,14 +92,14 @@ export const RACER_GAIT: GaitStyle = {
   runElbow: 52,
   armCross: 6,
   kneePoleUp: [1, 0],
-  lean: [0, 0.3],
+  lean: [0, 0.65],
   reach: [0.47, 0.38],
   kneeFloor: [10, 18],
   vault: 1,
   liftWindow: [[0.25, 0.3], [0.25, 0.6]],
   toeRelease: [0.5, 0.7],
-  armCarry: [8, 14],
-  runCycle: { recoveryPeak: 0.32 },
+  armCarry: [8, 18],
+  runCycle: { recoveryPeak: 0.38 },
 }
 
 export async function loadF1Asset(): Promise<PlayableTransformerAsset> {

@@ -450,7 +450,7 @@ export class RobotCombat {
     const strikes = hits.strikes
     while (strikes && this.nextStrike < strikes.length && strikes[this.nextStrike].t <= t) {
       const s = strikes[this.nextStrike++]
-      e.shape = 'sector'; e.kind = s.kind; e.x = d.x; e.z = d.z
+      e.shape = 'sector'; e.kind = s.kind; e.blowSound = s.blowSound; e.x = d.x; e.z = d.z
       e.heading = state.yaw + ((s.aim ?? 0) * Math.PI) / 180
       e.reach = s.reach; e.arc = (s.arc * Math.PI) / 180
       e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.sweep = -1; e.radial = s.outward ?? false
@@ -462,7 +462,7 @@ export class RobotCombat {
     while (blasts && this.nextBlast < blasts.length && blasts[this.nextBlast].t <= t) {
       const b = blasts[this.nextBlast++]
       const [lat, fwd] = b.at
-      e.shape = 'circle'; e.kind = b.kind
+      e.shape = 'circle'; e.kind = b.kind; e.blowSound = undefined
       e.x = this.origin.x + Math.sin(h) * fwd + Math.cos(h) * lat
       e.z = this.origin.z + Math.cos(h) * fwd - Math.sin(h) * lat
       e.heading = h; e.reach = b.radius; e.arc = Math.PI * 2
@@ -475,7 +475,7 @@ export class RobotCombat {
       for (let i = 0; i < sweeps.length; i++) {
         const w = sweeps[i]
         if (t < w.t0 || t > w.t1) continue
-        e.shape = 'circle'; e.kind = w.kind
+        e.shape = 'circle'; e.kind = w.kind; e.blowSound = undefined
         e.x = d.x + Math.sin(state.yaw) * w.ahead
         e.z = d.z + Math.cos(state.yaw) * w.ahead
         e.heading = state.yaw; e.reach = w.radius; e.arc = Math.PI * 2
