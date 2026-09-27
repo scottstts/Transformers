@@ -1,27 +1,26 @@
 import './style.css'
-import { showBootError, setBootStage, showEntry, showGame } from './platform/boot-ui'
-import { isTouchDevice } from './platform/device'
+import { showBootError, setBootStage, showEntry, showGame, showUnsupportedPlatform } from './platform/boot-ui'
+import { isDesktopChromium } from './platform/device'
 
 async function boot(): Promise<void> {
-  const touch = isTouchDevice()
-  document.body.classList.toggle('touch', touch)
+  if (!isDesktopChromium()) {
+    showUnsupportedPlatform()
+    return
+  }
   setBootStage('Loading game modules')
   try {
     const { startGame, attachControls } = await import('./game/start')
     const session = await startGame(setBootStage)
-    const controls = attachControls(session, touch)
-    // play starts once the pointer locks (mouse and keyboard) or at once (touch)
+    const controls = attachControls(session)
+    // Play starts once the pointer locks.
     const enter = (): void => {
-      if (!touch && !session.cameraRig.locked) return
+      if (!session.cameraRig.locked) return
       document.removeEventListener('pointerlockchange', enter)
       showGame()
       controls.menu.refreshHint()
     }
     document.addEventListener('pointerlockchange', enter)
-    showEntry(() => {
-      if (touch) enter()
-      else void session.cameraRig.activate()
-    })
+    showEntry(() => { void session.cameraRig.activate() })
   } catch (error) {
     showBootError(error)
   }

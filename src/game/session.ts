@@ -55,17 +55,12 @@ export class GameSession {
   /** a switch is waiting for a transformation, jump or special to end (the world runs on) */
   private waiting = false
   private standing = false
-  private carActions = true
   /** the robot stands: it can walk, jump and fight */
   get standingRobot(): boolean {
     return this.standing
   }
-  /** called when the robot comes to stand or leaves it (car form, transforming); for UI such as the touch jump button */
+  /** called when the robot comes to stand or leaves it (car form, transforming) */
   onStandingChange: ((standing: boolean) => void) | null = null
-  /** the car is fully settled and not switching: the mobile drift button may be held */
-  get carActionsAvailable(): boolean { return this.carActions }
-  /** called when car-only touch actions become available or unavailable */
-  onCarActionsChange: ((available: boolean) => void) | null = null
   /** the special's energy, charged by combo blows (it stays with the player across cars) */
   readonly energy = new Energy()
   /** called when a special's cutscene starts or ends (UI hides and shows the HUD) */
@@ -480,11 +475,6 @@ export class GameSession {
     if (standing !== this.standing) {
       this.standing = standing
       this.onStandingChange?.(standing)
-    }
-    const carActions = !busy && state.mode === 'car' && state.progress <= 0
-    if (carActions !== this.carActions) {
-      this.carActions = carActions
-      this.onCarActionsChange?.(carActions)
     }
     if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive, this.world.terrain)
     else if (!fight.active) updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)

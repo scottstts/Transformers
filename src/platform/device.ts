@@ -1,8 +1,11 @@
-/**
- * A touch-first device (phone, tablet without a mouse): the game uses on-screen
- * controls and no pointer lock. Decided once at boot; a hybrid laptop with a
- * touch screen and a trackpad keeps the mouse and keyboard scheme.
- */
-export function isTouchDevice(): boolean {
-  return typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches
+/** The game needs a desktop Chromium browser with mouse and keyboard input. */
+export function isDesktopChromium(
+  userAgent = navigator.userAgent,
+  maxTouchPoints = navigator.maxTouchPoints,
+  touchOnly = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches,
+): boolean {
+  if (!/(?:Chrome|Chromium|Edg|OPR)\/\d+/.test(userAgent)) return false
+  if (/(?:Android|iPhone|iPad|iPod|Mobile|Tablet|CriOS|EdgiOS|OPiOS)/i.test(userAgent)) return false
+  if (/Macintosh/.test(userAgent) && maxTouchPoints > 1) return false // iPadOS desktop user agent
+  return !touchOnly
 }

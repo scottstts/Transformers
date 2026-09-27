@@ -19,12 +19,10 @@ export class FortHint {
   private timer = 0
   private shown: FortHold = null
 
-  constructor(touch: boolean) {
+  constructor() {
     this.el = document.createElement('div')
     this.el.className = 'fort-hint'
-    this.car = touch
-      ? '<span>Fort perimeter</span><i></i><span>transform to go in</span>'
-      : '<span>Fort perimeter</span><i></i><kbd>R</kbd><span>transform to go in</span>'
+    this.car = '<span>Fort perimeter</span><i></i><kbd>R</kbd><span>transform to go in</span>'
     document.body.append(this.el)
   }
 

@@ -1,7 +1,5 @@
 /** What the pause menu needs from the running game. */
 export interface PauseHost {
-  /** on-screen touch controls instead of mouse and keyboard (nothing locks the pointer) */
-  readonly touch: boolean
   /** the pointer is locked to the game */
   readonly locked: boolean
   /** another overlay has the pointer and Escape (the vehicle menu, its loading cover) */
@@ -23,7 +21,6 @@ export interface PauseHost {
  * a gesture Escape is not: a click, Enter or Space resumes, and the game
  * releases once the lock is back. A refused lock (browsers refuse one that
  * comes right after the player released it) shakes the button to try again.
- * Touch screens have no lock: Escape (a keyboard) toggles, a tap resumes.
  */
 export class PauseMenu {
   private readonly host: PauseHost
@@ -44,8 +41,7 @@ export class PauseMenu {
     if (event.code === 'Escape') {
       event.preventDefault()
       // Escape cannot take the pointer back: point at the button instead
-      if (this.host.touch) this.resume()
-      else this.nudge()
+      this.nudge()
     } else if (event.code === 'Enter' || event.code === 'Space') {
       event.preventDefault()
       if (!event.repeat) this.resume()
@@ -53,7 +49,7 @@ export class PauseMenu {
   }
 
   private readonly onLockChange = (): void => {
-    if (this.host.touch || !this.playing) return
+    if (!this.playing) return
     if (this.host.locked) this.release()
     else if (!this.host.blocked) this.pause()
   }
@@ -79,12 +75,10 @@ export class PauseMenu {
     this.button.addEventListener('click', () => { this.resume() })
     this.button.addEventListener('animationend', () => { this.button.classList.remove('nudge') })
     plate.append(title, this.button)
-    if (!host.touch) {
-      const keys = document.createElement('p')
-      keys.className = 'pause-keys'
-      keys.innerHTML = '<kbd>Enter</kbd><span>to resume</span>'
-      plate.append(keys)
-    }
+    const keys = document.createElement('p')
+    keys.className = 'pause-keys'
+    keys.innerHTML = '<kbd>Enter</kbd><span>to resume</span>'
+    plate.append(keys)
     this.root.append(plate)
     document.body.append(this.root)
     window.addEventListener('keydown', this.onKey)
@@ -99,7 +93,7 @@ export class PauseMenu {
    * load, without a gesture).
    */
   settle(): void {
-    if (!this.host.touch && this.playing && !this.host.locked && !this.host.blocked) this.pause()
+    if (this.playing && !this.host.locked && !this.host.blocked) this.pause()
   }
 
   dispose(): void {
@@ -121,15 +115,11 @@ export class PauseMenu {
     this.root.inert = false
     this.button.focus({ preventScroll: true })
     // Escape that reached the page while locked: the browser may not have released it
-    if (!this.host.touch && this.host.locked) document.exitPointerLock()
+    if (this.host.locked) document.exitPointerLock()
   }
 
   private resume(): void {
     if (!this.paused || this.resuming) return
-    if (this.host.touch) {
-      this.release()
-      return
-    }
     // the lock change releases the game; a refusal leaves the menu up
     this.resuming = true
     void this.host.lock().then((locked) => {

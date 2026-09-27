@@ -6,20 +6,20 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 
 - A combo move charges the meter at its `strike` time (the moment its blow lands), not when it starts. The gains climb with the move: `ENERGY_PER_MOVE`, 0.34 per full combo, so the twelfth blow of the third full combo fills it. A level within 2 % of full snaps to full, so the last blow never leaves a sliver.
 - The meter belongs to the player, not the car: switching cars keeps it.
-- F (desktop) or the touch special button spends all of it, only while the robot stands, is not jumping and is not already in a special. It may cut into a combo mid-move.
+- F spends all of it, only while the robot stands, is not jumping and is not already in a special. It may cut into a combo mid-move.
 
 ## HUD (`ui/energy-meter.ts`)
 
 - Top left, a strip of 12 skewed cells in a small glass plate (the entry button's chamfer), lit from the left like shift lights. There is no text. The cells read one registered custom property (`--level`), so a change is one style write and CSS animates it.
 - A gain flashes the strip. Full lights the diamond core, glows and runs a shine along the strip. Spending discharges it.
 - It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange, the Semi's coil violet). It dims when the robot is not standing, and hides during the cutscene and the menu.
-- Touch: the corner meter is hidden, and the energy shows only on the special button, which sits left of attack in the same row. Its rim is a conic ring of the same level, and it glows while ready. The desktop hint pill adds "F special" only while the meter is full.
-- Letterbox bars (`CinemaBars`) slide in on `body.cinematic`, sized toward 2.39:1 and capped at 12 % of the height. The garage pill and touch controls hide under the same class.
+- The hint pill adds "F special" only while the meter is full.
+- Letterbox bars (`CinemaBars`) slide in on `body.cinematic`, sized toward 2.39:1 and capped at 12 % of the height. The garage pill hides under the same class.
 
 ## Playback (`RobotCombat.startSpecial`)
 
 - A special is one `CombatMove` on the same channel machinery as the combo. It captures whatever pose the fight or the stance left, so it can start mid-move. It ends in the usual recovery (`ComboController.recover`).
-- While it plays, `cinematic` is true. The combo is held, and the session takes no movement, attack, jump, transform or car switch; mouse and touch look are ignored and Tab is refused.
+- While it plays, `cinematic` is true. The combo is held, and the session takes no movement, attack, jump, transform or car switch; mouse look is ignored and Tab is refused.
 - **Free legs.** Feet normally belong to the world planner (feet.ts), so a body flying 30 m, or crossing 13 m in 0.2 s, would stretch its legs back to where it took off. The `R.free` / `L.free` channels hand a foot to a target carried with the body (`lx`, `ly`, `lz`, `lp`). While a foot is fully free, the planner keeps re-planting it under that target, so when `free` eases back to 0 it lands and stays where it is. Author the landing with `lz` at 0 and `air` at 0 on the same frame.
 - **Tempo.** The special's `tempo` curve (over special time) multiplies the world's clock: slow motion runs everything (pose, particles, decals, blast waves) slower, while the camera, lens flash and audio keep real time. Hit-stop still works on top.
 - Keys may reach `MAX_KEYS` (48). Monotone cubics give a hard landing only if the last airborne key sits a frame before the ground; a key's slope at a turnaround is zero.

@@ -1,6 +1,6 @@
 # Robot combat
 
-In robot form a left click (or the touch attack button) fights. Each robot has a four-move combo that climbs in intensity; its own powers take part in it (the truck's lift jets, the racer's power unit, the Semi's gun). Each landed blow (a move's `strike` time) charges the energy for the robot's special, a cinematic move on the same machinery (specials.md). The game side is `src/game/combat/`; the shared runtime is `src/content/transformer/combat/`; each character's moves and effects are `src/content/<character>/combat/`.
+In robot form a left click fights. Each robot has a four-move combo that climbs in intensity; its own powers take part in it (the truck's lift jets, the racer's power unit, the Semi's gun). Each landed blow (a move's `strike` time) charges the energy for the robot's special, a cinematic move on the same machinery (specials.md). The game side is `src/game/combat/`; the shared runtime is `src/content/transformer/combat/`; each character's moves and effects are `src/content/<character>/combat/`.
 
 ## The combo (`game/combat/combo.ts`)
 
@@ -71,7 +71,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 
 ## Guard
 
-- Holding the right mouse button (or the touch guard button) raises the guard. It is `CharacterCombat.guard`, a `CombatMove` whose keys ease into a defensive pose and then hold, played on the same channels. The truck uses a boxer's high guard; the racer crosses its forearms.
+- Holding the right mouse button raises the guard. It is `CharacterCombat.guard`, a `CombatMove` whose keys ease into a defensive pose and then hold, played on the same channels. The truck uses a boxer's high guard; the racer crosses its forearms.
 - The guard rises whenever no move is playing, or a move could be cut short by movement (combo.ts `cancellable`): a combo's recovery gives way to it. A click from the guard starts move 1 from the guard pose. Releasing it goes through the normal recovery. A special drops it.
 - While guarding, the fight owns the robot (no walking, jumping or transforming) and `RobotCombat.guarded` is true.
 - **Shield** (`fx/shield.ts`): a sphere of glowing hexagonal tiles, in the character's special colour, sunk a little into the sand.

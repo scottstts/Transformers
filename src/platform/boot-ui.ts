@@ -51,6 +51,11 @@ export function showGame(): void {
   ;(element('entry-button') as HTMLButtonElement).blur()
 }
 
+export function showUnsupportedPlatform(): void {
+  document.body.classList.add('unsupported')
+  element('unsupported-message').hidden = false
+}
+
 export function showBootError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error)
   const width = window.innerWidth

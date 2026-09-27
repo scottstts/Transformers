@@ -64,8 +64,6 @@ export class FollowCamera {
   cinematic = false
   /** the opening broadside holds until the first look or the car first moves */
   private broadside = false
-  /** false on touch devices: the on-screen controls drive the look and nothing locks the pointer */
-  pointerLock = true
   /** the ground's relief the camera keeps above */
   ground: Ground = FLAT_GROUND
   private readonly onPointerLockChange = (): void => {
@@ -149,7 +147,7 @@ export class FollowCamera {
 
   get locked(): boolean { return document.pointerLockElement === this.canvas }
 
-  /** Orbit by a pointer movement in CSS pixels (mouse under pointer lock, or a touch drag). */
+  /** Orbit by a mouse movement in CSS pixels under pointer lock. */
   look(dx: number, dy: number): void {
     if (this.held || this.cinematic) return
     this.broadside = false
@@ -165,7 +163,7 @@ export class FollowCamera {
    * lock events decide, as not every browser returns a promise.
    */
   activate(): Promise<boolean> {
-    if (!this.pointerLock || !this.canvas.isConnected) return Promise.resolve(false)
+    if (!this.canvas.isConnected) return Promise.resolve(false)
     if (this.locked) return Promise.resolve(true)
     return new Promise<boolean>((resolve) => {
       const settle = (locked: boolean): void => {

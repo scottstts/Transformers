@@ -69,11 +69,10 @@ interface Harness {
   lockChange(): void
 }
 
-function harness(touch: boolean, grant = true): Harness {
+function harness(grant = true): Harness {
   const paused: boolean[] = []
   const host = {
-    touch,
-    locked: !touch,
+    locked: true,
     blocked: false,
     lock: vi.fn(async () => {
       if (grant) {
@@ -97,7 +96,7 @@ function harness(touch: boolean, grant = true): Harness {
 
 describe('pause menu (mouse and keyboard)', () => {
   it('pauses when play loses the pointer, and resumes once a gesture takes it back', async () => {
-    const h = harness(false)
+    const h = harness()
     h.host.locked = false
     h.lockChange()
     expect(h.menu.isPaused).toBe(true)
@@ -112,7 +111,7 @@ describe('pause menu (mouse and keyboard)', () => {
   })
 
   it('leaves a released pointer to the vehicle menu while it is open', () => {
-    const h = harness(false)
+    const h = harness()
     h.host.blocked = true
     h.host.locked = false
     h.lockChange()
@@ -124,7 +123,7 @@ describe('pause menu (mouse and keyboard)', () => {
   })
 
   it('does not pause before play starts', () => {
-    const h = harness(false)
+    const h = harness()
     doc.body.classes.delete('ready')
     h.host.locked = false
     h.lockChange()
@@ -133,7 +132,7 @@ describe('pause menu (mouse and keyboard)', () => {
   })
 
   it('resumes from Enter, but cannot from Escape (no gesture)', async () => {
-    const h = harness(false)
+    const h = harness()
     h.host.locked = false
     h.lockChange()
     h.key('Escape')
@@ -145,7 +144,7 @@ describe('pause menu (mouse and keyboard)', () => {
   })
 
   it('stays paused and shakes the button when the browser refuses the lock', async () => {
-    const h = harness(false, false)
+    const h = harness(false)
     h.host.locked = false
     h.lockChange()
     h.resume.click()
@@ -156,24 +155,9 @@ describe('pause menu (mouse and keyboard)', () => {
   })
 
   it('releases the pointer itself when Escape reaches the page under the lock', () => {
-    const h = harness(false)
+    const h = harness()
     h.key('Escape')
     expect(h.menu.isPaused).toBe(true)
     expect(doc.exitPointerLock).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('pause menu (touch)', () => {
-  it('toggles with Escape and resumes from a tap without any pointer lock', () => {
-    const h = harness(true)
-    h.key('Escape')
-    expect(h.menu.isPaused).toBe(true)
-    h.key('Escape')
-    expect(h.menu.isPaused).toBe(false)
-    h.key('Escape')
-    h.resume.click()
-    expect(h.menu.isPaused).toBe(false)
-    expect(h.host.lock).not.toHaveBeenCalled()
-    expect(h.paused).toEqual([true, false, true, false])
   })
 })

@@ -49,7 +49,7 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 - frame-rate independence;
 - aided braking at the profile rate without lock-ups.
 
-`tests/input.test.ts` checks that the touch stick maps onto the keyboard controls: an on/off throttle, proportional steering, Shift (drift or run) at the rim and a camera-relative robot direction. It also checks that the mobile drift button holds and releases that same Shift state.
+`tests/platform.test.ts` checks that the boot gate accepts desktop Chromium and rejects Safari, Firefox, mobile browsers, iPad desktop mode and touch-only input.
 
 `tests/movement.test.ts` checks that transform requests cannot reverse or queue during braking or playback in either direction. `tests/jump.test.ts` checks:
 - frame-rate-independent jump timing at any momentum;

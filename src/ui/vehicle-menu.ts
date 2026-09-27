@@ -1,5 +1,7 @@
 import type { RosterEntry } from '../content/roster'
 
+const MOUSE_DRAG_PX = 40
+
 /** What the menu needs from the running game. */
 export interface VehicleHost {
   readonly roster: readonly RosterEntry[]
@@ -19,8 +21,6 @@ export interface VehicleHost {
   readonly cinematic: boolean
   /** the pause menu is up: the menu stays shut */
   readonly paused: boolean
-  /** on-screen touch controls instead of mouse and keyboard */
-  readonly touch: boolean
   /**
    * hold the game still behind the open menu (simulation, rendering and sound),
    * or let it run: it runs while a switch is in progress, which may wait out a
@@ -31,23 +31,18 @@ export interface VehicleHost {
   openChanged?(open: boolean): void
 }
 
-/** Horizontal drag (px) that counts as a swipe. */
-const SWIPE_PX = 40
-
-type HintMode = 'play' | 'fight' | 'special' | 'paused' | 'touch'
+type HintMode = 'play' | 'fight' | 'special' | 'paused'
 
 const HINTS: Record<HintMode, string> = {
   play: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span>',
   fight: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span><i></i><kbd>Click</kbd><span>to fight</span><i></i><kbd>Right</kbd><span>guard</span>',
   special: '<kbd>Click</kbd><span>to fight</span><i></i><kbd>Right</kbd><span>guard</span><i></i><kbd>F</kbd><span>special</span>',
   paused: '<span>Click to play</span><i></i><kbd>Tab</kbd><span>to switch</span>',
-  touch: '<span>Switch vehicle</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg>',
 }
 
 /**
  * The vehicle menu. Collapsed, it is a small hint pill at the bottom of the
- * screen (on touch screens at the top, clear of the thumbs) saying how to
- * switch and transform; opening it grows the same glass panel out of the pill
+ * screen saying how to switch and transform; opening it grows the same glass panel out of the pill
  * into a carousel of car names. The morph is one clip-path transition on the
  * panel, laid out at full size throughout, so nothing reflows while it runs.
  *
@@ -56,12 +51,11 @@ const HINTS: Record<HintMode, string> = {
  *
  * Tab opens it over the locked pointer (mouse look and game keys pause;
  * Escape still releases the pointer, as browsers require, leaving the menu open
- * for the mouse); the arrow keys, the arrow buttons, a horizontal swipe or a
- * click on a neighbouring name only move the selection. Enter (or a click or
- * tap on the centred name) confirms it: that car is swapped in behind the
- * panel, or, if it is the one already driven, the menu just closes. Tab,
- * Escape or the backdrop closes it without switching. On touch screens a tap
- * on the pill opens it.
+ * for the mouse); the arrow keys, the arrow buttons, mouse drag, trackpad scroll or a
+ * click on a neighbouring name only move the selection. Enter (or a click on
+ * the centred name) confirms it: that car is swapped in behind the panel, or,
+ * if it is the one already driven, the menu just closes. Tab, Escape or the
+ * backdrop closes it without switching.
  */
 export class VehicleMenu {
   private readonly host: VehicleHost
@@ -101,7 +95,7 @@ export class VehicleMenu {
     event.stopPropagation()
     if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
       event.preventDefault()
-      if (!event.repeat) this.swipe(event.code === 'ArrowLeft' ? -1 : 1)
+      if (!event.repeat) this.moveSelection(event.code === 'ArrowLeft' ? -1 : 1)
     } else if (event.code === 'Enter') {
       event.preventDefault()
       this.confirm()
@@ -118,7 +112,6 @@ export class VehicleMenu {
     this.host = host
     this.root = document.createElement('div')
     this.root.className = 'garage'
-    this.root.classList.toggle('touch', host.touch)
 
     this.panel = document.createElement('div')
     this.panel.className = 'garage-panel'
@@ -152,7 +145,7 @@ export class VehicleMenu {
       name.className = 'garage-name'
       name.textContent = entry.label
       name.tabIndex = -1
-      name.addEventListener('click', () => { if (i !== this.index) this.swipe(i - this.index); else this.confirm() })
+      name.addEventListener('click', () => { if (i !== this.index) this.moveSelection(i - this.index); else this.confirm() })
       this.track.append(name)
       this.names.push(name)
     })
@@ -177,23 +170,22 @@ export class VehicleMenu {
     this.cover.append(loader)
     this.root.append(this.cover, this.panel)
 
-    // a tap on the backdrop closes the menu; a horizontal drag on the panel swipes
     this.root.addEventListener('pointerdown', (event) => {
-      if (!this.open) return
+      if (!this.open || event.pointerType !== 'mouse') return
       if (event.target === this.root && !this.loading) this.close(true)
       else this.dragX = event.clientX
     })
     this.root.addEventListener('pointerup', (event) => {
-      if (this.dragX === null) return
+      if (event.pointerType !== 'mouse' || this.dragX === null) return
       const dx = event.clientX - this.dragX
       this.dragX = null
-      if (Math.abs(dx) > SWIPE_PX) this.swipe(dx < 0 ? 1 : -1)
+      if (Math.abs(dx) > MOUSE_DRAG_PX) this.moveSelection(dx < 0 ? 1 : -1)
     })
     this.root.addEventListener('wheel', (event) => {
       if (!this.open) return
       if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && Math.abs(event.deltaX) > 24) {
         event.preventDefault()
-        this.swipe(event.deltaX > 0 ? 1 : -1)
+        this.moveSelection(event.deltaX > 0 ? 1 : -1)
       }
     }, { passive: false })
 
@@ -239,7 +231,7 @@ export class VehicleMenu {
 
   /** Refresh the pill after the game starts or stops playing, or the robot comes to or leaves its stance. */
   refreshHint(): void {
-    const mode: HintMode = this.host.touch ? 'touch' : !this.host.playing ? 'paused'
+    const mode: HintMode = !this.host.playing ? 'paused'
       : this.host.standing ? (this.host.specialReady ? 'special' : 'fight') : 'play'
     if (mode === this.hintMode) return
     this.hintMode = mode
@@ -269,7 +261,7 @@ export class VehicleMenu {
     button.innerHTML = side === 'prev'
       ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg>'
       : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg>'
-    button.addEventListener('click', () => { this.swipe(dir) })
+    button.addEventListener('click', () => { this.moveSelection(dir) })
     return button
   }
 
@@ -278,7 +270,7 @@ export class VehicleMenu {
   }
 
   /** Move the selection by `dir` cars (nothing loads until it is confirmed). */
-  private swipe(dir: number): void {
+  private moveSelection(dir: number): void {
     if (!this.open || this.loading) return
     const target = Math.min(this.host.roster.length - 1, Math.max(0, this.index + dir))
     if (target === this.index) {
@@ -287,7 +279,7 @@ export class VehicleMenu {
     }
     this.index = target
     // nothing loads until the choice is confirmed: say how
-    this.status.textContent = target === this.currentIndex() ? '' : this.host.touch ? 'Tap the name to switch' : 'Enter to switch'
+    this.status.textContent = target === this.currentIndex() ? '' : 'Enter to switch'
     this.render(true)
   }
 
@@ -354,7 +346,7 @@ export class VehicleMenu {
     this.next.disabled = i === this.host.roster.length - 1
   }
 
-  /** A swipe with nowhere to go: the track leans that way and springs back. */
+  /** A selection move with nowhere to go: the track leans that way and springs back. */
   private nudge(dir: number): void {
     this.track.classList.remove('nudge-prev', 'nudge-next')
     void this.track.offsetWidth

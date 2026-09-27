@@ -1,35 +1,18 @@
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 
-/** Stick deflection (0..1) past which the throttle engages; the car throttle is on/off, as on a keyboard. */
-const STICK_THROTTLE = 0.35
-/** Stick deflection below which the stick is at rest. */
-const STICK_DEAD = 0.15
-
 /**
- * Keyboard and mouse input, plus an analog stick from the touch controls. The
- * stick maps onto the same controls as the keys: forward/back is the throttle,
- * sideways steers (proportionally), and a stick pushed to the rim runs only in
- * robot form. Car drift is a separate held Shift state. A left click under
- * pointer lock is an attack (the click that
- * takes the lock is not); holding the right button holds the guard; F is the
- * special.
+ * Keyboard and mouse input. A left click under pointer lock is an attack
+ * (the click that takes the lock is not); holding the right button guards.
  */
 export class GameInput {
-  /** touch stick: x right, y forward, each -1..1 */
-  private stickX = 0
-  private stickY = 0
-  private stickRun = false
-  /** mobile drift button: held state, equivalent to either Shift key */
-  private touchShift = false
   private readonly onTransform: () => void
   private readonly onInteraction: () => void
   private readonly keys = new Set<string>()
   private jumpPressed = false
   private attackPressed = false
   private specialPressed = false
-  /** right mouse button held (under pointer lock), and the touch guard button */
+  /** right mouse button held under pointer lock */
   private guardMouse = false
-  private guardTouch = false
   private readonly forward = new Vector3()
   private readonly right = new Vector3()
   private readonly direction = new Vector3()
@@ -48,9 +31,6 @@ export class GameInput {
   private readonly onBlur = (): void => {
     this.keys.clear()
     this.guardMouse = false
-    this.guardTouch = false
-    this.setStick(0, 0, false)
-    this.setShift(false)
   }
   private readonly onPointerLockChange = (): void => {
     if (document.pointerLockElement !== this.canvas) {
@@ -85,13 +65,10 @@ export class GameInput {
     document.addEventListener('pointerlockchange', this.onPointerLockChange)
   }
 
-  /** The guard is held (right mouse button, or the touch guard button). */
+  /** The right mouse button is held. */
   get guarding(): boolean {
-    return this.guardMouse || this.guardTouch
+    return this.guardMouse
   }
-
-  /** Hold or release the guard from the touch controls. */
-  setGuard(held: boolean): void { this.guardTouch = held }
 
   /** Space was pressed since the last call. */
   consumeJump(): boolean {
@@ -100,64 +77,37 @@ export class GameInput {
     return pressed
   }
 
-  /** A click (or the touch attack button) since the last call. */
+  /** A click since the last call. */
   consumeAttack(): boolean {
     const pressed = this.attackPressed
     this.attackPressed = false
     return pressed
   }
 
-  /** An attack from the touch controls (same as a click). */
-  pressAttack(): void { this.attackPressed = true }
-
-  /** F (or the touch special button) since the last call. */
+  /** F since the last call. */
   consumeSpecial(): boolean {
     const pressed = this.specialPressed
     this.specialPressed = false
     return pressed
   }
 
-  /** The special from the touch controls (same as F). */
-  pressSpecial(): void { this.specialPressed = true }
-
-  /** Touch stick deflection (clamped to the unit disc by the caller); `run` when pushed to the rim. */
-  setStick(x: number, y: number, run: boolean): void {
-    this.stickX = x
-    this.stickY = y
-    this.stickRun = run
-  }
-
-  /** A jump from the touch controls (same as Space). */
-  pressJump(): void { this.jumpPressed = true }
-
-  /** Hold/release Shift from the touch drift button. */
-  setShift(held: boolean): void { this.touchShift = held }
-
   pressed(...codes: string[]): boolean { return codes.some((code) => this.keys.has(code)) }
-  /** Robot run: stick at the rim or either Shift source. */
-  get running(): boolean { return this.stickRun || this.driftHeld }
-  /** Car drift/boost: only an explicit held Shift key or the mobile Drift button. */
-  get driftHeld(): boolean { return this.touchShift || this.pressed('ShiftLeft', 'ShiftRight') }
+  /** Robot run and car drift/boost use either Shift key. */
+  get running(): boolean { return this.driftHeld }
+  get driftHeld(): boolean { return this.pressed('ShiftLeft', 'ShiftRight') }
   get driveThrottle(): number {
-    const keys = Number(this.pressed('KeyW', 'ArrowUp')) - Number(this.pressed('KeyS', 'ArrowDown'))
-    return keys || (this.stickY > STICK_THROTTLE ? 1 : this.stickY < -STICK_THROTTLE ? -1 : 0)
+    return Number(this.pressed('KeyW', 'ArrowUp')) - Number(this.pressed('KeyS', 'ArrowDown'))
   }
   get driveSteering(): number {
-    const keys = Number(this.pressed('KeyD', 'ArrowRight')) - Number(this.pressed('KeyA', 'ArrowLeft'))
-    return keys || (Math.abs(this.stickX) > STICK_DEAD ? this.stickX : 0)
+    return Number(this.pressed('KeyD', 'ArrowRight')) - Number(this.pressed('KeyA', 'ArrowLeft'))
   }
   get driving(): boolean {
-    return Math.hypot(this.stickX, this.stickY) > STICK_DEAD ||
-      this.pressed('KeyW', 'ArrowUp', 'KeyS', 'ArrowDown', 'KeyA', 'ArrowLeft', 'KeyD', 'ArrowRight')
+    return this.pressed('KeyW', 'ArrowUp', 'KeyS', 'ArrowDown', 'KeyA', 'ArrowLeft', 'KeyD', 'ArrowRight')
   }
 
   movementDirection(camera: PerspectiveCamera): Vector3 | null {
-    let f = Number(this.pressed('KeyW', 'ArrowUp')) - Number(this.pressed('KeyS', 'ArrowDown'))
-    let r = Number(this.pressed('KeyD', 'ArrowRight')) - Number(this.pressed('KeyA', 'ArrowLeft'))
-    if (!f && !r && Math.hypot(this.stickX, this.stickY) > STICK_DEAD) {
-      f = this.stickY
-      r = this.stickX
-    }
+    const f = Number(this.pressed('KeyW', 'ArrowUp')) - Number(this.pressed('KeyS', 'ArrowDown'))
+    const r = Number(this.pressed('KeyD', 'ArrowRight')) - Number(this.pressed('KeyA', 'ArrowLeft'))
     if (!f && !r) return null
     camera.getWorldDirection(this.forward)
     this.forward.y = 0
