@@ -50,9 +50,9 @@ export interface GaitStyle {
 	stride: [ number, number ];
 	/** foot lift at mid-swing, walking and running */
 	lift: [ number, number ];
-	/** run: peak flight height and mid-stance compression */
-	runFlight: number;
-	runCompression: number;
+	/** run: peak flight height and mid-stance compression (a `runCycle` run takes both from gravity instead) */
+	runFlight?: number;
+	runCompression?: number;
 	/** extra stance crouch at full run */
 	runCrouch: number;
 	/** pelvis shift over the planted leg, and the walk's rise and fall */
@@ -111,8 +111,22 @@ export interface GaitStyle {
 	toeRelease?: [ number, number ];
 	/** Arms carried forward (deg) against the torso's lean while moving, walking and running. */
 	armCarry?: [ number, number ];
-	/** Coordinated run: continuous recovery arc, opposing arms and independent flight height. */
+	/**
+	 * Coordinated run: continuous recovery arc, opposing arms and independent
+	 * flight height. Its vertical motion is ballistic: gravity over the flight
+	 * time sets the rise, and the stance dip reverses the landing's fall.
+	 */
 	runCycle?: { recoveryPeak: number };
+	/**
+	 * Toe-down pitch (deg) that levels a sole whose bottom rakes up toward the
+	 * toe in the exported stand. Applied while stepping, so the foot rolls from
+	 * the heel edge to the toe edge instead of rocking between them, which drops
+	 * the ground-projected body at every toe-off. `ankle` is then the height of
+	 * the levelled edges.
+	 */
+	soleTilt?: number;
+	/** Pelvis yaw and shoulder counter-rotation (deg) at a full run; default: the walking `hipYaw` and `shoulders`. */
+	runYaw?: [ number, number ];
 }
 
 /** A heavy machine: long stance, weight shift over the planted leg. */
@@ -151,10 +165,15 @@ const LIFT_SKEW = 0.3;
 const SWING_TOE = 0.12;
 const TOE_RELEASE = 0.35;
 const SWING_TANGENT_FADE = 10;
+/** A coordinated run bounds the swing's overshoot past the contact stations to this share of the contact sweep. */
+const RUN_SWING_OVERSHOOT = 0.05;
 /** Samples of the stride cycle handed to the rig to size the pelvis carriage. */
-const STRIDE_SAMPLES = 16;
+const STRIDE_SAMPLES = 32;
 /** Pelvis sway / list lag behind the leg phase (rad): the weight arrives over the leg after the strike. */
 const WEIGHT_LAG = 0.3;
+/** Gravity (m/s^2) for a ballistic run, and the longest flight or contact it allows (s): a slowing run's cycle grows without bound. */
+const GRAVITY = 9.81;
+const MAX_BALLISTIC = 0.3;
 /** Arm swing lag behind the legs (rad) and the arms' spring (rad/s, damping ratio). */
 const ARM_LAG = 0.25;
 const ARM_SPRING = 15;
@@ -194,6 +213,7 @@ export class RobotGait {
 	private liftRise = 0;
 	private liftFall = 0;
 	private toeRelease = TOE_RELEASE;
+	private tangentFade = SWING_TANGENT_FADE;
 	private readonly armSpring: Record<Side, Spring> = { R: { x: 0, v: 0 }, L: { x: 0, v: 0 } };
 	private readonly elbowSpring: Record<Side, Spring> = { R: { x: 0, v: 0 }, L: { x: 0, v: 0 } };
 	private springsLive = false;
@@ -250,6 +270,11 @@ export class RobotGait {
 
 		}
 		this.toeRelease = st.toeRelease ? lerp( st.toeRelease[ 0 ], st.toeRelease[ 1 ], this.run ) : TOE_RELEASE;
+		// A short support hands the swing a fast ground speed to match; carried by the
+		// fixed fade it flings the foot low and far past its strike, which pins the
+		// whole run's carriage down. The overshoot peaks near m / (e (N + 1)).
+		const tangent = ( 1 - stanceFrac ) / stanceFrac;
+		this.tangentFade = st.runCycle ? Math.max( SWING_TANGENT_FADE, tangent / ( Math.E * RUN_SWING_OVERSHOOT ) - 1 ) : SWING_TANGENT_FADE;
 
 		const legs = {} as Record<Side, GaitLeg>;
 		for ( const S of SIDES ) {
@@ -271,11 +296,27 @@ export class RobotGait {
 		let w = ( ( this.phase / TAU ) % 0.5 + 0.5 ) % 0.5;
 		if ( ! Number.isFinite( w ) ) w = 0;
 		const flight = w >= stanceFrac ? ( w - stanceFrac ) / ( 0.5 - stanceFrac ) : - 1;
-		let air = flight >= 0 ? 4 * st.runFlight * run * flight * ( 1 - flight ) : 0;
-		if ( st.runCycle && flight >= 0 ) air = st.runFlight * run * Math.sin( Math.PI * flight ) ** 2;
+		let rise = st.runFlight ?? 0, dip = st.runCompression ?? 0;
+		if ( st.runCycle ) {
+
+			// Ballistic: the body leaves the toe rising at g tf / 2, peaks g tf^2 / 8
+			// above take-off and lands falling as fast; the stance dip reverses that
+			// fall over the contact time, so height and vertical velocity stay continuous.
+			const cycleTime = eff > 0 ? 2 * cadenceStride / eff : Infinity;
+			const flightShare = Math.max( 0, 0.5 - stanceFrac );
+			const tf = flightShare > 0 ? Math.min( flightShare * cycleTime, MAX_BALLISTIC ) : 0;
+			const tc = Math.min( stanceFrac * cycleTime, MAX_BALLISTIC );
+			rise = GRAVITY * tf * tf / 8;
+			dip = GRAVITY * tf * tc / ( 2 * Math.PI );
+
+		}
+		let air = flight >= 0 ? 4 * rise * run * flight * ( 1 - flight ) : 0;
+		const sink = flight < 0 ? dip * run * Math.sin( Math.PI * w / stanceFrac ) : 0;
+		// a coordinated run sinks after the pelvis is sized to the legs' reach, which would level a sink in the crouch
+		const compression = st.runCycle ? sink * locomotion : 0;
 		let crouch = 0.1 + st.runCrouch * run
 			+ st.bob * ( 1 - this.run ) * this.amp * ( 0.5 + 0.5 * Math.cos( 2 * ( this.phase - 0.5 ) ) )
-			+ ( flight < 0 ? st.runCompression * run * Math.sin( Math.PI * w / stanceFrac ) : 0 );
+			+ ( st.runCycle ? 0 : sink );
 
 		// weight over the planted leg: shift toward it, drop the swing side; the idle robot shifts its weight slowly
 		const weightPhase = Math.sin( this.phase - WEIGHT_LAG ) * this.amp;
@@ -291,8 +332,10 @@ export class RobotGait {
 		this.bank = lerp( this.bank, active ? clamp( speed * turnRate * TURN_BANK, - 9, 9 ) : 0, 1 - Math.exp( - dt * 4 ) );
 
 		// hips yaw with the stepping leg (right hip forward at the right heel strike), shoulders counter-rotate
-		const hipYaw = Math.cos( this.phase ) * st.hipYaw * this.amp * locomotion;
-		const shoulderYaw = - Math.cos( this.phase ) * st.shoulders * this.amp * locomotion;
+		const yawAmp = st.runYaw ? lerp( st.hipYaw, st.runYaw[ 0 ], this.run ) : st.hipYaw;
+		const shoulderAmp = st.runYaw ? lerp( st.shoulders, st.runYaw[ 1 ], this.run ) : st.shoulders;
+		const hipYaw = Math.cos( this.phase ) * yawAmp * this.amp * locomotion;
+		const shoulderYaw = - Math.cos( this.phase ) * shoulderAmp * this.amp * locomotion;
 		const twist = ( shoulderYaw - hipYaw ) / 1.6;
 
 		const carry = st.armCarry ? lerp( st.armCarry[ 0 ], st.armCarry[ 1 ], this.run ) * this.amp : 0;
@@ -353,6 +396,9 @@ export class RobotGait {
 
 		const roll = list + this.bank;
 		const moving = this.amp * locomotion;
+		const tilt = ( st.soleTilt ?? 0 ) * RAD * this.amp;
+		legs.R.pitch += tilt;
+		legs.L.pitch += tilt;
 		const cross = ( st.armCross ?? 0 ) * lerp( 0.35, 1, this.run ) * moving;
 		// the whole cycle's foot path, fading out as a jump takes over the legs
 		for ( let i = 0; i < STRIDE_SAMPLES; i ++ ) {
@@ -364,6 +410,8 @@ export class RobotGait {
 		}
 		return {
 			freeFlight: st.runCycle ? run * locomotion : 0,
+			compression,
+			steadyCarriage: !! st.runCycle,
 			minKnee: ( st.kneeFloor ? lerp( st.kneeFloor[ 0 ], st.kneeFloor[ 1 ], this.run ) : 20 ) * moving,
 			stridePath: this.stridePath,
 			strideCycle: this.cycle( 'R' ),
@@ -416,7 +464,7 @@ export class RobotGait {
 			// Match the stance velocity at both ends, with zero vertical velocity at contact.
 			// The tangent terms fade quickly, limiting overshoot past the contact stations.
 			const m = - sweep * ( 1 - stance ) / stance;
-			base = sweep * ( smooth( t ) - 0.5 ) + m * ( t * ( 1 - t ) ** SWING_TANGENT_FADE + ( t - 1 ) * t ** SWING_TANGENT_FADE );
+			base = sweep * ( smooth( t ) - 0.5 ) + m * ( t * ( 1 - t ) ** this.tangentFade + ( t - 1 ) * t ** this.tangentFade );
 			if ( this.style.liftWindow ) up = lift * ramp( 0, this.liftRise, t ) * ( 1 - ramp( this.liftFall, 1, t ) );
 			else {
 

@@ -4,18 +4,21 @@ import { createF1, F1_PROFILE, RACER_GAIT } from '../src/content/ferrari-f1/inde
 import { AudioMix } from '../src/audio/mix.ts'
 import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck/index.ts'
 import { SEMI_GAIT, SEMI_PROFILE } from '../src/content/semi/index.ts'
-import { HEAVY_GAIT, RobotGait } from '../src/content/transformer/animation/gait.ts'
+import { HEAVY_GAIT, RobotGait, type GaitStyle } from '../src/content/transformer/animation/gait.ts'
 import { RobotRig } from '../src/content/transformer/model/rig.ts'
 import { NO_CONTACT, readAsset } from './support/assets.ts'
 
 const cases = [
-  { name: 'ferrari-f1', style: RACER_GAIT, speeds: [F1_PROFILE.robot.walkSpeed, F1_PROFILE.robot.runSpeed], steps: [1.575, 3.8], cadence: [3.2 / 1.05, 7.8 / 1.9] },
+  { name: 'ferrari-f1', style: RACER_GAIT, speeds: [F1_PROFILE.robot.walkSpeed, F1_PROFILE.robot.runSpeed], steps: [1.95, 5.2], cadence: [3.2 / 1.95, 15.6 / 5.2] },
   { name: 'cybertruck', style: HEAVY_GAIT, speeds: [CYBERTRUCK_PROFILE.robot.walkSpeed, CYBERTRUCK_PROFILE.robot.runSpeed], steps: [2.025, 4.6], cadence: [3.4 / 1.35, 7.5 / 2.3] },
   // the Semi steps at a slower cadence than the pickup: strides scale with the legs, speeds with their square root
   { name: 'semi', style: SEMI_GAIT, speeds: [SEMI_PROFILE.robot.walkSpeed, SEMI_PROFILE.robot.runSpeed], steps: [2.75, 5.6], cadence: [5.9 / 2.75, 17 / 5.6] },
 ]
 const dt = 1 / 240
 const sides = ['L', 'R'] as const
+/** A planted, flat foot: no lift, pitched only by the sole's levelling tilt. */
+const planted = (style: GaitStyle, leg: { up: number; pitch: number }): boolean =>
+  leg.up === 0 && Math.abs(leg.pitch - (style.soleTilt ?? 0) * Math.PI / 180) < 1e-12
 
 describe.each(cases)('$name locomotion rig', ({ name, style, speeds, steps, cadence }) => {
   const { rig: data } = readAsset(name).manifest
@@ -45,7 +48,7 @@ describe.each(cases)('$name locomotion rig', ({ name, style, speeds, steps, cade
         const knee = 2 * Math.acos(Math.min(1, Math.abs(rig.local[rig.index[`shin.${side}`]].q.w))) * 180 / Math.PI
         maxKnee = Math.max(maxKnee, knee)
         minKnee = Math.min(minKnee, knee)
-        const flat = leg.up === 0 && leg.pitch === 0
+        const flat = planted(style, leg)
         if (flat && wasFlat[side]) {
           expect((ankle.y - previous[side].y) / dt).toBeCloseTo(speed, 3)
           expect(ankle.x).toBeCloseTo(previous[side].x, 6)
@@ -62,7 +65,8 @@ describe.each(cases)('$name locomotion rig', ({ name, style, speeds, steps, cade
     expect((gait.phase - phase) / Math.PI / (720 * dt)).toBeCloseTo(cadence[Number(running)], 5)
     expect(maxError).toBeLessThan(1e-5)
     expect(minKnee).toBeGreaterThan(9.9)
-    expect(maxKnee).toBeLessThan(125)
+    // a sprinter's heel recovery folds the knee to about 130 degrees
+    expect(maxKnee).toBeLessThan(135)
     expect(plantedChecks).toBeGreaterThan(40)
   })
 
@@ -136,19 +140,64 @@ describe.each(cases)('$name locomotion rig', ({ name, style, speeds, steps, cade
 describe('F1 carriage', () => {
   const { rig: data } = readAsset('ferrari-f1').manifest
 
-  it('drives the trunk forward and clears the ground during the running flight', () => {
-    const gait = new RobotGait(RACER_GAIT)
+  // A body stepped faster than gravity swings its legs reads as sped-up film:
+  // the gait keeps the cadence of a human scaled to the robot (dynamic similarity).
+  it('walks and runs at the cadence of its size', () => {
+    const [walk, run] = [F1_PROFILE.robot.walkSpeed, F1_PROFILE.robot.runSpeed]
+    const legTime = Math.sqrt(data.dims.hipZ / 9.81)
+    // walking stays below the walk-to-run transition (Froude 0.5)
+    expect(walk * walk / (9.81 * data.dims.hipZ)).toBeLessThanOrEqual(0.51)
+    // steps per leg-pendulum time: a brisk walk 0.6-0.85, a sprint 1.2-1.5
+    expect(walk / RACER_GAIT.stride[0] * legTime).toBeGreaterThan(0.6)
+    expect(walk / RACER_GAIT.stride[0] * legTime).toBeLessThan(0.85)
+    expect(run / RACER_GAIT.stride[1] * legTime).toBeGreaterThan(1.2)
+    expect(run / RACER_GAIT.stride[1] * legTime).toBeLessThan(1.5)
+  })
+
+  it('flies a ballistic arc and lands into a stance that reverses the fall', () => {
+    const robot = createF1(readAsset('ferrari-f1'), NO_CONTACT, new AudioMix())
     const speed = F1_PROFILE.robot.runSpeed
-    for (let i = 0; i < 2400; i++) gait.update(dt, speed, 0, true, true)
+    for (let i = 0; i < 2400; i++) robot.model.pose(1, robot.gait.update(dt, speed, 0, true, true))
+    const stance = RACER_GAIT.stance![1]
+    const flightTime = (0.5 - stance) * 2 * RACER_GAIT.stride[1] / speed
     let highestFlight = 0
     let lowestLean = Infinity
-    for (let i = 0; i < 240; i++) {
-      const pose = gait.update(dt, speed, 0, true, true)
+    const heights: number[] = []
+    const phase = robot.gait.phase
+    while (robot.gait.phase - phase < 2 * Math.PI) {
+      const pose = robot.gait.update(dt, speed, 0, true, true)
+      robot.model.pose(1, pose)
       highestFlight = Math.max(highestFlight, pose.air ?? 0)
       lowestLean = Math.min(lowestLean, pose.lean)
+      heights.push(robot.model.rig.world[robot.model.rig.index.pelvis].elements[14] + robot.model.lift)
     }
-    expect(highestFlight).toBeGreaterThan(0.08)
+    // gravity sets the rise over the flight time, instead of a hump pulled up and down at any cadence
+    expect(highestFlight).toBeCloseTo(9.81 * flightTime * flightTime / 8, 3)
     expect(lowestLean).toBeGreaterThan(9)
+    // Seen at 60 Hz, the body's vertical acceleration stays within a sprinter's ground
+    // force (about 2.5-3 body weights, less the 1 g it carries); a step in velocity at touchdown or
+    // toe-off, or a compression undone by the reach sizing, shows as a spike far above it.
+    const k = 4, frame = k * dt
+    let accel = 0
+    for (let i = k; i < heights.length - k; i++) accel = Math.max(accel, Math.abs(heights[i + k] - 2 * heights[i] + heights[i - k]) / (frame * frame))
+    expect(accel / 9.81).toBeLessThan(3)
+  })
+
+  it('rolls its levelled sole from heel to toe without rocking the body', () => {
+    const robot = createF1(readAsset('ferrari-f1'), NO_CONTACT, new AudioMix())
+    const speed = F1_PROFILE.robot.walkSpeed
+    for (let i = 0; i < 2400; i++) robot.model.pose(1, robot.gait.update(dt, speed, 0, false, true))
+    const lifts: number[] = []
+    const phase = robot.gait.phase
+    while (robot.gait.phase - phase < 2 * Math.PI) {
+      robot.model.pose(1, robot.gait.update(dt, speed, 0, false, true))
+      lifts.push(robot.model.lift)
+    }
+    // The raked sole stood on its heel and dropped the body 1.8 cm within a frame or two of every
+    // toe-off. Levelled, only the sole's own belly and rounded toe remain, spread over the roll.
+    expect(Math.max(...lifts) - Math.min(...lifts)).toBeLessThan(0.012)
+    const step = Math.max(...lifts.slice(4).map((l, i) => Math.abs(l - lifts[i])))
+    expect(step).toBeLessThan(0.006)
   })
 
   it('keeps the rendered running pelvis afloat when both soles leave the ground', () => {
@@ -208,9 +257,10 @@ describe('F1 carriage', () => {
 
   it.each([
     // walking: near-straight stance, the swing knee folds to about 60 degrees, the hip extends behind
-    { running: false, stanceKnee: [15, 35], swingKnee: 55, thigh: [30, -10] },
-    // running: heel recovery past 110, then a lower knee drive as the foot continuously descends
-    { running: true, stanceKnee: [20, 55], swingKnee: 110, thigh: [45, -15] },
+    { running: false, stanceKnee: [10, 25], swingKnee: 55, thigh: [30, -10] },
+    // running: soft stance under the ballistic compression, heel recovery past 110, then a lower
+    // knee drive as the foot continuously descends
+    { running: true, stanceKnee: [25, 60], swingKnee: 110, thigh: [45, -15] },
   ])('moves its legs through human ranges (running $running)', ({ running, stanceKnee, swingKnee, thigh }) => {
     const gait = new RobotGait(RACER_GAIT)
     const rig = new RobotRig(data.bones, data.stand, data.dims)
@@ -229,7 +279,7 @@ describe('F1 carriage', () => {
       extended = Math.min(extended, angle)
       const bend = 2 * Math.acos(Math.min(1, Math.abs(rig.local[rig.index['shin.R']].q.w))) * 180 / Math.PI
       const leg = pose.legs.R
-      if (leg.up === 0 && leg.pitch === 0) { stance[0] = Math.min(stance[0], bend); stance[1] = Math.max(stance[1], bend) }
+      if (planted(RACER_GAIT, leg)) { stance[0] = Math.min(stance[0], bend); stance[1] = Math.max(stance[1], bend) }
       else swing = Math.max(swing, bend)
     }
     expect(stance[0]).toBeGreaterThan(stanceKnee[0])

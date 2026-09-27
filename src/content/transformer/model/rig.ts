@@ -49,12 +49,28 @@ export interface GaitPose {
   air?: number
   /** Running flight owns body height; sole correction may lift but must not pull it down (0..1). */
   freeFlight?: number
+  /**
+   * Stance compression (m): lowers the pelvis after it is sized to the legs'
+   * reach. A dip carried in `crouch` is undone by that sizing, which measures
+   * from the lowered hips.
+   */
+  compression?: number
+  /**
+   * Size the carriage from the hips without the pelvis's per-frame yaw and
+   * list, for gaits whose own channels (vault, flight, compression) move the
+   * body. Measured from the moving hips, the carriage kinks wherever the
+   * binding sample changes, and bobs incidentally with the hips.
+   */
+  steadyCarriage?: boolean
   /** the feet's track and the shoulders' abduction as shares of the rig's (default 1) */
   track?: number
   abduct?: number
   /** upper arm rotated inward about its own axis (deg): the bent forearm comes across the body */
   armTwist?: Record<'R' | 'L', number>
-  /** Locomotion knee pole override; the exported pole remains the standing default. */
+  /**
+   * Locomotion knee pole override; the exported pole remains the standing
+   * default. The override also holds the pole against the pelvis's gait yaw.
+   */
   kneePoleUp?: number
   /** Minimum knee flexion (degrees); fit pelvis height to the feet before solving IK. */
   minKnee?: number
@@ -174,6 +190,12 @@ export class RobotRig {
     }
   }
 
+  /** A hip joint placed by the pelvis frame's translation and the stand's pelvis rotation only. */
+  private neutralHip(name: string, root: Matrix4, pelvisQ: Quaternion, out: Vector3): Vector3 {
+    const i = this.index[name]
+    return out.copy(this.local[i].t).add(this.offset[i]).applyQuaternion(pelvisQ).add(_v0.setFromMatrixPosition(root))
+  }
+
   private solve(root: Matrix4, legs: Record<'R' | 'L', GaitLeg>, track: number, poleUp: number, minKnee: number, reachWeight: number,
     g: GaitPose): void {
     const d = this.dims
@@ -197,10 +219,13 @@ export class RobotRig {
       let carriage = -Infinity
       if (path) {
         // the reach over the cycle, both legs at each sample (the left half a cycle on)
+        const pelvisQ = this.local[this.index.pelvis].q
+        const neutralL = g.steadyCarriage ? this.neutralHip('hip.L', root, pelvisQ, _hipNL) : hipL
+        const neutralR = g.steadyCarriage ? this.neutralHip('hip.R', root, pelvisQ, _hipNR) : hipR
         const n = path.length
         let mean = 0, c = 0, s = 0
         for (let j = 0; j < n; j++) {
-          const v = softMaximum(need(hipR, path[j], -1), need(hipL, path[(j + n / 2) % n], 1))
+          const v = softMaximum(need(neutralR, path[j], -1), need(neutralL, path[(j + n / 2) % n], 1))
           _reach[j] = v
           carriage = Math.max(carriage, v)
           const a = 4 * Math.PI * j / n
@@ -219,18 +244,26 @@ export class RobotRig {
           carriage = MathUtils.lerp(carriage, mean + c * Math.cos(a) + s * Math.sin(a) + clear, vault)
         }
       }
-      // the current frame's reach still holds wherever the carriage falls short (jumps, overlays)
-      drop = softMaximum(carriage, drop)
+      // The current frame's reach still holds wherever the carriage falls short
+      // (jumps, overlays). Only its excess counts: a symmetric smooth maximum
+      // sank the pelvis whenever the swing leg neared its reach, a stutter at every strike.
+      drop = carriage === -Infinity ? drop : carriage + softExcess(drop - carriage)
       // only a vault lifts the pelvis above the stand
       drop = MathUtils.lerp(softMaximum(0, drop), drop, vault)
-      if (drop !== 0) {
-        root.elements[14] -= drop * reachWeight
-        this.forward(root)
-      }
+      root.elements[14] -= drop * reachWeight
     }
+    root.elements[14] -= g.compression ?? 0
+    if (root.elements[14] !== this.world[this.index.pelvis].elements[14]) this.forward(root)
     // knee pole: pelvis front, blended with pelvis up for rigs whose legs also fold forward
     const pelvis = _m0.extractRotation(this.world[this.index.pelvis])
-    const pole = _v1.set(0, -1, poleUp).applyMatrix4(pelvis).normalize()
+    const pole = _v1.set(0, -1, poleUp)
+    if (g.kneePoleUp !== undefined && g.yaw) {
+      // A locomotion pole faces the direction of travel, not the pelvis's step-by-step
+      // yaw: knees that swing with the hips wag in and out, seen from behind.
+      const q = this.local[this.index.pelvis].q
+      pole.applyQuaternion(q).applyAxisAngle(Z_AXIS, -deg(g.yaw) * reachWeight).applyQuaternion(_q2.copy(q).invert())
+    }
+    pole.applyMatrix4(pelvis).normalize()
     for (const [side, s] of SIDES) {
       const leg = legs[side]
       _v2.set(leg.x ?? s * stanceX, -(footF + leg.step), d.ankleZ + leg.up)
@@ -269,6 +302,8 @@ const _d = new Vector3()
 const _e = new Vector3()
 const _hipL = new Vector3()
 const _hipR = new Vector3()
+const _hipNL = new Vector3()
+const _hipNR = new Vector3()
 /** per-sample reach of the stride cycle */
 const _reach = new Float64Array(64)
 
@@ -276,6 +311,15 @@ const _reach = new Float64Array(64)
 function softMaximum(a: number, b: number): number {
   const overlap = Math.max(0, 0.06 - Math.abs(a - b))
   return Math.max(a, b) + overlap * overlap / 0.24
+}
+
+/** How far a reach beyond the carriage eases in before it is taken in full (m). */
+const EXCESS_EASE = 0.015
+
+/** A one-sided smooth ramp: zero at and below 0, x - EXCESS_EASE beyond 2 EXCESS_EASE, C1 throughout. */
+function softExcess(x: number): number {
+  if (x <= 0) return 0
+  return x < 2 * EXCESS_EASE ? x * x / (4 * EXCESS_EASE) : x - EXCESS_EASE
 }
 
 /**

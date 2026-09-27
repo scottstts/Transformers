@@ -52,7 +52,7 @@ export const F1_PROFILE: CharacterProfile = {
     rideFrequency: 3,
     bump: 0.035,
   },
-  robot: { walkSpeed: 4.8, runSpeed: 15.6 },
+  robot: { walkSpeed: 3.2, runSpeed: 15.6 },
   camera: { carDistance: 7.2, robotDistance: 10.2, carFocus: 0.85, robotFocus: 2.9 },
   carRadius: 2.4,
   robotRadius: 1.2,
@@ -61,30 +61,33 @@ export const F1_PROFILE: CharacterProfile = {
 }
 
 /**
- * A long, relaxed walk and an athletic run. The broad soles stay on parallel
- * tracks under the hips; the knees bend forward instead of following the
- * transformation's upward pole. Tuned against human joint ranges: a walk
- * that vaults over near-straight stance legs, and a sprinter's run with short
- * support, heel recovery and knee drive (docs/robot-locomotion.md).
+ * A brisk walk and a sprint, timed for the robot's size: a human scaled to
+ * 2.08 m hips (dynamic similarity), so the walk sits at the walk-to-run
+ * transition (Froude 0.5) and the sprint steps about three times a second.
+ * The broad soles stay on parallel tracks under the hips, levelled and rolled
+ * heel to toe at human angles; the knees bend forward, facing the direction of
+ * travel. Tuned against human joint ranges: a walk that vaults over near-straight
+ * stance legs, and a sprinter's run with short support, heel recovery, knee
+ * drive and a ballistic flight (docs/robot-locomotion.md).
  */
 export const RACER_GAIT: GaitStyle = {
-  stride: [1.575, 3.8],
-  stance: [0.6, 0.25],
-  lift: [0.22, 0.79],
-  runFlight: 0.09,
-  runCompression: 0.025,
+  stride: [1.95, 5.2],
+  stance: [0.58, 0.2],
+  lift: [0.16, 0.79],
   runCrouch: 0.03,
   sway: 0.035,
   bob: 0,
   hipYaw: 4,
   hipList: 2,
   shoulders: 3,
+  runYaw: [8, 9],
   armSwing: [18, 42],
-  heelStrike: [10, 3],
-  toeOff: [22, 28],
+  heelStrike: [20, 3],
+  toeOff: [38, 40],
   heel: 0.43,
   toe: 0.78,
-  ankle: 0.26,
+  ankle: 0.271,
+  soleTilt: 0.8,
   jumpCrouch: 0.3,
   jumpTuck: 0.34,
   track: [0.82, 0.7],
@@ -93,8 +96,8 @@ export const RACER_GAIT: GaitStyle = {
   armCross: 6,
   kneePoleUp: [1, 0],
   lean: [0, 0.65],
-  reach: [0.47, 0.38],
-  kneeFloor: [10, 18],
+  reach: [0.45, 0.38],
+  kneeFloor: [12, 18],
   vault: 1,
   liftWindow: [[0.25, 0.3], [0.25, 0.6]],
   toeRelease: [0.5, 0.7],
