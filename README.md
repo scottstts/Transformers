@@ -1,38 +1,40 @@
 # Transformers
 
-![transformers](assets/screenshot.jpeg)
+![transformers](public/og_image.png)
 
-Somewhere out in an endless desert, a stainless-steel truck is parked in the sun. You press a key, and it wakes up.
+The truck has been parked in the same spot since morning. Its steel panels are too hot to touch, and the only sound is the wind pushing sand over the ridge behind it.
 
-The windows drop into the doors. The mirrors fold in. The tonneau cover Z-folds back, the doors and fender pods step out on their carriers, and the hood squares up and slides along what's about to be a shin. Then the whole machine rises like a drawbridge, pivoting on its planted feet with lift thrusters firing off its back plate, until a robot is standing where the truck used to be. Every panel it wore as a car, it's still wearing.
+Then the windows slide down into the doors.
 
-That's the idea behind this project. It isn't a car that turns into a robot. It's a robot that has been lying on its back all along, folded up inside a car.
+The mirrors tuck in flat. The cover over the bed folds back on itself, once and then again. The doors and wheel arches lift away from the body on arms that weren't there a moment ago. The hood slides forward and settles along something that is starting to look like a shin. Thrusters light up along the back, and the whole truck tips upright, slowly, pivoting over a pair of feet that were planted in the sand the entire time.
 
-## The rule: nothing is faked
+The thing standing there is still wearing the truck. The doors are its thighs and the tailgate is folded into its chest. The windshield has split down the middle, and each leg has kept its own wiper.
 
-We didn't allow ourselves the usual shortcuts, so there's no flash of light covering a model swap, no parts spawning out of nowhere, and no panel ghosting through another one. Every plate is carried by something at every frame of the transformation. The hood really does become the shin armour, the door becomes the thigh, and the tailgate folds up into the chest. If you pause at any moment you'll see a machine partway through a real mechanical sequence.
+## How they were made
 
-The robots were designed first, as robots, and the car was worked back around them afterward. So they don't look like a sedan wearing a costume. Their shells are faceted, segmented, layered and bolted, and the heads get the finest detail of all.
+Each of these machines began as a robot. The robot was drawn first, at full height, and only afterward folded down with a car built around it. That's why none of them look like vehicles in costume.
 
-## The roster
+It's also why the change has nothing to hide. There's no flash of light to cover a swap, no panel sliding through another, and nothing appears from nowhere. Pause at any moment and you'll find each plate partway along its path, held by the hinge or arm that is moving it.
 
-**The Cybertruck.** It's brutal and angular, and as a car it matches the real proportions: 5.68 metres of flat stainless planes. As a robot it's a walking slab of armour, with a light bar for toes and the windshield split down the middle so each leg keeps its own wiper.
+## Three of them
 
-**The Ferrari F1.** This one is a Formula 1 car in Scuderia red, an entirely different kind of machine. It's low, lean, and packed tight with struts and carriers that unfold its bodywork into something much taller than you'd expect.
+**The Cybertruck** is the one from the opening. As a truck it's flat, blunt and a little absurd. Standing up, all those hard angles finally make sense as armour. Its toes are the light bar.
 
-**The Semi.** A Tesla Semi pulling a white 28-foot van, and the biggest robot of the three: seven metres tall. The cab's nose becomes its chest and the doors its forearm shields, and the robot kneels up and stands out of the cab. The van unhitches on its own jacks, rolls back, telescopes shut and locks onto the robot's back as a backpack. It fights with its feet, then with a gun: a machine gun and a coil cannon in one.
+**The Ferrari** is a Formula 1 car in racing red. It's so low and narrow that there doesn't seem to be room inside it for anything. Then the struts open, and the bodywork keeps unfolding well past the height you'd have guessed.
 
-Each one has its own voice, and the sounds are meant to feel like real recordings of heavy machinery: servos, hydraulics, metal settling under load. They aren't cartoon clanks.
+**The Semi** rolls in with a white trailer behind it and ends up the tallest thing in the desert. It kneels up out of its own cab. The nose of the truck becomes its chest, and the doors swing round to guard its forearms. Behind it, the trailer lowers itself onto its own legs, uncouples, rolls back and collapses in on itself until it's small enough to lock onto the robot's back. The Semi fights with its feet first. When that isn't enough, it has a gun that is two weapons at once, a machine gun and a coil cannon.
+
+Each of them has its own voice. You hear servos working under load, hydraulics taking the weight, and metal ticking as it settles. It sounds more like a machine shop than a cartoon.
 
 ## The desert
 
-The world goes on forever, with ridges on the horizon, rock outcrops, and a low sun throwing long shadows. The sand answers back. Tyres cut ruts with a real tread pattern and a lip of displaced sand along each edge. Robot feet leave sole-shaped footprints. Wheelspin, landings and jet blasts kick up dust that billows and drifts. Minutes later the wind has smoothed your tracks away.
+It has no edge. Ridges run along the horizon, rocks break through the sand here and there, and the sun sits low enough that everything throws a long shadow.
 
-## Built for the browser
+The sand keeps a record of you. Tyres press their tread into it and push up a small bank on either side. Feet leave the shape of their soles. Spin the wheels, land a jump or fire the thrusters, and dust lifts off the ground and drifts away. Come back a few minutes later and the wind will have smoothed most of it over.
 
-All of this runs in a web page. It's rendered with WebGPU and three.js, and it's tuned so that it looks as close to real as we can manage while running smoothly the whole time. The screen stays clean too. The HUD is small, and the machines are what you're here to look at.
+## Playing
 
-Drive, stop, transform, walk, jump, and look back at the tracks you've left.
+It runs in a browser tab. Drive for a while, then stop somewhere and stand up. Walk around and jump. Before you go, turn and look at the marks you've left, while the wind is still working on them.
 
 ## License
 
