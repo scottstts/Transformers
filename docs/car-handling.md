@@ -36,6 +36,21 @@ Releasing Shift restores the rear over ~0.25 s and the same hands catch the slid
 - The stop is small (±0.19 rad): the pup's front wall clears the cab's extenders by 25 cm. In a tight turn it sits on the stop and is dragged, and its tyres show the scrub (they are measured from their own motion, `Tyres`).
 - A transformation straightens it: the articulation eases to zero once the progress leaves 0, while the model fades it out with the car state.
 - Collision in car form is a chain of circles along the car and along the trailer at its articulation (`movement.ts`); a single radius let the van pass through rocks.
+- The pickup and the F1 collide as chains of circles too (`carBody`, fitted to the car's measured outline). One circle round the middle reached 1.3 m past their flanks, so they struck rocks they were well clear of.
+
+## On the ground's relief
+
+The car rides the landform (worlds.md) on a spring-damper suspension: each profile's `rideFrequency` sets its stiffness and its static sag, which is also the travel its wheels can drop before they leave the ground. `bump` is the travel to the bump stops, with damping ratio 0.42 for all. Every sub-step (`suspend`):
+
+- The ground is measured under both axles and both sides (`track`), so bumps shorter than the car average out, and its pitch and roll come from the same four heights.
+- The springs' support pushes along the ground's normal, so a slope pulls the car down it and a landing on a rising face knocks speed off, with no separate slope term.
+- The tyres grip in proportion to the load the springs carry (`load`): light over a crest (it slides there), heavy in a dip, none in the air. The aids deliver drive and brake only as far as the wheels are pressed on.
+- Where the ground falls away faster than gravity can follow, the springs top out and the car flies. Its yaw rate is kept, and nothing grips or steers until it lands into its bump stops (`impact`, the closing speed, drives a dust burst under every tyre and a camera jolt).
+- Attitude (`attitude`, per frame): on the ground it tracks the ground's plane with its rates fed forward (no lag) through a stiff, lightly damped spring, so a landing rocks it. In the air the pitch eases toward half the flight path (nose down as it falls) and the roll levels. It is the model root's tilt; the accel pitch and roll, and the suspension's travel (`lift`), stay on the sprung body.
+
+`placeCar` stands the car at rest on the ground (the spawn, and every robot frame so the car form starts settled). `tools/terrain-stats.mjs` drives each car at full throttle across a dune field and prints its airtime, flights and hardest landing; it is how the dunes were tuned.
+
+With Shift held, a crest's light rear steps out, and the drift hands then hold the slide as they do on flat ground (neutral holds a drift). Holding Shift straight across dunes therefore turns into a drift the player steers.
 
 ## What the rest of the game reads
 

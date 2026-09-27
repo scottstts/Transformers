@@ -118,6 +118,8 @@ export class Fighter implements CombatEffects {
     this.light = new PointLight(style.light, 0, 14, 2)
     // the shield encloses the robot's own parts, fitted as it moves
     this.shield = new Shield(style.shield, model.node('bone:pelvis'), model.root)
+    this.sparks.ground = contact
+    this.billows.ground = contact
     this.object.add(this.sparks.mesh, this.light, this.billows.mesh, this.blast.light, this.haze.mesh, this.shield.mesh)
     if (this.trail) this.object.add(this.trail.mesh)
     this.tracked = ['hand.R', 'hand.L', 'foot.R', 'foot.L'].map((b) => model.node(`bone:${b}`))
@@ -294,12 +296,13 @@ export class Fighter implements CombatEffects {
   /** The weapon head driven into the sand where its edge reaches lowest. */
   protected slam(strength: number, cam: CombatCamera): void {
     const at = _p.copy(this.edgeBase.y < this.edgeTip.y ? this.edgeBase : this.edgeTip)
-    at.y = 0
+    at.y = this.contact.height(at.x, at.z)
     slam(this.mix, strength)
     // the sand thrown up around it (the edge in the ground cuts its own gash)
     for (let k = 0; k < 10; k++) {
       const a = (k / 10) * Math.PI * 2
       _q.set(at.x + Math.cos(a) * 0.9 * strength, 0, at.z + Math.sin(a) * 0.9 * strength)
+      _q.y = this.contact.height(_q.x, _q.z)
       this.contact.burst(_q, 1.2 * strength, 10)
     }
     this.contact.burst(at, 1.6 * strength, 40)
@@ -310,7 +313,7 @@ export class Fighter implements CombatEffects {
   }
 
   /**
-   * The edge below the ground (y = 0): the gash spans, along the line it
+   * The edge below the ground: the gash spans, along the line it
    * first cut, every point the edge has reached under the surface. It is laid
    * once the bite is long enough, again whole each time the drag has extended
    * it by CUT_STEP, and as the edge comes out; each lay covers the last.
@@ -318,14 +321,17 @@ export class Fighter implements CombatEffects {
   private groundCut(yaw: number): void {
     const a = this.edgeBase, b = this.edgeTip
     const low = a.y < b.y ? a : b, high = a.y < b.y ? b : a
-    if (low.y >= 0) {
+    // each end's height over the ground under it
+    const below = low.y - this.contact.height(low.x, low.z)
+    const above = high.y - this.contact.height(high.x, high.z)
+    if (below >= 0) {
       this.endCut()
       return
     }
     // where the edge enters the ground, and its deepest end, on the surface
-    const enter = high.y > 0 ? _d.lerpVectors(low, high, low.y / (low.y - high.y)) : _d.copy(high)
-    enter.y = 0
-    const deep = _q.set(low.x, 0, low.z)
+    const enter = above > 0 ? _d.lerpVectors(low, high, below / (below - above)) : _d.copy(high)
+    enter.y = this.contact.height(enter.x, enter.z)
+    const deep = _q.set(low.x, low.y - below, low.z)
     if (!this.cutting) {
       this.cutting = true
       this.cutOrigin.copy(enter)

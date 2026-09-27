@@ -3,6 +3,7 @@ import { PerspectiveCamera, Scene, Vector3 } from 'three/webgpu'
 import { DesertWorld } from '../src/worlds/desert/world.ts'
 import { TyreTracks } from '../src/worlds/desert/tyre-tracks.ts'
 import { Footprints } from '../src/worlds/desert/footprints.ts'
+import { DesertTerrain } from '../src/worlds/desert/terrain.ts'
 
 describe('desert collision field', () => {
   it('recenters existing collider objects with their rock instances', () => {
@@ -25,7 +26,7 @@ describe('desert collision field', () => {
 
 describe('tyre tracks', () => {
   it('lays one continuous ribbon per wheel and restarts after the wheel lifts', () => {
-    const tracks = new TyreTracks(new Scene())
+    const tracks = new TyreTracks(new Scene(), new DesertTerrain([]))
     const geometry = tracks.mesh.geometry
     const position = geometry.getAttribute('position')
     const track = geometry.getAttribute('track')
@@ -63,7 +64,7 @@ describe('tyre tracks', () => {
 
 describe('footprints', () => {
   it('stamps an oriented sole decal with a rim around it', () => {
-    const prints = new Footprints(new Scene())
+    const prints = new Footprints(new Scene(), new DesertTerrain([]))
     const position = prints.mesh.geometry.getAttribute('position')
     prints.stamp(new Vector3(5, 0, 2), new Vector3(1, 0, 0), 1, 0.5, 1)
     const xs = [0, 1, 2, 3].map((k) => position.getX(k))

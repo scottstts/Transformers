@@ -2,6 +2,7 @@ import { PerspectiveCamera, Raycaster, Vector3, type Object3D } from 'three/webg
 import type { MotionState } from './types'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
 import type { CameraProfile } from '../content/transformer/character'
+import { FLAT_GROUND, type Ground } from './ground'
 
 const DEFAULT_FRAMING: CameraProfile = { carDistance: 7.875, robotDistance: 12.75, carFocus: 1.1, robotFocus: 3.9 }
 /**
@@ -27,6 +28,8 @@ const SIDE_HALF_SPAN = 3.4
 const TRAVEL_FOLLOW = 0.65
 /** Space between the camera and the first surface, including room for camera reactions. */
 const CAMERA_CLEARANCE = 0.7
+/** The lowest the camera goes over the ground under it (m). */
+const GROUND_CLEARANCE = 0.55
 
 export class FollowCamera {
   private readonly camera: PerspectiveCamera
@@ -63,6 +66,8 @@ export class FollowCamera {
   private broadside = false
   /** false on touch devices: the on-screen controls drive the look and nothing locks the pointer */
   pointerLock = true
+  /** the ground's relief the camera keeps above */
+  ground: Ground = FLAT_GROUND
   private readonly onPointerLockChange = (): void => {
     if (document.pointerLockElement !== this.canvas) return
     // the orbit is kept exactly as it was: re-locking must never move the camera
@@ -193,7 +198,7 @@ export class FollowCamera {
       this.target.lerp(focus, 1 - Math.exp(-dt * 8))
       this.radius = damp(this.radius, distance, 8, dt)
     }
-    const minimumPitch = Math.asin(clamp((0.5 - this.target.y) / this.radius, -1, 1))
+    const minimumPitch = Math.asin(clamp((0.5 + this.ground.height(this.target.x, this.target.z) - this.target.y) / this.radius, -1, 1))
     const pitch = Math.max(this.pitch + lerp(0, 0.02, k), minimumPitch)
     this.position.set(
       this.target.x + Math.sin(this.yaw) * Math.cos(pitch) * this.radius,
@@ -223,6 +228,16 @@ export class FollowCamera {
       this.camera.fov = fov
       this.camera.updateProjectionMatrix()
     }
+  }
+
+  /**
+   * Keep the final view (the follow orbit, a reaction, a cutscene's shot) out
+   * of the ground: a rise between the orbit and the car, or a dune behind it.
+   */
+  keepAboveGround(): void {
+    const p = this.camera.position
+    const floor = this.ground.height(p.x, p.z) + GROUND_CLEARANCE
+    if (p.y < floor) p.y = floor
   }
 
   /** Keep a camera reaction from pushing the final view into a nearby wall. */

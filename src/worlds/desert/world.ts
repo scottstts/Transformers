@@ -1,11 +1,18 @@
 import * as THREE from 'three/webgpu';
-import { fog, densityFogFactor, color, positionWorld, float, mix, smoothstep } from 'three/tsl';
-import { skyMaterial, groundMaterial, rockMaterial, hazeColor, viewDirection, SKY } from './materials.ts';
+import { color } from 'three/tsl';
+import { skyMaterial, groundMaterial, rockMaterial } from './materials.ts';
+import { SAND_RADIANCE, SUN_COLOR, SUN_DIRECTION, SUN_LUX, aerialFog } from './atmosphere.ts';
+import { buildLandforms } from './landforms.ts';
+import { DesertWind } from './wind.ts';
 import type { CircleCollider, SegmentCollider } from '../../game/types';
+import { groundNormal } from '../../game/ground.ts';
 import { Forts } from './fort/index.ts';
+import { DesertTerrain } from './terrain.ts';
+import { TerrainMesh } from './terrain-mesh.ts';
 import { SHADOW_ONLY_LAYER } from '../../rendering/layers.ts';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
+import { SunShadowNode } from '../../rendering/sun-shadow.ts';
 import { SHADOW_FAR } from '../../content/soldier/horde-renderer.ts';
 
 interface RockItem {
@@ -16,6 +23,8 @@ interface RockItem {
 
 interface RockTile {
 	mesh: THREE.InstancedMesh;
+	/** the rock shape's vertices (unit size), for its footprint at the ground */
+	shape: ArrayLike<number>;
 	items: RockItem[];
 	tile: number;
 	collide: boolean;
@@ -85,12 +94,48 @@ export function rockGeometry( r, seed, detail = 1 ) {
 const ZERO = new THREE.Vector3( 0, 0, 0 );
 
 /**
+ * A rock's collision radius: how far its sides reach round its axis where it
+ * stands above the ground (bedded `sink` m), from its own shape and scale.
+ * Its scaled size alone overstated it by the fracture cuts and the bedding:
+ * cars struck rocks they were well clear of. A little inside the farthest
+ * point, as a circle stands for a lumpy outline.
+ */
+function footprint( shape: ArrayLike<number>, s: THREE.Vector3, sink: number ): number {
+
+	let reach = 0;
+	for ( let i = 0; i < shape.length; i += 3 ) {
+
+		if ( shape[ i + 1 ] * s.y < sink ) continue;
+		reach = Math.max( reach, Math.hypot( shape[ i ] * s.x, shape[ i + 2 ] * s.z ) );
+
+	}
+	return reach * 0.92;
+
+}
+/** The level pad round a fortress: exactly flat to its car ring + [0], the land fully in by + [1] (m). */
+const PAD_MARGIN = [ 10, 95 ];
+const _normal = new THREE.Vector3();
+
+/**
  * The sun's shadows: cascades over the view out to SHADOW_FAR (the soldiers'
  * shadow range is the same), each a 2048 map, blended across their seams. A
  * single 32 m box round the focus left everything beyond it unshadowed:
  * soldiers' and buildings' shadows popped in as they came near.
  */
 const SHADOW_CASCADES = 3;
+/**
+ * The fortress's cached shadow levels (half-width across the sun, texels):
+ * as fine near the camera as the cascades were; 5 cm texels to ~90 m, so a
+ * watchtower's 11 cm bracing still shadows a wall across a yard (at 12 cm it
+ * dropped out beyond ~60 m); the last covering the whole fortress from a few
+ * hundred metres off. At 3 bytes a texel (sun-shadow.ts) they take ~90 MB.
+ */
+const STATIC_SHADOW_LEVELS = [
+	{ halfWidth: 24, mapSize: 2048 },
+	{ halfWidth: 110, mapSize: 4096 },
+	{ halfWidth: 190, mapSize: 4096 },
+	{ halfWidth: 720, mapSize: 2048 },
+];
 
 export class DesertWorld {
 	scene: THREE.Scene;
@@ -101,10 +146,16 @@ export class DesertWorld {
 	instanceMatrix: THREE.Matrix4;
 	instancePosition: THREE.Vector3;
 	sky: THREE.Mesh;
-	ground: THREE.Mesh;
+	/** the landform: flat under the fortress, swells, dune fields and whoops beyond */
+	terrain: DesertTerrain;
+	ground: TerrainMesh;
+	/** sand streamers and dust devils */
+	wind: DesertWind;
 	sun: THREE.DirectionalLight;
-	/** the sun's cascaded shadows; their splits follow the view camera's lens */
+	/** the sun's cascaded shadows of moving things; their splits follow the view camera's lens */
 	csm: CSMShadowNode;
+	/** the cascades with the fortress's cached shadow levels */
+	shadows: SunShadowNode;
 	private lens = { fov: 0, aspect: 0 };
 	far: THREE.Group;
 	tiles: RockTile[] = [];
@@ -117,8 +168,8 @@ export class DesertWorld {
 		this.instanceMatrix = new THREE.Matrix4();
 		this.instancePosition = new THREE.Vector3();
 
-		// fog: exponential-squared haze in the same view-dependent colour as the sky's horizon
-		scene.fogNode = fog( hazeColor( viewDirection() ), densityFogFactor( float( 0.0013 ) ) );
+		// the air between the camera and every surface: the same scattering model as the sky (atmosphere.ts)
+		scene.fogNode = aerialFog();
 
 		// sky dome follows the camera
 		this.sky = new THREE.Mesh( new THREE.SphereGeometry( 4000, 48, 24 ), skyMaterial() );
@@ -126,22 +177,22 @@ export class DesertWorld {
 		this.sky.renderOrder = - 1;
 		scene.add( this.sky );
 
-		// ground
-		const ground = new THREE.Mesh( new THREE.PlaneGeometry( 6000, 6000 ), groundMaterial() );
-		ground.rotation.x = - Math.PI / 2;
-		ground.receiveShadow = true;
-		scene.add( ground );
-		this.ground = ground;
+		// the fortress first: its grounds (and car ring) are where the land is levelled
+		this.forts = new Forts( scene );
+		this.terrain = new DesertTerrain( this.forts.list.map( ( f ) => ( { x: f.plan.site.x, z: f.plan.site.z, r0: f.plan.barrier + PAD_MARGIN[ 0 ], r1: f.plan.barrier + PAD_MARGIN[ 1 ] } ) ) );
+		const sky = this.forts.skyVisibility;
+		this.terrain.occlusion = ( position, normal ) => sky.node( position, normal );
+		this.ground = new TerrainMesh( scene, this.terrain, groundMaterial );
+		this.wind = new DesertWind( scene, this.terrain );
 
 		this.buildMountains();
 		this.buildRocks();
-		this.forts = new Forts( scene );
 		this.cameraObstacles.push( ...this.forts.cameraMeshes, ...this.tiles.filter( ( tile ) => tile.collide ).map( ( tile ) => tile.mesh ) );
 		this.colliders.push( ...this.forts.circles );
 		this.segments.push( ...this.forts.segments );
 
 		// lights
-		this.sun = new THREE.DirectionalLight( SKY.sunColor, 3.4 );
+		this.sun = new THREE.DirectionalLight( SUN_COLOR, SUN_LUX );
 		this.sun.castShadow = true;
 		const sc = this.sun.shadow;
 		sc.mapSize.set( 2048, 2048 );
@@ -151,67 +202,21 @@ export class DesertWorld {
 		sc.radius = 3;
 		// cloned into every cascade: the soldiers' shadow proxies live on this layer
 		sc.camera.layers.enable( SHADOW_ONLY_LAYER );
+		this.sun.position.copy( SUN_DIRECTION ).multiplyScalar( 100 );
+		this.sun.target.position.set( 0, 0, 0 );
 		this.csm = new CSMShadowNode( this.sun, { cascades: SHADOW_CASCADES, maxFar: SHADOW_FAR, mode: 'practical', lightMargin: 120 } );
 		this.csm.fade = true;
-		sc.shadowNode = this.csm;
-		this.sun.position.copy( SKY.sunDir ).multiplyScalar( 100 );
-		this.sun.target.position.set( 0, 0, 0 );
+		this.shadows = new SunShadowNode( this.sun, this.csm, this.forts.staticCasters, { levels: STATIC_SHADOW_LEVELS, margin: 160, casterHeight: 45 } );
+		sc.shadowNode = this.shadows;
 		scene.add( this.sun, this.sun.target );
-
-		const hemi = new THREE.HemisphereLight( 0xcfd8e2, 0x9a7f63, 0.35 );
-		scene.add( hemi );
+		// the fill is the environment alone (the sky and the sunlit sand, baked): a separate hemisphere light counted it twice
 
 	}
 
 	buildMountains() {
 
-		// distant ridge lines, two layers, parented to a group that follows the camera
-		this.far = new THREE.Group();
-		const rand = rng( 7 );
-		const layers = [
-			{ r: 2600, h: 260, col: 0xa9a7a3, seg: 220, seed: 1 },
-			{ r: 2100, h: 120, col: 0xb7aa98, seg: 200, seed: 2 }
-		];
-		for ( const L of layers ) {
-
-			const pos = [];
-			const idx = [];
-			const ph = [ rand() * 10, rand() * 10, rand() * 10 ];
-			for ( let i = 0; i <= L.seg; i ++ ) {
-
-				const a = i / L.seg * Math.PI * 2;
-				let h = 0;
-				h += Math.max( 0, Math.sin( a * 3 + ph[ 0 ] ) ) * 0.55;
-				h += ( Math.sin( a * 7 + ph[ 1 ] ) * 0.5 + 0.5 ) * 0.3;
-				h += ( Math.sin( a * 19 + ph[ 2 ] ) * 0.5 + 0.5 ) * 0.12;
-				h += Math.abs( Math.sin( a * 41 + ph[ 0 ] * 2 ) ) * 0.05;
-				h = Math.pow( h, 1.6 );
-				const x = Math.cos( a ) * L.r, z = Math.sin( a ) * L.r;
-				pos.push( x, - 20, z, x * 1.001, h * L.h, z * 1.001 );
-
-			}
-
-			for ( let i = 0; i < L.seg; i ++ ) {
-
-				const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
-				idx.push( a, c, b, b, c, d );
-
-			}
-
-			const g = new THREE.BufferGeometry();
-			g.setAttribute( 'position', new THREE.Float32BufferAttribute( pos, 3 ) );
-			g.setIndex( idx );
-			g.computeVertexNormals();
-			const m = new THREE.MeshBasicNodeMaterial( { side: THREE.DoubleSide, fog: false } );
-			// aerial perspective: blend toward the horizon haze with height
-			const t = smoothstep( float( - 20 ), float( L.h ), positionWorld.y );
-			m.colorNode = mix( hazeColor( viewDirection() ), color( L.col ), t.mul( 0.5 ).add( 0.35 ) );
-			const mesh = new THREE.Mesh( g, m );
-			mesh.frustumCulled = false;
-			this.far.add( mesh );
-
-		}
-
+		// the horizon's mesas and escarpment follow the camera: a traveller never reaches them
+		this.far = buildLandforms();
 		this.scene.add( this.far );
 
 	}
@@ -244,7 +249,7 @@ export class DesertWorld {
 					if ( collide ) {
 
 						const item = items[ items.length - 1 ];
-						item.collider = { x: 0, z: 0, r: Math.max( item.s.x, item.s.z ) * 0.95 };
+						item.collider = { x: 0, z: 0, r: 0 };
 						this.colliders.push( item.collider );
 
 					}
@@ -252,7 +257,7 @@ export class DesertWorld {
 				}
 
 				this.scene.add( mesh );
-				this.tiles.push( { mesh, items, tile, collide, last: new THREE.Vector2( 1e9, 1e9 ) } );
+				this.tiles.push( { mesh, shape: geos[ gi ].getAttribute( 'position' ).array, items, tile, collide, last: new THREE.Vector2( 1e9, 1e9 ) } );
 
 			}
 
@@ -277,11 +282,41 @@ export class DesertWorld {
 
 	}
 
+	/**
+	 * For the start's shader warm-up: everything the world can show drawn at
+	 * once (the fortress's distance-hidden detail, both terrain patch draws).
+	 * Returns the restore.
+	 */
+	reveal(): () => void {
+
+		const detail = this.forts.showAllDetail();
+		const terrain = this.ground.reveal();
+		return () => {
+
+			detail();
+			terrain();
+			// the warm-up drew hidden detail into the shadow levels
+			this.shadows.invalidateAll();
+
+		};
+
+	}
+
+	/** GPU work done once at start, after the renderer is up (the fortress's ambient occlusion). */
+	prepare( renderer: THREE.WebGPURenderer ) {
+
+		this.forts.bake( renderer );
+
+	}
+
 	/** Recentre tiled scatter + far scenery around the focus point. */
-	update( camera, focus ) {
+	update( camera, focus, dt = 1 / 60 ) {
 
 		this.sky.position.copy( camera.position );
+		this.ground.update( camera );
+		this.wind.update( camera, dt );
 		this.forts.update( camera );
+		for ( const mesh of this.forts.toggled ) this.shadows.invalidate( mesh );
 		this.far.position.set( camera.position.x, 0, camera.position.z );
 
 		const m = this.instanceMatrix;
@@ -292,25 +327,42 @@ export class DesertWorld {
 			if ( moved ) {
 
 				t.last.set( focus.x, focus.z );
-				let changed = false;
-				t.items.forEach( ( it, i ) => {
+				let first = - 1, last = - 1;
+				for ( let i = 0; i < t.items.length; i ++ ) {
 
+					const it = t.items[ i ];
 					const x = it.x + t.tile * Math.round( ( focus.x - it.x ) / t.tile );
 					const z = it.z + t.tile * Math.round( ( focus.z - it.z ) / t.tile );
-					if ( it.wx === x && it.wz === z ) return;
-					changed = true;
+					if ( it.wx === x && it.wz === z ) continue;
+					if ( first < 0 ) first = i;
+					last = i;
 					it.wx = x; it.wz = z;
 					// nothing of the scatter lies inside a fort's grounds (its boulders would stand in the walls)
 					const cleared = this.cleared( x, z, it.r );
-					if ( it.collider ) { it.collider.x = x; it.collider.z = z; it.collider.r = cleared ? 0 : Math.max( it.s.x, it.s.z ) * 0.95; }
-					p.set( x, cleared ? - 50 : - it.s.y * 0.25, z );
+					// bedded a quarter of its height, deeper on a slope so its downhill side does not stand proud
+					const h = cleared ? - 50 : this.terrain.height( x, z );
+					const tilt = cleared ? 0 : Math.sqrt( Math.max( 0, 1 / ( groundNormal( this.terrain, x, z, _normal ).y ** 2 ) - 1 ) );
+					const sink = it.s.y * 0.25 + Math.max( it.s.x, it.s.z ) * tilt;
+					p.set( x, h - sink, z );
+					if ( it.collider ) {
+
+						it.collider.x = x;
+						it.collider.z = z;
+						it.collider.r = cleared ? 0 : footprint( t.shape, it.s, sink );
+
+					}
 					m.compose( p, it.q, cleared ? ZERO : it.s );
 					t.mesh.setMatrixAt( i, m );
 
-				} );
-				if ( changed ) {
+				}
+
+				if ( first >= 0 ) {
+
+					// upload only the span of instances that wrapped
+					t.mesh.instanceMatrix.addUpdateRange( first * 16, ( last - first + 1 ) * 16 );
 					t.mesh.instanceMatrix.needsUpdate = true;
 					t.mesh.boundingSphere = null;
+
 				}
 
 			}
@@ -338,8 +390,9 @@ export function createDesertEnvironmentScene() {
 	const s = new THREE.Scene();
 	const sky = new THREE.Mesh( new THREE.SphereGeometry( 100, 64, 32 ), skyMaterial() );
 	s.add( sky );
+	// the sunlit sand below the horizon: the warm bounce that fills shadows from beneath
 	const gm = new THREE.MeshBasicNodeMaterial();
-	gm.colorNode = color( SKY.ground ).mul( 0.55 );
+	gm.colorNode = color( SAND_RADIANCE );
 	const g = new THREE.Mesh( new THREE.CircleGeometry( 90, 64 ), gm );
 	g.rotation.x = - Math.PI / 2;
 	g.position.y = - 1.5;

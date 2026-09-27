@@ -72,6 +72,7 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
   configureRenderer(renderer)
   scene.add(player.model.root, player.effects.object)
   bakeEnvironment(renderer, scene, world.environmentScene())
+  world.world.prepare(renderer)
   const lens = new Lens()
   // FX_LENS=0 renders without the lens reactions, to tell their artefacts from the scene's
   const pipeline = createPostPipeline(renderer, scene, camera, process.env.FX_LENS === '0' ? undefined : lens)

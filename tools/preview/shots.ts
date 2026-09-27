@@ -121,6 +121,10 @@ const SHOTS: Record<string, Shot> = {
   'drift-marks-low': drift(150, 200, [2.5, 1.5, -7], [0, 0, 2]),
   // the opening broadside (FollowCamera.showSide) at the Cybertruck framing: 7.875 m out, pitch 0.07, focus 1.1 m
   side: (s) => { s.look([-7.875 * Math.cos(0.07), 1.1 + 7.875 * Math.sin(0.07), 0], [0, 1.1, 0]) },
+  // inside the fortress's gate court, looking across the yard toward the citadel (shadow levels, ambient occlusion)
+  fort: (s) => { s.look([14, 5, 226], [-4, 3, 262], true) },
+  // the fortress from the start, across the swells (its far shadow level, the haze)
+  approach: (s) => { s.look([6, 3, -8], [0, 4, 200], true) },
   boulder: (s) => {
     // the nearest large rock, from a low eye height on its sunlit side
     s.look([0, 2, -8], [0, 1, 0])
@@ -149,6 +153,7 @@ export async function renderShots(outDir: string, names: string[], car: string |
     configureRenderer(renderer)
     scene.add(player.model.root, player.effects.object)
     bakeEnvironment(renderer, scene, world.environmentScene())
+    world.world.prepare(renderer)
     const pipeline = createPostPipeline(renderer, scene, camera)
     const state = createMotionState()
     state.yaw = 0

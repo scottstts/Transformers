@@ -1,55 +1,34 @@
 import * as THREE from 'three/webgpu';
-import { color, float, vec2, vec3, uniform, mix, smoothstep, positionLocal, positionWorld, normalWorld, abs, max, fract, fwidth, select, time, cameraViewMatrix, cameraPosition } from 'three/tsl';
+import { color, float, vec2, vec3, mix, smoothstep, positionLocal, positionWorld, normalWorld, abs, fract, fwidth, select, time, cameraViewMatrix } from 'three/tsl';
+import { SUN_COLOR, skyRadiance, sunward } from './atmosphere.ts';
 import { N } from '../../rendering/noise.ts';
-
-export const SKY = {
-	horizon: new THREE.Color( 0xd9cdbd ),
-	zenith: new THREE.Color( 0x7496bd ),
-	ground: new THREE.Color( 0xb49a7d ),
-	sunDir: new THREE.Vector3( - 0.55, 0.42, - 0.72 ).normalize(),
-	sunColor: new THREE.Color( 0xfff1de )
-};
-
-/** Horizon haze away from the sun (a touch of Rayleigh blue) and toward it (warm forward scatter). */
-const HAZE_AWAY = new THREE.Color( 0xd3cdc4 );
-const HAZE_SUN = new THREE.Color( 0xe6d6bf );
-
-const sunDirection = uniform( SKY.sunDir );
-
-/** 0..1: how nearly a unit direction looks into the sun. */
-export const sunward = ( dir ) => max( dir.dot( sunDirection ), 0.0 );
+import type { TerrainVertex } from './terrain-mesh.ts';
 
 /**
- * The haze colour seen along a unit direction. The sky's horizon, the ground
- * fog and the distant ridges all fade to this, so no seam shows where they meet.
+ * The sky dome: the atmosphere's radiance (atmosphere.ts), the sun's disc and
+ * its tight corona, and thin cirrus on a plane overhead, streaked along the
+ * wind and drifting slowly, lit from behind near the sun and fading into the
+ * horizon haze. Its colours come from the same air that hazes the land, so
+ * the horizon meets the ground without a seam.
  */
-export const hazeColor = ( dir ) => mix( color( HAZE_AWAY ), color( HAZE_SUN ), sunward( dir ).pow( 2.5 ) );
-
-/** Unit direction from the camera to the shaded fragment. */
-export const viewDirection = () => positionWorld.sub( cameraPosition ).normalize();
-
 export function skyMaterial() {
 
 	const m = new THREE.MeshBasicNodeMaterial( { side: THREE.BackSide, depthWrite: false, fog: false } );
 	const dir = positionLocal.normalize();
 	const h = dir.y;
-	const up = max( h, 0.0 );
 	const s = sunward( dir );
-	const haze = hazeColor( dir );
-	const base = mix( haze, color( SKY.zenith ), up.pow( 0.5 ) );
-	const below = mix( haze, color( SKY.ground ).mul( 0.9 ), smoothstep( 0.0, - 0.25, h ) );
-	let sky = mix( below, base, smoothstep( - 0.02, 0.02, h ) );
+	const air = skyRadiance( dir );
+	const sun = color( SUN_COLOR );
 
-	// thin cirrus on a plane overhead, streaked along the wind and drifting slowly;
-	// lit from behind near the sun, greyer away from it, gone into the horizon haze
 	const plane = dir.xz.div( h.add( 0.12 ) ).mul( vec2( 0.16, 0.05 ) ).add( vec2( time.mul( 0.0006 ), 0 ) );
 	const body = N( plane ).r.mul( 0.7 ).add( N( plane.mul( 3.7 ).add( vec2( 0.31, 0.67 ) ) ).a.mul( 0.3 ) );
 	const cover = smoothstep( 0.56, 0.86, body ).mul( smoothstep( 0.03, 0.3, h ) );
-	const cloud = mix( haze.mul( 1.02 ), color( SKY.sunColor ).mul( 1.35 ), s.pow( 4.0 ) );
-	sky = mix( sky, cloud, cover.mul( 0.6 ) );
+	// ice crystals scatter the sun forward and the sky's light all round: brighter than the sky behind them
+	const cloud = air.mul( 1.25 ).add( sun.mul( s.pow( 6.0 ).mul( 1.4 ).add( 0.08 ) ) );
+	const sky = mix( air, cloud, cover.mul( 0.55 ) );
 
-	const glow = color( SKY.sunColor ).mul( s.pow( 2.0 ).mul( 0.06 ).add( s.pow( 6.0 ).mul( 0.26 ) ).add( s.pow( 64.0 ).mul( 0.5 ) ).add( smoothstep( 0.9993, 0.9996, s ).mul( 30.0 ) ) );
-	m.colorNode = sky.add( glow );
+	const disc = sun.mul( s.pow( 256.0 ).mul( 0.8 ).add( smoothstep( 0.9993, 0.9996, s ).mul( 30.0 ) ) );
+	m.colorNode = sky.add( disc );
 	return m;
 
 }
@@ -73,7 +52,7 @@ const groundHeight = ( xz ) => N( xz.mul( 0.23 ) ).g.mul( 0.06 ).add( N( xz.mul(
  * evaluated three times for forward differences). The ripples are analytic
  * and reuse the relief fetch to wander, so they cost no extra fetch.
  */
-export function groundSurface( xz ) {
+export function groundSurface( xz, landSlope: any = null ) {
 
 	const largeSample = N( xz.mul( 0.0021 ) );
 	const midSample = N( xz.mul( 0.027 ) );
@@ -111,11 +90,13 @@ export function groundSurface( xz ) {
 		h0.sub( groundHeight( xz.add( vec2( e, 0 ) ) ) ).div( e ),
 		h0.sub( groundHeight( xz.add( vec2( 0, e ) ) ) ).div( e )
 	).mul( float( 1 ).sub( drift.mul( 0.6 ) ) ).add( rippleSlope );
+	// the landform's own slope (a varying from the vertex stage): height fields add, so their slopes add
+	const total = landSlope ? slope.add( landSlope ) : slope;
 
 	return {
 		color: albedo,
 		grit,
-		slope,
+		slope: total,
 		/** the ripple part of `slope`: imprints press it flat */
 		rippleSlope,
 		roughness: float( 0.93 ).sub( grit.mul( 0.08 ).mul( float( 1 ).sub( drift ) ) )
@@ -123,14 +104,18 @@ export function groundSurface( xz ) {
 
 }
 
-export function groundMaterial() {
+/** The desert floor on the terrain mesh: its vertex (displaced, morphed) and landform slope come from `TerrainMesh`. */
+export function groundMaterial( v: TerrainVertex ) {
 
 	const m = new THREE.MeshStandardNodeMaterial();
-	const surface = groundSurface( positionWorld.xz );
+	m.positionNode = v.position;
+	const surface = groundSurface( positionWorld.xz, v.slope );
 	m.colorNode = surface.color;
 	m.roughnessNode = surface.roughness;
 	m.metalnessNode = float( 0.0 );
-	m.normalNode = vec3( surface.slope.x, 1.0, surface.slope.y ).normalize().transformDirection( cameraViewMatrix );
+	const normal = vec3( surface.slope.x, 1.0, surface.slope.y ).normalize();
+	m.normalNode = normal.transformDirection( cameraViewMatrix );
+	if ( v.occlusion ) m.aoNode = v.occlusion( positionWorld, normal );
 	return m;
 
 }

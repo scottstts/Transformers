@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { attribute, uniform, float, vec3, abs, exp, fract, fwidth, sin, smoothstep, step } from 'three/tsl';
 import { sandGrain, sandImprintMaterial } from './sand-imprint.ts';
+import type { DesertTerrain } from './terrain.ts';
 
 /**
  * Tyre tracks pressed into the desert: one ribbon per wheel, written into a
@@ -55,7 +56,7 @@ export class TyreTracks {
 	private firstDirty = - 1;
 	private dirtyCount = 0;
 
-	constructor( scene: THREE.Scene ) {
+	constructor( scene: THREE.Scene, terrain: DesertTerrain ) {
 
 		const geometry = new THREE.BufferGeometry();
 		this.position = new THREE.BufferAttribute( new Float32Array( CAPACITY * 4 * 3 ), 3 );
@@ -80,7 +81,7 @@ export class TyreTracks {
 		}
 		geometry.setIndex( new THREE.BufferAttribute( index, 1 ) );
 
-		this.mesh = new THREE.Mesh( geometry, this.material() );
+		this.mesh = new THREE.Mesh( geometry, this.material( terrain ) );
 		this.mesh.frustumCulled = false;
 		this.mesh.receiveShadow = true;
 		this.mesh.renderOrder = 1;
@@ -171,7 +172,7 @@ export class TyreTracks {
 
 	}
 
-	private material(): THREE.MeshStandardNodeMaterial {
+	private material( terrain: DesertTerrain ): THREE.MeshStandardNodeMaterial {
 
 		const tr = attribute( 'track', 'vec4' );
 		const fr = attribute( 'frame', 'vec4' );
@@ -219,6 +220,7 @@ export class TyreTracks {
 			axisX: vec3( fr.y.negate(), 0, fr.x ), axisY: vec3( fr.x, 0, fr.y ),
 			pressed: float( 1 ).sub( smoothstep( TYRE - 0.16, TYRE + 0.03, au ) ),
 			depth: DEPTH,
+			land: terrain.decal(),
 			opacity: float( 1 ).sub( smoothstep( 0.86, 1.0, abs( u ) ) ).mul( fade ),
 		} );
 

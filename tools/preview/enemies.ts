@@ -170,6 +170,7 @@ export async function renderEnemies(out: string, names: string[]): Promise<void>
     const world = createDesertWorld(scene)
     configureRenderer(renderer)
     bakeEnvironment(renderer, scene, world.environmentScene())
+    world.world.prepare(renderer)
     const camera = new PerspectiveCamera(sample.fov ?? 42, W / H, 0.1, 6000)
     const view = sample.fort ? sample.fort(world.world.forts.list[Number(process.env.FORT ?? 0)]) : sample
     camera.position.set(...view.eye)

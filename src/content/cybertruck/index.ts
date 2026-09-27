@@ -41,11 +41,16 @@ export const CYBERTRUCK_PROFILE: CharacterProfile = {
     rollGain: 0.006,
     rollLimit: 0.06,
     pivotHeight: 0.7,
+    track: 1.75,
+    rideFrequency: 1.45,
+    bump: 0.15,
   },
   robot: { walkSpeed: 5.1, runSpeed: 15 },
   camera: { carDistance: 7.875, robotDistance: 12.75, carFocus: 1.1, robotFocus: 3.9 },
   carRadius: 2.4,
   robotRadius: 1.5,
+  // the body (2.28 m wide, 5.7 m long) as three circles along it: one round circle reached 1.3 m past its flanks
+  carBody: [[1.7, 1.15], [0, 1.15], [-1.7, 1.15]],
 }
 
 export async function loadCybertruckAsset(): Promise<PlayableTransformerAsset> {

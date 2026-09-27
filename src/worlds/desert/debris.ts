@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { cameraViewMatrix, color, cos, cross, float, instancedBufferAttribute, max, min, mix, normalLocal, positionLocal, select, sin, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
 import { N } from '../../rendering/noise.ts';
 import { rockGeometry } from './world.ts';
+import type { Ground } from '../../game/ground.ts';
 
 /**
  * Crust thrown out by a blast: slabs of hardpan and stones (or, off the
@@ -29,8 +30,13 @@ export class Debris {
 	private readonly a2: THREE.InstancedBufferAttribute;
 	/** per chunk: 1 broken concrete (thrown off paving), 0 the sand's crust */
 	private readonly kind: THREE.InstancedBufferAttribute;
+	/** per chunk: the ground's height where it comes down (its flight is measured from there) */
+	private readonly floor: THREE.InstancedBufferAttribute;
+	private readonly ground: Ground;
 
-	constructor( scene: THREE.Scene ) {
+	constructor( scene: THREE.Scene, ground: Ground ) {
+
+		this.ground = ground;
 
 		const rock = rockGeometry( 1, 71, 1 );
 		const geometry = new THREE.InstancedBufferGeometry();
@@ -50,12 +56,15 @@ export class Debris {
 		this.a2 = make(); // spin axis (unit), spin rate (rad/s)
 		this.kind = new THREE.InstancedBufferAttribute( new Float32Array( MAX ), 1 );
 		this.kind.setUsage( THREE.DynamicDrawUsage );
+		this.floor = new THREE.InstancedBufferAttribute( new Float32Array( MAX ), 1 );
+		this.floor.setUsage( THREE.DynamicDrawUsage );
 		for ( let i = 0; i < MAX; i ++ ) this.a0.array[ i * 4 + 3 ] = - 1e9;
 
 		const p0 = instancedBufferAttribute( this.a0, 'vec4' ) as any;
 		const v0 = instancedBufferAttribute( this.a1, 'vec4' ) as any;
 		const spin = instancedBufferAttribute( this.a2, 'vec4' ) as any;
 		const concrete = instancedBufferAttribute( this.kind, 'float' ) as any;
+		const floor = instancedBufferAttribute( this.floor, 'float' ) as any;
 		const size = v0.w;
 		const age = this.time.sub( p0.w );
 		// lands when its centre comes down to a third of its size above the sand
@@ -66,7 +75,7 @@ export class Debris {
 		const settle = smoothstep( REST, REST + SINK, age );
 		const flying = p0.y.add( b.mul( age ) ).sub( age.mul( age ).mul( GRAVITY / 2 ) );
 		const height = select( age.lessThan( land ), flying, rest ).sub( settle.mul( size ) ) as any;
-		const centre = vec3( p0.x.add( v0.x.mul( flight ) ), height, p0.z.add( v0.z.mul( flight ) ) );
+		const centre = vec3( p0.x.add( v0.x.mul( flight ) ), height.add( floor ), p0.z.add( v0.z.mul( flight ) ) );
 		// Rodrigues rotation about the chunk's spin axis, frozen when it lands
 		const angle = spin.w.mul( flight ).add( p0.w.mul( 7.3 ) );
 		const c = cos( angle ), sn = sin( angle );
@@ -123,8 +132,20 @@ export class Debris {
 			const v = speed * ( 0.35 + 0.65 * Math.random() ) * ( 1.15 - 0.5 * s / size );
 			const r = Math.random() * 0.6 * size;
 			const a = Math.random() * Math.PI * 2;
-			A0.set( [ center.x + Math.cos( a ) * r, 0.15 + Math.random() * 0.3, center.z + Math.sin( a ) * r, this.clock ], i * 4 );
+			const px = center.x + Math.cos( a ) * r, pz = center.z + Math.sin( a ) * r;
+			const start = this.ground.height( px, pz ) + 0.15 + Math.random() * 0.3;
+			// where it comes down: the flight to the ground under its landing, found twice over
+			let floor = this.ground.height( px, pz );
+			for ( let k = 0; k < 2; k ++ ) {
+
+				const drop = Math.max( start - floor - s * 0.25, 0 );
+				const t = ( y * v + Math.sqrt( y * v * y * v + 2 * GRAVITY * drop ) ) / GRAVITY;
+				floor = this.ground.height( px + x * v * t, pz + z * v * t );
+
+			}
+			A0.set( [ px, start - floor, pz, this.clock ], i * 4 );
 			A1.set( [ x * v, y * v, z * v, s ], i * 4 );
+			( this.floor.array as Float32Array )[ i ] = floor;
 			const ax = Math.random() * 2 - 1, ay = Math.random() * 2 - 1, az = Math.random() * 2 - 1;
 			const al = Math.hypot( ax, ay, az ) || 1;
 			A2.set( [ ax / al, ay / al, az / al, ( 3 + Math.random() * 9 ) * ( Math.random() < 0.5 ? - 1 : 1 ) ], i * 4 );
@@ -132,7 +153,7 @@ export class Debris {
 
 		}
 		const n = Math.min( count, MAX );
-		for ( const a of [ this.a0, this.a1, this.a2, this.kind ] ) {
+		for ( const a of [ this.a0, this.a1, this.a2, this.kind, this.floor ] ) {
 
 			const k = a.itemSize;
 			if ( start + n <= MAX ) a.addUpdateRange( start * k, n * k );

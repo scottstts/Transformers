@@ -49,6 +49,15 @@ export interface DriveProfile {
   rollLimit: number
   /** height of the body's pitch / roll pivot above the ground (m) */
   pivotHeight: number
+  /** track width (m): where the ground under the car is measured across it */
+  track: number
+  /**
+   * Ride frequency (Hz) of the body on its springs: its static sag (the
+   * travel the wheels can drop before they leave the ground) follows from it.
+   * `bump`: compression travel to the bump stops (m).
+   */
+  rideFrequency: number
+  bump: number
   /** a trailer riding a hitch behind the car (the semi's van) */
   trailer?: TrailerProfile
 }

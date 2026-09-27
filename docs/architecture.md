@@ -51,7 +51,7 @@ The stick maps onto the keyboard controls rather than adding a separate car mode
 
 Baked noise and the shared image setup (`rendering/look.ts`: tone mapping, shadows, environment bake, bloom) live outside the character packages. The session and the headless preview tool use the same setup.
 
-`src/worlds/desert/` owns scenery, lighting, ground materials, dust, tyre tracks, and collision circles. Its entry point supplies the world, environment lighting scene, and contact effects. Characters receive contact effects through a small interface, so another environment can provide different tyre and footfall feedback without changing character code.
+`src/worlds/desert/` owns scenery, lighting, ground materials, dust, tyre tracks, and collision circles. The ground's relief reaches the game through `Ground` (`game/ground.ts`: a height at any world point, plus a normal and a ray march built on it). The world's `DesertTerrain` is one, and `ContactEffects.height` exposes the same to effects. Car dynamics, the robot's footing (`game/ground-follow.ts`), the follow camera and the combat effects' ground contacts all ask it; nothing assumes y = 0. Its entry point supplies the world, environment lighting scene, and contact effects. Characters receive contact effects through a small interface, so another environment can provide different tyre and footfall feedback without changing character code.
 
 The repeating rock field checks its tile positions as the camera moves, but only recomposes and uploads an instance when that rock actually wraps into a different tile. Its positions and collision footprints remain the same.
 

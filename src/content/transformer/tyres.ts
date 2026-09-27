@@ -29,6 +29,8 @@ export class Tyres {
   /** fastest tread slide over the ground last frame (m/s), rear and front */
   slideRear = 0
   slideFront = 0
+  /** closing speed of a landing this frame (m/s), else 0: the car's effects shake the camera by it */
+  landing = 0
 
   constructor(bot: TransformerModel, widths: TyreWidths) {
     this.bot = bot
@@ -39,6 +41,12 @@ export class Tyres {
     const wheels = this.bot.contacts().wheels
     this.slideRear = 0
     this.slideFront = 0
+    this.landing = state.impact
+    // in the air nothing touches: the ribbons end, and the trailer's tyres start afresh
+    if (state.airborne) {
+      for (const last of this.last) last?.setX(NaN)
+      return
+    }
     for (let k = 0; k < wheels.length; k++) {
       const wheel = wheels[k]
       const c = this.contacts[k] ??= { point: new Vector3(), heading: new Vector3(), velocity: new Vector3(), slide: new Vector3(), width: 0 }
@@ -48,6 +56,8 @@ export class Tyres {
       if (wheel.front) this.slideFront = Math.max(this.slideFront, slide)
       else this.slideRear = Math.max(this.slideRear, slide)
       surface.tyre(k, c, dt)
+      // a landing throws the sand out from under every tyre
+      if (state.impact > 1.2) surface.burst(c.point, Math.min(1.4, state.impact / 6), Math.round(6 + 3 * state.impact))
     }
   }
 

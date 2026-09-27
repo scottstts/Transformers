@@ -4,6 +4,8 @@ import { N } from '../../rendering/noise.ts';
 import { blackbody } from '../../rendering/blackbody.ts';
 import { groundSurface } from './materials.ts';
 import { NEAR, type PavedGround } from './paved-ground.ts';
+import type { DesertTerrain, GroundDecal } from './terrain.ts';
+import { decalRange } from './sand-imprint.ts';
 
 /**
  * Sand fused by a blast of heat. When enough heat lands on quartz sand it melts
@@ -52,6 +54,76 @@ const GLOW = 1.7;
 const AMBIENT = 300;
 /** a reheat time that never comes */
 const NEVER = 1e9;
+/** cells of a mark's grid (its two axes): a mark bends over the landform, a flat quad would cut into a dune */
+const CRATER_GRID: [ number, number ] = [ 8, 8 ];
+const FURROW_GRID: [ number, number ] = [ 2, 12 ];
+
+/** A ring of marks, each a grid whose attributes are interpolated from its four corners. */
+interface MarkRing {
+	geometry: THREE.BufferGeometry;
+	attributes: Record<string, THREE.BufferAttribute>;
+	cells: [ number, number ];
+	/** vertices per mark */
+	verts: number;
+	written: number;
+}
+
+function markRing( count: number, attributes: Record<string, number>, cells: [ number, number ] ): MarkRing {
+
+	const [ gi, gj ] = cells;
+	const verts = ( gi + 1 ) * ( gj + 1 );
+	const geometry = new THREE.BufferGeometry();
+	const out: Record<string, THREE.BufferAttribute> = {};
+	for ( const [ name, size ] of Object.entries( attributes ) ) {
+
+		const a = new THREE.BufferAttribute( new Float32Array( count * verts * size ), size );
+		a.setUsage( THREE.DynamicDrawUsage );
+		geometry.setAttribute( name, a );
+		out[ name ] = a;
+
+	}
+	// (i, j) runs from corner 0 toward corner 1 (i) and toward corner 2 (j), wound as the corner quads were
+	const index = new Uint16Array( count * gi * gj * 6 );
+	let n = 0;
+	for ( let q = 0; q < count; q ++ ) {
+
+		for ( let j = 0; j < gj; j ++ ) for ( let i = 0; i < gi; i ++ ) {
+
+			const a = q * verts + j * ( gi + 1 ) + i, b = a + 1, c = a + gi + 1, d = c + 1;
+			index.set( [ a, c, b, b, c, d ], n );
+			n += 6;
+
+		}
+
+	}
+	geometry.setIndex( new THREE.BufferAttribute( index, 1 ) );
+	return { geometry, attributes: out, cells, verts, written: 0 };
+
+}
+
+/** Write mark `q`: each named attribute's value at the four corners, spread bilinearly over its grid. */
+function writeMark( ring: MarkRing, q: number, corners: Record<string, number[][]> ): void {
+
+	const [ gi, gj ] = ring.cells;
+	for ( const [ name, values ] of Object.entries( corners ) ) {
+
+		const a = ring.attributes[ name ];
+		const size = a.itemSize;
+		const array = a.array as Float32Array;
+		const [ c0, c1, c2, c3 ] = values;
+		for ( let j = 0; j <= gj; j ++ ) for ( let i = 0; i <= gi; i ++ ) {
+
+			const s = i / gi, t = j / gj;
+			const o = ( q * ring.verts + j * ( gi + 1 ) + i ) * size;
+			for ( let k = 0; k < size; k ++ ) array[ o + k ] = ( c0[ k ] * ( 1 - s ) + c1[ k ] * s ) * ( 1 - t ) + ( c2[ k ] * ( 1 - s ) + c3[ k ] * s ) * t;
+
+		}
+		a.addUpdateRange( q * ring.verts * size, ring.verts * size );
+		a.needsUpdate = true;
+
+	}
+
+}
 
 export class ScorchMarks {
 
@@ -60,70 +132,47 @@ export class ScorchMarks {
 	/** the concrete marks, one crater and one furrow mesh per paving level */
 	readonly paved: THREE.Mesh[] = [];
 	private readonly time = uniform( 0 );
-	private readonly crater: { position: THREE.BufferAttribute; mark: THREE.BufferAttribute; heat: THREE.BufferAttribute; near0: THREE.BufferAttribute; near1: THREE.BufferAttribute; written: number };
-	private readonly furrow: { position: THREE.BufferAttribute; mark: THREE.BufferAttribute; line: THREE.BufferAttribute; reheat: THREE.BufferAttribute; near0: THREE.BufferAttribute; near1: THREE.BufferAttribute; written: number };
+	private readonly crater: MarkRing;
+	private readonly furrow: MarkRing;
 	private readonly paving: PavedGround | null;
 	private readonly near = new Float32Array( NEAR );
 
-	constructor( scene: THREE.Scene, paving: PavedGround | null = null ) {
+	constructor( scene: THREE.Scene, paving: PavedGround | null, terrain: DesertTerrain ) {
 
 		this.paving = paving;
+		this.crater = markRing( CRATERS, { position: 3, mark: 4, heat: 2, near0: 4, near1: 4 }, CRATER_GRID );
+		this.furrow = markRing( FURROWS, { position: 3, mark: 4, line: 4, reheat: 4, near0: 4, near1: 4 }, FURROW_GRID );
+		( this.furrow.attributes.reheat.array as Float32Array ).fill( NEVER );
+		for ( const ring of [ this.crater, this.furrow ] ) {
 
-		const quads = ( count: number, attributes: Record<string, number> ) => {
+			( ring.attributes.near0.array as Float32Array ).fill( - 1 );
+			( ring.attributes.near1.array as Float32Array ).fill( - 1 );
 
-			const geometry = new THREE.BufferGeometry();
-			const out: Record<string, THREE.BufferAttribute> = {};
-			for ( const [ name, size ] of Object.entries( attributes ) ) {
-
-				const a = new THREE.BufferAttribute( new Float32Array( count * 4 * size ), size );
-				a.setUsage( THREE.DynamicDrawUsage );
-				geometry.setAttribute( name, a );
-				out[ name ] = a;
-
-			}
-			const index = new Uint16Array( count * 6 );
-			for ( let q = 0; q < count; q ++ ) index.set( [ q * 4, q * 4 + 2, q * 4 + 1, q * 4 + 1, q * 4 + 2, q * 4 + 3 ], q * 6 );
-			geometry.setIndex( new THREE.BufferAttribute( index, 1 ) );
-			return { geometry, out };
-
-		};
-
-		const c = quads( CRATERS, { position: 3, mark: 4, heat: 2, near0: 4, near1: 4 } );
-		this.crater = { position: c.out.position, mark: c.out.mark, heat: c.out.heat, near0: c.out.near0, near1: c.out.near1, written: 0 };
-		const f = quads( FURROWS, { position: 3, mark: 4, line: 4, reheat: 4, near0: 4, near1: 4 } );
-		this.furrow = { position: f.out.position, mark: f.out.mark, line: f.out.line, reheat: f.out.reheat, near0: f.out.near0, near1: f.out.near1, written: 0 };
-		( this.furrow.reheat.array as Float32Array ).fill( NEVER );
-		for ( const a of [ c.out.near0, c.out.near1, f.out.near0, f.out.near1 ] ) ( a.array as Float32Array ).fill( - 1 );
+		}
 		// the paving's top under the fragment (-1 bare ground), from the shapes the mark listed when it was laid
 		const top = paving ? paving.topNode( positionWorld.xz, attribute( 'near0', 'vec4' ), attribute( 'near1', 'vec4' ) ) : float( - 1 );
 		const bare = select( top.lessThan( 0 ), float( 1 ), float( 0 ) );
-		this.craters = this.decal( c.geometry, this.craterMaterial( bare ) );
-		this.furrows = this.decal( f.geometry, this.furrowMaterial( bare ) );
+		this.craters = this.decal( this.crater.geometry, this.craterMaterial( bare, terrain.decal() ) );
+		this.furrows = this.decal( this.furrow.geometry, this.furrowMaterial( bare, terrain.decal() ) );
 		scene.add( this.craters, this.furrows );
 		for ( const level of paving?.levels ?? [] ) {
 
 			const on = select( abs( top.sub( level ) ).lessThan( 1e-3 ), float( 1 ), float( 0 ) );
-			this.paved.push( this.decal( c.geometry, this.concreteCrater( level, on ) ), this.decal( f.geometry, this.concreteFurrow( level, on ) ) );
+			this.paved.push( this.decal( this.crater.geometry, this.concreteCrater( level, on ) ), this.decal( this.furrow.geometry, this.concreteFurrow( level, on ) ) );
 
 		}
 		if ( this.paved.length ) scene.add( ...this.paved );
 
 	}
 
-	/** The paved shapes near a mark's bounding circle, into its quad's index attributes. */
-	private listNear( near0: THREE.BufferAttribute, near1: THREE.BufferAttribute, q: number, x: number, z: number, radius: number ): void {
+	/** The paved shapes near a mark's bounding circle, as its corners' index attributes. */
+	private nearValues( x: number, z: number, radius: number ): { near0: number[][]; near1: number[][] } {
 
 		const n = this.near;
 		if ( this.paving ) this.paving.near( x, z, radius, n );
 		else n.fill( - 1 );
-		for ( let k = 0; k < 4; k ++ ) {
-
-			( near0.array as Float32Array ).set( [ n[ 0 ], n[ 1 ], n[ 2 ], n[ 3 ] ], ( q * 4 + k ) * 4 );
-			( near1.array as Float32Array ).set( [ n[ 4 ], n[ 5 ], n[ 6 ], n[ 7 ] ], ( q * 4 + k ) * 4 );
-
-		}
-		flush( near0, q, 4 );
-		flush( near1, q, 4 );
+		const a = [ n[ 0 ], n[ 1 ], n[ 2 ], n[ 3 ] ], b = [ n[ 4 ], n[ 5 ], n[ 6 ], n[ 7 ] ];
+		return { near0: [ a, a, a, a ], near1: [ b, b, b, b ] };
 
 	}
 
@@ -132,20 +181,14 @@ export class ScorchMarks {
 
 		const q = this.crater.written ++ % CRATERS;
 		const r = radius * REACH;
-		const P = this.crater.position.array as Float32Array, M = this.crater.mark.array as Float32Array, H = this.crater.heat.array as Float32Array;
 		const seed = Math.random() * 10;
 		const corners = [ [ - r, - r ], [ r, - r ], [ - r, r ], [ r, r ] ];
-		for ( let k = 0; k < 4; k ++ ) {
-
-			const [ x, z ] = corners[ k ];
-			const i = q * 4 + k;
-			P.set( [ center.x + x, LIFT, center.z + z ], i * 3 );
-			M.set( [ x, z, radius, this.time.value ], i * 4 );
-			H.set( [ heat, seed ], i * 2 );
-
-		}
-		for ( const [ a, size ] of [ [ this.crater.position, 3 ], [ this.crater.mark, 4 ], [ this.crater.heat, 2 ] ] as const ) flush( a, q, size );
-		this.listNear( this.crater.near0, this.crater.near1, q, center.x, center.z, r * Math.SQRT2 );
+		writeMark( this.crater, q, {
+			position: corners.map( ( [ x, z ] ) => [ center.x + x, LIFT, center.z + z ] ),
+			mark: corners.map( ( [ x, z ] ) => [ x, z, radius, this.time.value ] ),
+			heat: corners.map( () => [ heat, seed ] ),
+			...this.nearValues( center.x, center.z, r * Math.SQRT2 ),
+		} );
 
 	}
 
@@ -159,22 +202,15 @@ export class ScorchMarks {
 		const ax = dx / length, az = dz / length;
 		const hw = width * 0.5;
 		const across = hw * SOOT, margin = hw * 2.5;
-		const P = this.furrow.position.array as Float32Array, M = this.furrow.mark.array as Float32Array;
-		const L = this.furrow.line.array as Float32Array, R = this.furrow.reheat.array as Float32Array;
 		// across = (-az, ax): a left-handed (u, v) frame on the ground, so the corners run the other way round to face up
 		const corners = [ [ across, - margin ], [ - across, - margin ], [ across, length + margin ], [ - across, length + margin ] ];
-		for ( let k = 0; k < 4; k ++ ) {
-
-			const [ u, v ] = corners[ k ];
-			const i = q * 4 + k;
-			P.set( [ from.x + ax * v - az * u, LIFT, from.z + az * v + ax * u ], i * 3 );
-			M.set( [ u, v, hw, this.time.value ], i * 4 );
-			L.set( [ length, heat, ax, az ], i * 4 );
-			R.set( [ NEVER, 1, 0, 0 ], i * 4 );
-
-		}
-		for ( const [ a, size ] of [ [ this.furrow.position, 3 ], [ this.furrow.mark, 4 ], [ this.furrow.line, 4 ], [ this.furrow.reheat, 4 ] ] as const ) flush( a, q, size );
-		this.listNear( this.furrow.near0, this.furrow.near1, q, ( from.x + to.x ) / 2, ( from.z + to.z ) / 2, Math.hypot( length / 2 + margin, across ) );
+		writeMark( this.furrow, q, {
+			position: corners.map( ( [ u, v ] ) => [ from.x + ax * v - az * u, LIFT, from.z + az * v + ax * u ] ),
+			mark: corners.map( ( [ u, v ] ) => [ u, v, hw, this.time.value ] ),
+			line: corners.map( () => [ length, heat, ax, az ] ),
+			reheat: corners.map( () => [ NEVER, 1, 0, 0 ] ),
+			...this.nearValues( ( from.x + to.x ) / 2, ( from.z + to.z ) / 2, Math.hypot( length / 2 + margin, across ) ),
+		} );
 		return handle;
 
 	}
@@ -188,10 +224,8 @@ export class ScorchMarks {
 
 		// overwritten since: nothing to reignite
 		if ( handle < this.furrow.written - FURROWS ) return;
-		const q = handle % FURROWS;
-		const R = this.furrow.reheat.array as Float32Array;
-		for ( let k = 0; k < 4; k ++ ) R.set( [ this.time.value + delay, speed, at, 0 ], ( q * 4 + k ) * 4 );
-		flush( this.furrow.reheat, q, 4 );
+		const v = [ this.time.value + delay, speed, at, 0 ];
+		writeMark( this.furrow, handle % FURROWS, { reheat: [ v, v, v, v ] } );
 
 	}
 
@@ -211,7 +245,7 @@ export class ScorchMarks {
 
 	}
 
-	private craterMaterial( bare ): THREE.MeshStandardNodeMaterial {
+	private craterMaterial( bare, land: GroundDecal ): THREE.MeshStandardNodeMaterial {
 
 		const mark = attribute( 'mark', 'vec4' );
 		const heatAttr = attribute( 'heat', 'vec2' );
@@ -262,7 +296,7 @@ export class ScorchMarks {
 		const glow = blackbody( tGlass ).mul( glass ).add( blackbody( tCrack ).mul( cracks ) ).add( blackbody( tFissure ).mul( fissures ) ).mul( GLOW );
 
 		return markMaterial( {
-			height, x, y, axisX: vec3( 1, 0, 0 ), axisY: vec3( 0, 0, 1 ), glass, char, glow,
+			height, x, y, axisX: vec3( 1, 0, 0 ), axisY: vec3( 0, 0, 1 ), glass, char, glow, land,
 			// cracks show dark in the cold glass: the crust split and settled
 			glassShade: float( 1 ).sub( cracks.mul( 0.45 ) ),
 			opacity: float( 1 ).sub( smoothstep( REACH * 0.8, REACH * 0.98, r ) ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ).mul( bare ),
@@ -270,7 +304,7 @@ export class ScorchMarks {
 
 	}
 
-	private furrowMaterial( bare ): THREE.MeshStandardNodeMaterial {
+	private furrowMaterial( bare, land: GroundDecal ): THREE.MeshStandardNodeMaterial {
 
 		const mark = attribute( 'mark', 'vec4' );
 		const line = attribute( 'line', 'vec4' );
@@ -314,7 +348,7 @@ export class ScorchMarks {
 		const glow = blackbody( temperature ).mul( glass.mul( 0.7 ).add( 0.3 ) ).mul( GLOW );
 
 		return markMaterial( {
-			height, x: u, y: v, axisX: vec3( line.w.negate(), 0, line.z ), axisY: vec3( line.z, 0, line.w ), glass, char, glow,
+			height, x: u, y: v, axisX: vec3( line.w.negate(), 0, line.z ), axisY: vec3( line.z, 0, line.w ), glass, char, glow, land,
 			glassShade: float( 1 ),
 			opacity: float( 1 ).sub( smoothstep( SOOT * 0.8, SOOT * 0.98, abs( u ).div( hw ) ) )
 				.mul( smoothstep( hw.mul( - 2.4 ), hw.mul( - 0.5 ), end ) )
@@ -495,6 +529,8 @@ interface Mark {
 	/** shade of the cold glass (its dark cracks) */
 	glassShade: any;
 	opacity: any;
+	/** the mark's vertex on the landform and the land's slope under it */
+	land: GroundDecal;
 }
 
 /** Fused-sand shading: the bare floor rebuilt around it, charred, set to dark olive glass where fused. */
@@ -508,11 +544,13 @@ function markMaterial( m: Mark ): THREE.MeshStandardNodeMaterial {
 	const h0 = m.height( m.x, m.y );
 	const gx = m.height( m.x.add( e ), m.y ).sub( h0 ).div( e );
 	const gy = m.height( m.x, m.y.add( e ) ).sub( h0 ).div( e );
-	const ground = groundSurface( positionWorld.xz );
-	// glass sets smooth: the wind ripples are gone under it
-	const slope = ground.slope.mul( float( 1 ).sub( m.glass ) );
+	material.positionNode = m.land.position;
+	const ground = groundSurface( positionWorld.xz, m.land.slope );
+	// glass sets smooth: the wind ripples are gone under it (the land's own slope stays)
+	const slope = ground.slope.sub( m.land.slope ).mul( float( 1 ).sub( m.glass ) ).add( m.land.slope );
 	const normal = vec3( slope.x, 1, slope.y ).sub( m.axisX.mul( gx ) ).sub( m.axisY.mul( gy ) ).normalize();
 	material.normalNode = normal.transformDirection( cameraViewMatrix );
+	if ( m.land.occlusion ) material.aoNode = m.land.occlusion( positionWorld, normal );
 	const grain = N( positionWorld.xz.mul( 1.9 ) );
 	// trinitite: an olive-black glass, a little bubbled
 	const glassColor = mix( vec3( 0.022, 0.024, 0.016 ), vec3( 0.055, 0.058, 0.036 ), grain.g ).mul( m.glassShade );
@@ -521,14 +559,7 @@ function markMaterial( m: Mark ): THREE.MeshStandardNodeMaterial {
 	material.roughnessNode = mix( mix( ground.roughness, float( 0.97 ), m.char ), grain.b.mul( 0.12 ).add( 0.1 ), m.glass );
 	material.metalnessNode = float( 0 );
 	material.emissiveNode = m.glow;
-	material.opacityNode = m.opacity;
+	material.opacityNode = m.opacity.mul( decalRange() );
 	return material;
-
-}
-
-function flush( a: THREE.BufferAttribute, quad: number, size: number ): void {
-
-	a.addUpdateRange( quad * 4 * size, 4 * size );
-	a.needsUpdate = true;
 
 }

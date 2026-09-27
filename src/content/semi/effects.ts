@@ -134,6 +134,8 @@ export class SemiEffects implements CharacterEffects {
       this.tyres.update(state, this.contactEffects, dt)
       slide = Math.max(this.tyres.slideRear, this.tyres.slideFront)
       this.shake = Math.max(this.shake, Math.min(SLIDE_SHAKE_MAX, slide * SLIDE_SHAKE))
+      // a landing jolts the view by its closing speed
+      this.shake = Math.max(this.shake, Math.min(0.6, this.tyres.landing * 0.07))
     }
     if (t > 0 && t < 1) this.touchdowns()
 

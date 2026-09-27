@@ -54,8 +54,22 @@ describe('world collisions', () => {
     state.pos.set(1, 0, 0)
     state.speed = 10
     resolveCircleCollisions(state, [{ x: 0, z: 0, r: 1 }], 0.3, CYBERTRUCK_PROFILE)
-    expect(state.pos.x).toBeCloseTo(3.4)
+    // every circle of the body now clears the rock
+    const fx = Math.sin(state.yaw), fz = Math.cos(state.yaw)
+    for (const [station, radius] of CYBERTRUCK_PROFILE.carBody!) {
+      expect(Math.hypot(state.pos.x + fx * station, state.pos.z + fz * station)).toBeGreaterThanOrEqual(1 + radius - 1e-6)
+    }
     expect(state.speed).toBe(5)
+  })
+
+  it('lets the car pass a rock close along its flank', () => {
+    const state = createMotionState()
+    state.yaw = 0
+    // a 1 m rock beside the car's middle, its edge 1.4 m off the centre line: 0.26 m clear of the side (the old 2.4 m circle struck it)
+    state.speed = 10
+    resolveCircleCollisions(state, [{ x: 2.4, z: 0, r: 1 }], 0.3, CYBERTRUCK_PROFILE)
+    expect(state.pos.x).toBe(0)
+    expect(state.speed).toBe(10)
   })
 })
 

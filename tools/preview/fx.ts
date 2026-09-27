@@ -92,6 +92,7 @@ export async function renderFx(out: string, names: string[]): Promise<void> {
     const world = createDesertWorld(scene)
     configureRenderer(renderer)
     bakeEnvironment(renderer, scene, world.environmentScene())
+    world.world.prepare(renderer)
     const camera = new PerspectiveCamera(50, W / H, 0.1, 6000)
     const billows = new Billows()
     scene.add(billows.mesh)

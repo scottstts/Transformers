@@ -35,6 +35,8 @@ export class Thrusters {
   power = 0
   /** how hard the exhaust strikes the ground, 0..1 */
   impingement = 0
+  /** the ground's height under the car: where the jets strike */
+  floor = 0
   /** where it strikes (midpoint of both jets) */
   readonly impact = new Vector3()
 
@@ -106,13 +108,13 @@ export class Thrusters {
       // Carry each exhaust outlet with its pack's lower outer edge.
       this.deployedPort.set(0, 0.21, -0.46).applyMatrix4(this.coolingPacks[k].matrixWorld)
       port.lerp(this.deployedPort, smooth(0.30, 0.57, T))
-      this.jets[k].set(port, this.axis, this.side, power, t)
-      const reach = port.y / Math.max(-this.axis.y, 1e-3)
+      this.jets[k].set(port, this.axis, this.side, power, t, this.floor)
+      const reach = (port.y - this.floor) / Math.max(-this.axis.y, 1e-3)
       this.strikes[k].copy(port).addScaledVector(this.axis, reach)
       strike = Math.max(strike, smooth(length * 1.05, length * 0.3, reach))
     }
     this.impingement = power * strike
-    this.sheet.set(this.strikes[0], this.strikes[1], this.impingement, t)
+    this.sheet.set(this.strikes[0], this.strikes[1], this.impingement, t, this.floor)
     this.impact.addVectors(this.strikes[0], this.strikes[1]).multiplyScalar(0.5)
 
     // the jets light the sand and the machine: from inside the plume, a third of the way to the ground

@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { instancedDynamicBufferAttribute, uv, float, mix, color, smoothstep, hash } from 'three/tsl';
+import type { Ground } from '../../game/ground.ts';
 
 /**
  * Grit thrown by a sliding tyre: clods of crust and small stones flung
@@ -26,7 +27,12 @@ export class Grit {
 	private cursor = 0;
 	private count = 0;
 
-	constructor( scene: THREE.Scene ) {
+	/** the ground the clods land on */
+	private readonly ground: Ground;
+
+	constructor( scene: THREE.Scene, ground: Ground ) {
+
+		this.ground = ground;
 
 		this.aPos = new THREE.InstancedBufferAttribute( new Float32Array( MAX * 3 ), 3 );
 		this.aSize = new THREE.InstancedBufferAttribute( new Float32Array( MAX * 2 ), 2 ); // size (0 = dead), seed
@@ -74,7 +80,7 @@ export class Grit {
 			const spread = ( Math.random() - 0.5 ) * 0.9;
 			const j = i * 3;
 			this.pos[ j ] = p.x + sx * 0.2 + ( Math.random() - 0.5 ) * 0.3;
-			this.pos[ j + 1 ] = 0.05 + Math.random() * 0.12;
+			this.pos[ j + 1 ] = this.ground.height( this.pos[ j ], p.z ) + 0.05 + Math.random() * 0.12;
 			this.pos[ j + 2 ] = p.z + sz * 0.2 + ( Math.random() - 0.5 ) * 0.3;
 			this.vel[ j ] = ( sx - sz * spread ) * speed + velocity.x * 0.3;
 			this.vel[ j + 1 ] = 1.2 + Math.random() * ( 1.5 + s * 0.25 );
@@ -109,7 +115,7 @@ export class Grit {
 			const v = speed * ( 0.3 + 0.7 * Math.random() );
 			const j = i * 3;
 			this.pos[ j ] = center.x + ( Math.random() - 0.5 ) * 0.8;
-			this.pos[ j + 1 ] = 0.1 + Math.random() * 0.2;
+			this.pos[ j + 1 ] = this.ground.height( this.pos[ j ], center.z ) + 0.1 + Math.random() * 0.2;
 			this.pos[ j + 2 ] = center.z + ( Math.random() - 0.5 ) * 0.8;
 			this.vel[ j ] = x * v;
 			this.vel[ j + 1 ] = Math.abs( y ) * v + 1;
@@ -138,7 +144,7 @@ export class Grit {
 			P[ j + 1 ] += V[ j + 1 ] * dt;
 			P[ j + 2 ] += V[ j + 2 ] * dt;
 			// back on the ground: it settles into the sand and is gone
-			if ( P[ j + 1 ] <= 0 ) {
+			if ( P[ j + 1 ] <= this.ground.height( P[ j ], P[ j + 2 ] ) ) {
 
 				this.alive[ i ] = 0;
 				this.count --;

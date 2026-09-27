@@ -51,6 +51,9 @@ export const SEMI_PROFILE: CharacterProfile = {
     rollGain: 0.008,
     rollLimit: 0.06,
     pivotHeight: 1.1,
+    track: 2.05,
+    rideFrequency: 1.25,
+    bump: 0.12,
     // the van's front wall clears the cab's extenders by only 25 cm: it swings about 11 degrees each way
     trailer: { hitch: -KINGPIN[1], length: 6.08, limit: 0.19, circles: [[-0.2, 1.45], [2.4, 1.45], [5.0, 1.45], [7.0, 1.4]] },
   },

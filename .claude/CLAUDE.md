@@ -64,6 +64,35 @@ loop and show the same error UI for fatal runtime failures. Do not silently
 recover by lowering quality, switching renderers, or falling back to WebGL;
 unsupported, obsolete, or fundamentally unstable hardware should fail clearly.
 
+## No mid-game shader or pipeline builds
+
+Anything drawn for the first time during play makes three build its node
+material, WGSL and pipeline on the spot, a visible freeze of up to ~0.2 s.
+Every draw that can ever happen in play must already have been built and drawn
+once during the boot warm-up (`GameSession.compile`, which reveals the world via
+`DesertWorld.reveal` and draws with culling off) or behind a loading cover (a
+first car switch). When adding or changing anything that renders:
+
+- Do not show or hide things during play by toggling `visible` (or adding and
+  removing them from the scene) when they may not have been drawn yet. Keep
+  them drawn and fade them through opacity or uniforms, or make sure the
+  warm-up reveals them.
+- Anything hidden by distance, culling, an instance `count` of 0, a pool that
+  starts empty or a state that only occurs later must be forced visible and
+  drawable in the warm-up reveal path, and restored afterwards.
+- Create materials, geometries (attribute layouts), render targets, lights and
+  shadow passes at load time, never lazily in play. Pool and reuse them. A new
+  material instance is a new node build even when its shader is identical.
+- Do not change pipeline-affecting state at runtime: the number or type of
+  lights, `castShadow`/`receiveShadow`, `transparent`, `side`, blending, fog,
+  the attribute set, or a material's node graph. Drive changes through uniforms.
+- Every new render pass (shadow levels, bakes, post passes) must draw every
+  object it will ever draw during the warm-up draw.
+- Keep per-frame code allocation-free (no throwaway arrays, closures or
+  vectors in update loops), so the garbage collector does not stall frames.
+- When adding a rendered feature, say how it is warmed, and add it to the
+  warm-up path in the same change.
+
 **Important:** DO NOT stuff everything in a generic GameRuntime.ts, over time it has become a monolithic code file. runtime should just be an entry point, if you need specific side logic, define it elsewhere and import into runtime code
 
 # Rules

@@ -16,6 +16,8 @@ export interface TyreContact {
 
 /** Surface response supplied by the active world. */
 export interface ContactEffects {
+  /** the ground's height (m) at a world point: effects that meet the ground meet it there */
+  height(x: number, z: number): number
   /** a tyre rolling or sliding over the surface this frame (`wheel` identifies its track) */
   tyre(wheel: number, contact: TyreContact, dt: number): void
   /** a foot planted at `center` (ground), heading `forward` (unit), sole length and width in m, load 0..1+ */

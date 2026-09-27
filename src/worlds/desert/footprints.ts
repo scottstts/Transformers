@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { attribute, uniform, float, vec2, vec3, abs, exp, fract, fwidth, length, max, min, smoothstep } from 'three/tsl';
 import { sandGrain, sandImprintMaterial } from './sand-imprint.ts';
+import type { DesertTerrain } from './terrain.ts';
 
 /**
  * Footprints pressed into the sand by a heavy walker: one decal per footfall
@@ -27,7 +28,7 @@ export class Footprints {
 	private readonly time = uniform( 0 );
 	private written = 0;
 
-	constructor( scene: THREE.Scene ) {
+	constructor( scene: THREE.Scene, terrain: DesertTerrain ) {
 
 		const geometry = new THREE.BufferGeometry();
 		this.position = new THREE.BufferAttribute( new Float32Array( CAPACITY * 4 * 3 ), 3 );
@@ -40,7 +41,7 @@ export class Footprints {
 		const index = new Uint16Array( CAPACITY * 6 );
 		for ( let q = 0; q < CAPACITY; q ++ ) index.set( [ q * 4, q * 4 + 2, q * 4 + 1, q * 4 + 1, q * 4 + 2, q * 4 + 3 ], q * 6 );
 		geometry.setIndex( new THREE.BufferAttribute( index, 1 ) );
-		this.mesh = new THREE.Mesh( geometry, this.material() );
+		this.mesh = new THREE.Mesh( geometry, this.material( terrain ) );
 		this.mesh.frustumCulled = false;
 		this.mesh.receiveShadow = true;
 		this.mesh.renderOrder = 1;
@@ -83,7 +84,7 @@ export class Footprints {
 
 	}
 
-	private material(): THREE.MeshStandardNodeMaterial {
+	private material( terrain: DesertTerrain ): THREE.MeshStandardNodeMaterial {
 
 		const pr = attribute( 'print', 'vec4' );
 		const fr = attribute( 'frame', 'vec4' );
@@ -121,6 +122,7 @@ export class Footprints {
 			axisX: vec3( fr.x, 0, fr.y ), axisY: vec3( fr.y.negate(), 0, fr.x ),
 			pressed: float( 1 ).sub( smoothstep( - 0.04, 0.02, d ) ),
 			depth: DEPTH,
+			land: terrain.decal(),
 			opacity: float( 1 ).sub( smoothstep( RIM * 0.55, RIM * 0.95, d ) ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ),
 		} );
 

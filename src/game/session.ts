@@ -8,7 +8,8 @@ import type { Character } from '../content/transformer/character'
 import { FollowCamera } from './follow-camera'
 import { GameInput } from './input'
 import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions, updateRobot } from './movement'
-import { updateCar } from './car-dynamics'
+import { placeCar, updateCar } from './car-dynamics'
+import { bodyAttitude, standOnGround } from './ground-follow'
 import { createMotionState, type Form } from './types'
 import { RobotJump } from './jump'
 import { RobotCombat } from './combat/robot-combat'
@@ -73,7 +74,6 @@ export class GameSession {
   /** each built character's fight (kept with the character) */
   private readonly fights = new Map<string, RobotCombat>()
   private fight: RobotCombat
-  private readonly up = new Vector3(0, 1, 0)
   private readonly suspensionRotation = new Matrix4()
   private readonly suspensionInverse = new Matrix4()
   private readonly suspensionEuler = new Euler()
@@ -95,6 +95,7 @@ export class GameSession {
     this.onFrameError = onFrameError
     this.character = entry.create(asset, this.environment.contactEffects, this.audio)
     this.built.set(entry.id, this.character)
+    placeCar(this.state, this.character.profile.drive, this.world.terrain)
     configureRenderer(renderer)
     this.scene.add(this.character.model.root, this.character.effects.object)
     this.character.model.pose(0, null)
@@ -103,9 +104,11 @@ export class GameSession {
     this.scene.add(this.horde.object)
 
     bakeEnvironment(renderer, this.scene, this.environment.environmentScene())
+    this.world.prepare(renderer)
 
     this.fight = this.fightFor(this.character)
     this.cameraRig = new FollowCamera(this.camera, renderer.domElement, this.state.yaw, this.character.robotOffset, this.character.profile.camera)
+    this.cameraRig.ground = this.world.terrain
     this.cameraRig.showSide(this.state.yaw)
     this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.audio.resume())
     this.pipeline = createPostPipeline(renderer, this.scene, this.camera, this.lens)
@@ -245,7 +248,7 @@ export class GameSession {
     effects.warm(true)
     this.environment.contactEffects.warm(true)
     this.horde.warm(true)
-    const restoreFortDetail = this.world.forts.showAllDetail()
+    const restoreWorld = this.world.reveal()
     const restoreCulling = disableCulling(this.scene)
     try {
       await this.renderer.compileAsync(this.scene, this.camera)
@@ -255,7 +258,7 @@ export class GameSession {
       await this.waitForGpu()
     } finally {
       restoreCulling()
-      restoreFortDetail()
+      restoreWorld()
       effects.warm(false)
       this.environment.contactEffects.warm(false)
       this.horde.warm(false)
@@ -336,7 +339,7 @@ export class GameSession {
   private stage(next: Character): void {
     const root = next.model.root
     root.position.copy(this.state.pos)
-    root.quaternion.setFromAxisAngle(this.up, this.state.yaw)
+    bodyAttitude(this.state, root.quaternion)
     next.model.pose(this.state.progress, null)
   }
 
@@ -412,7 +415,7 @@ export class GameSession {
       this.carActions = carActions
       this.onCarActionsChange?.(carActions)
     }
-    if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive)
+    if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive, this.world.terrain)
     else if (!fight.active) updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)
     // the forts' ring holds the car back; the robot walks through it
     this.barrier.apply(state, this.world.forts, profile.drive.maxSpeed, state.progress < 1)
@@ -428,6 +431,7 @@ export class GameSession {
       this.onFortHold?.(hold)
     }
     fight.afterCollisions(state)
+    standOnGround(state, this.world.terrain, profile.drive, this.character.robotOffset, dt)
 
     const pose = gait.update(dt, state.speed, state.yawRate, this.input.running, state.progress >= 1, jump)
     if (jump.tookOff) effects.takeoff()
@@ -444,11 +448,11 @@ export class GameSession {
     const vibration = Math.sin(performance.now() * 0.013) * 0.004 * Math.min(Math.abs(state.speed) / 20, 1)
     this.suspensionEuler.set(state.pitch, 0, state.roll)
     this.suspensionRotation.makeRotationFromEuler(this.suspensionEuler)
-    model.suspension.makeTranslation(0, pivot + vibration, 0)
+    model.suspension.makeTranslation(0, pivot + vibration + state.lift * (1 - Math.min(1, state.progress * 2)), 0)
       .multiply(this.suspensionRotation)
       .multiply(this.suspensionInverse.makeTranslation(0, -pivot, 0))
     model.root.position.copy(state.pos)
-    model.root.quaternion.setFromAxisAngle(this.up, state.yaw)
+    bodyAttitude(state, model.root.quaternion)
     model.pose(state.progress, pose)
     effects.timeline(previous, state.progress)
     effects.update(dt, state)
@@ -467,11 +471,12 @@ export class GameSession {
     this.cameraFx.apply(this.camera)
     effects.shakeCamera(this.camera, dt)
     this.cameraRig.clearObstruction()
+    this.cameraRig.keepAboveGround()
     this.updateTarget(dt)
     this.horde.special = fight.cinematic
     if (frozen) this.horde.drawFor(this.camera)
     else this.horde.update(dt, this.target, this.camera)
-    this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root))
+    this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root), dt)
     this.pipeline.render()
   }
 

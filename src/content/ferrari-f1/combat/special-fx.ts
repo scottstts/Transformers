@@ -1,6 +1,7 @@
 import { Vector3, type Object3D } from 'three/webgpu'
 import type { AudioMix } from '../../../audio/mix'
 import type { ContactEffects } from '../../../game/contact-effects'
+import { onGround } from '../../../game/ground'
 import type { CombatFrame } from '../../transformer/combat/effects'
 import type { MoveCue } from '../../transformer/combat/moves'
 import type { Weapon } from '../../transformer/combat/weapon'
@@ -157,7 +158,7 @@ export class RedLineFx {
     const p = this.p
     if (this.engine === 'limiter' && Math.random() < dt * 12) {
       const s = frame.state
-      this.standing(frame, _a).addScaledVector(_b.set(Math.sin(s.yaw), 0, Math.cos(s.yaw)), -0.5).setY(1.9)
+      onGround(p.contact, this.standing(frame, _a).addScaledVector(_b.set(Math.sin(s.yaw), 0, Math.cos(s.yaw)), -0.5), 1.9)
       p.haze.emit({ at: _a, jitter: 0.5, size: [1.2, 2.4], rise: 1.2, life: [0.5, 0.8], strength: 0.55 })
     }
     for (let k = Math.min(4, Math.round(dt * 60)); k > 0; k--) {
@@ -205,8 +206,9 @@ export class RedLineFx {
     const p = this.p
     for (const foot of p.feet) {
       _b.setFromMatrixPosition(foot.matrixWorld)
-      if (_b.y > 0.6 || Math.random() > dt * 40) continue
-      _b.y = 0
+      const ground = p.contact.height(_b.x, _b.z)
+      if (_b.y > ground + 0.6 || Math.random() > dt * 40) continue
+      _b.y = ground
       p.contact.burst(_b, Math.min(1.1, this.speed / 45), 3)
     }
     if (Math.random() < dt * 30) p.contact.burst(at, Math.min(1.2, this.speed / 40), 4)
@@ -258,7 +260,7 @@ export class RedLineFx {
     _d.subVectors(_a, this.lastGround).normalize()
     p.contact.burst(_a, 0.7, 5)
     sandScrape(p.mix, 1)
-    p.sparks.emit({ count: 6, at: _b.copy(_a).setY(0.1), dir: _d.set(_d.x, 1.2, _d.z).normalize(), spread: 0.5, speed: [2, 7], life: [0.3, 0.8], size: 0.016, drag: 1, gravity: 1, palette: 0 })
+    p.sparks.emit({ count: 6, at: onGround(p.contact, _b.copy(_a), 0.1), dir: _d.set(_d.x, 1.2, _d.z).normalize(), spread: 0.5, speed: [2, 7], life: [0.3, 0.8], size: 0.016, drag: 1, gravity: 1, palette: 0 })
     this.lastGround.copy(_a)
   }
 
@@ -297,7 +299,7 @@ export class RedLineFx {
       if (e.kind === 'arc') {
         p.billows.emit({ count: 2, at: e.point, jitter: 0.5, dir: _up, spread: 1, speed: [0.5, 2.5], life: [0.4, 0.75], size: [0.6, 2.4], heat: 2600, drag: 2.5, buoyancy: 3, tone: 0.3, opacity: 0.22 })
       } else {
-        p.billows.emit({ count: 4, at: _a.copy(e.point).setY(0.35), jitter: 0.7, dir: _up, spread: 0.35, speed: [1, 4], life: [0.8, 1.6], size: [0.9, 3.8], heat: 2350, drag: 1.8, buoyancy: 5, tone: 0.25, opacity: 0.38 })
+        p.billows.emit({ count: 4, at: onGround(p.contact, _a.copy(e.point), 0.35), jitter: 0.7, dir: _up, spread: 0.35, speed: [1, 4], life: [0.8, 1.6], size: [0.9, 3.8], heat: 2350, drag: 1.8, buoyancy: 5, tone: 0.25, opacity: 0.38 })
         p.sparks.emit({ count: 8, at: _a, dir: _up, spread: 0.6, speed: [1.5, 5], life: [0.6, 1.6], size: 0.014, drag: 1.2, gravity: -0.15, palette: 0, jitter: 0.4 })
       }
     }
@@ -310,15 +312,15 @@ export class RedLineFx {
     p.contact.crater(c, 2.8, 0.75)
     p.contact.surge(c, 2.2, 0.55)
     p.contact.eject(c, 15, 36, _up, 0.7, 0.42)
-    p.billows.emit({ count: 40, at: _a.copy(c).setY(1.6), jitter: 2, dir: _up, spread: 1, speed: [3, 12], life: [1.8, 2.8], size: [2.6, 10], heat: 2750, drag: 2, buoyancy: 8, tone: 0.3, opacity: 0.42 })
-    p.billows.emit({ count: 24, at: _a.copy(c).setY(3), jitter: 2.4, dir: _up, spread: 0.35, speed: [3, 8], life: [4.5, 7], size: [3.5, 13], heat: 1000, drag: 0.9, buoyancy: 4, tone: 0.3, opacity: 0.32 })
+    p.billows.emit({ count: 40, at: onGround(p.contact, _a.copy(c), 1.6), jitter: 2, dir: _up, spread: 1, speed: [3, 12], life: [1.8, 2.8], size: [2.6, 10], heat: 2750, drag: 2, buoyancy: 8, tone: 0.3, opacity: 0.42 })
+    p.billows.emit({ count: 24, at: onGround(p.contact, _a.copy(c), 3), jitter: 2.4, dir: _up, spread: 0.35, speed: [3, 8], life: [4.5, 7], size: [3.5, 13], heat: 1000, drag: 0.9, buoyancy: 4, tone: 0.3, opacity: 0.32 })
     for (let k = 0; k < 18; k++) {
       const a = (k / 18) * Math.PI * 2
       _d.set(Math.cos(a), 0.1, Math.sin(a))
       p.billows.emit({ count: 1, at: c, jitter: 1.4, dir: _d, spread: 0.1, speed: [10, 16], life: [2.5, 4], size: [1.4, 6], heat: 0, drag: 1.6, buoyancy: 0.3, tone: 1, opacity: 0.4 })
     }
-    p.sparks.emit({ count: 120, at: _a.copy(c).setY(0.8), dir: _up, spread: 0.8, speed: [5, 18], life: [0.8, 2], size: 0.022, drag: 0.5, gravity: 1, palette: 0, jitter: 1.5 })
-    p.blast.flash(_a.copy(c).setY(2.5), 0xffc890, 380, 1.1, 50)
+    p.sparks.emit({ count: 120, at: onGround(p.contact, _a.copy(c), 0.8), dir: _up, spread: 0.8, speed: [5, 18], life: [0.8, 2], size: 0.022, drag: 0.5, gravity: 1, palette: 0, jitter: 1.5 })
+    p.blast.flash(onGround(p.contact, _a.copy(c), 2.5), 0xffc890, 380, 1.1, 50)
     const cam = this.lastCamera
     cam?.shockwave(c, 0.75)
     cam?.flash(0.45, 0.3)
@@ -336,21 +338,21 @@ export class RedLineFx {
     this.fire.update(k * k * 1.2)
     const p = this.p
     if (Math.random() < dt * 9 * k) {
-      p.haze.emit({ at: _a.copy(this.center).setY(2.5), jitter: 3, size: [4, 8], rise: 2.5, life: [1, 1.6], strength: 0.4 + 0.8 * k })
+      p.haze.emit({ at: onGround(p.contact, _a.copy(this.center), 2.5), jitter: 3, size: [4, 8], rise: 2.5, life: [1, 1.6], strength: 0.4 + 0.8 * k })
     }
     if (this.furrows.length && Math.random() < dt * 26 * k) {
       const f = this.furrows[Math.floor(Math.random() * this.furrows.length)]
-      _a.copy(f.a).lerp(f.b, Math.random()).setY(0.3)
+      onGround(p.contact, _a.copy(f.a).lerp(f.b, Math.random()), 0.3)
       p.billows.emit({ count: 1, at: _a, jitter: 0.3, dir: _up, spread: 0.3, speed: [0.8, 2.2], life: [0.6, 1.2], size: [0.6, 2.4], heat: 1900 + 600 * k, drag: 1.8, buoyancy: 3.5, tone: 0.2, opacity: 0.3 })
       p.sparks.emit({ count: 2, at: _a, dir: _up, spread: 0.5, speed: [0.8, 3], life: [0.8, 2], size: 0.012, drag: 1.5, gravity: -0.2, palette: 0 })
-      if (Math.random() < 0.5) p.haze.emit({ at: _b.copy(_a).setY(1.2), jitter: 0.6, size: [1.8, 3.4], rise: 1.6, life: [0.7, 1.2], strength: 0.3 + 0.7 * k })
+      if (Math.random() < 0.5) p.haze.emit({ at: onGround(p.contact, _b.copy(_a), 1.2), jitter: 0.6, size: [1.8, 3.4], rise: 1.6, life: [0.7, 1.2], strength: 0.3 + 0.7 * k })
     }
     if (this.burning === 0) this.fire.update(0)
   }
 
   private standing(frame: CombatFrame, out: Vector3): Vector3 {
     const s = frame.state
-    return out.set(s.pos.x + Math.sin(s.yaw) * this.p.robotOffset, 0, s.pos.z + Math.cos(s.yaw) * this.p.robotOffset)
+    return out.set(s.pos.x + Math.sin(s.yaw) * this.p.robotOffset, s.pos.y, s.pos.z + Math.cos(s.yaw) * this.p.robotOffset)
   }
 }
 

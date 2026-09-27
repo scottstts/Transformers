@@ -2,6 +2,7 @@ import { CustomBlending, DynamicDrawUsage, InstancedBufferAttribute, OneFactor, 
 import { clamp, exp, float, instancedBufferAttribute, max, mix, pow, select, smoothstep, uniform, uv, vec2, vec3 } from 'three/tsl'
 import { N } from '../../../../rendering/noise.ts'
 import { blackbody } from '../../../../rendering/blackbody.ts'
+import { FLAT_GROUND, type Ground } from '../../../../game/ground'
 
 /** Pool size: bursts overwrite the oldest billows. */
 const MAX = 1024
@@ -55,6 +56,10 @@ export class Billows {
   private cursor = 0
   private liveUntil = -1
   private readonly a: InstancedBufferAttribute[]
+  /** the ground's height under each puff's birth: it rolls along it, never into it */
+  private readonly floor: InstancedBufferAttribute
+  /** the ground the billows roll over */
+  ground: Ground = FLAT_GROUND
 
   constructor() {
     this.a = [0, 1, 2, 3].map(() => {
@@ -64,6 +69,9 @@ export class Billows {
     })
     for (let i = 0; i < MAX; i++) this.a[0].array[i * 4 + 3] = 1e9
     const [p0, v0, k, s] = this.a.map((a) => instancedBufferAttribute(a, 'vec4') as any)
+    this.floor = new InstancedBufferAttribute(new Float32Array(MAX), 1)
+    this.floor.setUsage(DynamicDrawUsage)
+    const floor = instancedBufferAttribute(this.floor, 'float') as any
 
     const m = new SpriteNodeMaterial({ transparent: true, depthWrite: false, fog: false })
     m.blending = CustomBlending
@@ -82,7 +90,7 @@ export class Billows {
     const lift = vec3(0, s.x, 0).div(drag).mul(t.sub(reach))
     const size = k.x.add(k.y.sub(k.x).mul(float(1).sub(pow(float(1).sub(u), 2.2))))
     const pos = p0.xyz.add(v0.xyz.mul(reach)).add(lift)
-    m.positionNode = select(alive, vec3(pos.x, max(pos.y, size.mul(0.3)), pos.z), vec3(0, -1000, 0))
+    m.positionNode = select(alive, vec3(pos.x, max(pos.y, floor.add(size.mul(0.3))), pos.z), vec3(0, -1000, 0))
     m.scaleNode = size
     m.rotationNode = s.y.mul(6.283).add(t.mul(s.y.sub(0.5).mul(0.6)))
 
@@ -118,6 +126,8 @@ export class Billows {
 
   emit(b: BillowBurst): void {
     const [A0, A1, A2, A3] = this.a.map((a) => a.array as Float32Array)
+    const F = this.floor.array as Float32Array
+    const ground = this.ground.height(b.at.x, b.at.z)
     const start = this.cursor
     for (let n = 0; n < b.count; n++) {
       const i = this.cursor
@@ -132,14 +142,16 @@ export class Billows {
       A1.set([_d.x * speed, _d.y * speed, _d.z * speed, life], i * 4)
       A2.set([b.size[0] * grow, b.size[1] * grow, b.heat * (0.85 + 0.3 * Math.random()), b.drag], i * 4)
       A3.set([b.buoyancy, Math.random(), b.tone, b.opacity], i * 4)
+      F[i] = ground
       this.liveUntil = Math.max(this.liveUntil, this.clock + life)
     }
     const count = Math.min(b.count, MAX)
-    for (const a of this.a) {
-      if (start + count <= MAX) a.addUpdateRange(start * 4, count * 4)
+    for (const a of [...this.a, this.floor]) {
+      const n = a.itemSize
+      if (start + count <= MAX) a.addUpdateRange(start * n, count * n)
       else {
-        a.addUpdateRange(start * 4, (MAX - start) * 4)
-        a.addUpdateRange(0, (start + count - MAX) * 4)
+        a.addUpdateRange(start * n, (MAX - start) * n)
+        a.addUpdateRange(0, (start + count - MAX) * n)
       }
       a.needsUpdate = true
     }

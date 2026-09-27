@@ -1,6 +1,7 @@
 import { Group, PointLight, Vector3 } from 'three/webgpu'
 import type { AudioMix } from '../../../audio/mix'
 import type { ContactEffects } from '../../../game/contact-effects'
+import { groundRay, onGround } from '../../../game/ground'
 import type { CombatFrame } from '../../transformer/combat/effects'
 import type { Weapon } from '../../transformer/combat/weapon'
 import type { Sparks } from '../../transformer/combat/fx/sparks'
@@ -226,9 +227,10 @@ export class Gunnery {
       _v.copy(_u).multiplyScalar(Math.cos(a)).addScaledVector(_s, Math.sin(a)).addScaledVector(dir, 0.35).normalize()
       p.billows.emit({ count: 1, at, jitter: 0.2, dir: _v, spread: 0.1, speed: [6, 11], life: [1.2, 2.2], size: [0.6, 2.6], heat: 600, drag: 3.2, buoyancy: 0.4, tone: 0.4, opacity: 0.32 })
     }
-    if (at.y < 7) {
-      _a.set(at.x, 0, at.z).addScaledVector(_v.set(dir.x, 0, dir.z).normalize(), 1.5)
-      p.contact.surge(_a, 1.6 + 1.2 * strength, 0.4 * strength * (1 - at.y / 8))
+    const height = at.y - p.contact.height(at.x, at.z)
+    if (height < 7) {
+      onGround(p.contact, _a.set(at.x, 0, at.z).addScaledVector(_v.set(dir.x, 0, dir.z).normalize(), 1.5))
+      p.contact.surge(_a, 1.6 + 1.2 * strength, 0.4 * strength * (1 - height / 8))
     }
     frame.camera.shockwave(at, 0.3 * strength)
     frame.camera.kick(0.55 * strength)
@@ -239,7 +241,7 @@ export class Gunnery {
     // the slug: to the first body along it, the sand, or its fuse
     const range = Math.min(fuse, SLUG.range)
     const body = frame.probe?.(at, dir, range) ?? Infinity
-    const ground = dir.y < -1e-3 ? -at.y / dir.y : Infinity
+    const ground = groundRay(p.contact, at, dir, range)
     const hit = Math.min(body, ground, range)
     const to = _b.copy(at).addScaledVector(dir, hit)
     const flight = this.tracers.fire({ from: at, to, speed: SLUG.speed, width: SLUG.width * strength, streak: SLUG.streak, palette: 1, linger: SLUG.linger })
@@ -297,7 +299,7 @@ export class Gunnery {
     this.light.position.copy(muzzle)
     // where it strikes: a body, the sand or nothing
     const body = frame.probe?.(muzzle, dir, ROUND.range) ?? Infinity
-    const ground = dir.y < -1e-3 ? -muzzle.y / dir.y : Infinity
+    const ground = groundRay(p.contact, muzzle, dir, ROUND.range)
     const hit = Math.min(body, ground, ROUND.range)
     const to = _b.copy(muzzle).addScaledVector(dir, hit)
     const flight = this.tracers.fire({ from: muzzle, to, speed: ROUND.speed, width: ROUND.width, streak: ROUND.streak, palette: 0 })
@@ -328,7 +330,7 @@ export class Gunnery {
       if (hit.on === 'ground') {
         p.contact.burst(hit.at, 0.7, 8)
         p.sparks.emit({ count: 5, at: hit.at, dir: _up, spread: 0.6, speed: [3, 9], life: [0.12, 0.35], size: 0.012, drag: 2, gravity: 1, palette: 0 })
-        p.billows.emit({ count: 1, at: _a.copy(hit.at).setY(0.3), jitter: 0.3, dir: _up, spread: 0.4, speed: [1.5, 4], life: [0.9, 1.8], size: [0.4, 1.9], heat: 0, drag: 2.5, buoyancy: 0.3, tone: 1, opacity: 0.35 })
+        p.billows.emit({ count: 1, at: onGround(p.contact, _a.copy(hit.at), 0.3), jitter: 0.3, dir: _up, spread: 0.4, speed: [1.5, 4], life: [0.9, 1.8], size: [0.4, 1.9], heat: 0, drag: 2.5, buoyancy: 0.3, tone: 1, opacity: 0.35 })
       } else if (hit.on === 'body') {
         // a heavy round on light armour: sparks thrown back off it, a puff of the plate's paint and dust
         p.sparks.emit({ count: 16, at: hit.at, dir: _up, spread: 0.85, speed: [2, 11], life: [0.12, 0.45], size: 0.016, drag: 2.5, gravity: 0.8, palette: 0, jitter: 0.2 })
@@ -352,7 +354,7 @@ export class Gunnery {
     const p = this.p
     const cam = frame.camera
     if (!air) {
-      at.y = 0
+      onGround(p.contact, at)
       p.contact.crater(at, CRATER * strength, 0.55 * strength)
       p.contact.surge(at, 2.6 * strength, 0.6 * strength)
       p.contact.eject(at, 15 * strength, Math.round(36 * strength), _up, 0.62, 0.5)

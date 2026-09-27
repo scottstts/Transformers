@@ -488,7 +488,7 @@ export class RobotCombat {
 
   /** The move's ground frame starts at the robot's standing point, facing `heading`. */
   private setGround(state: MotionState, heading: number): void {
-    this.origin.set(state.pos.x + Math.sin(state.yaw) * this.robotOffset, 0, state.pos.z + Math.cos(state.yaw) * this.robotOffset)
+    this.origin.set(state.pos.x + Math.sin(state.yaw) * this.robotOffset, state.pos.y, state.pos.z + Math.cos(state.yaw) * this.robotOffset)
     this.heading = heading
     const v = this.player.values
     v[CH.advance] = 0

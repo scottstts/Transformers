@@ -148,7 +148,7 @@ export class Director {
     const eye = this.framePoint(shot.eyeFrame ?? 'ground', this.eye.at(time, _eye), subject, this.eyeBase, shot.lag ?? 0, dt)
     const target = this.framePoint(shot.lookFrame ?? 'ground', this.look.at(time, _look), subject, this.lookBase, shot.lag ?? 0, dt)
     this.primed = true
-    eye.y = Math.max(eye.y, FLOOR)
+    eye.y = Math.max(eye.y, this.origin.y + FLOOR)
     this.matrix.lookAt(eye, target, _up)
     this.quaternion.setFromRotationMatrix(this.matrix)
     const roll = this.roll.at(time)

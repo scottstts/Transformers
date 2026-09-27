@@ -21,7 +21,8 @@ export class CarBarrier {
 
   apply(state: MotionState, forts: Forts, maxSpeed: number, carForm: boolean): void {
     this.holding = false
-    forts.list.forEach((fort, i) => {
+    for (let i = 0; i < forts.list.length; i++) {
+      const fort = forts.list[i]
       const s = fort.plan.site
       const R = fort.plan.barrier
       const dx = state.pos.x - s.x, dz = state.pos.z - s.z
@@ -29,7 +30,7 @@ export class CarBarrier {
       // where the car stands relative to the ring; a robot is only tracked
       const out = (this.outside[i] ?? d >= R) || d >= R
       this.outside[i] = carForm ? out : d >= R
-      if (!carForm || !out || d > R + BARRIER_BAND) return
+      if (!carForm || !out || d > R + BARRIER_BAND) continue
       const nx = dx / Math.max(d, 1e-4), nz = dz / Math.max(d, 1e-4)
       // the car's velocity toward the fort: its forward speed and its sideways slide
       const fx = Math.sin(state.yaw), fz = Math.cos(state.yaw)
@@ -49,6 +50,6 @@ export class CarBarrier {
         state.pos.z = s.z + nz * R
         this.holding = true
       }
-    })
+    }
   }
 }

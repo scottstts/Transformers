@@ -1,5 +1,6 @@
 import { AdditiveBlending, DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicNodeMaterial, PlaneGeometry, Vector3 } from 'three/webgpu'
 import { Fn, cameraPosition, clamp, cross, exp, float, instancedBufferAttribute, max, mix, normalize, positionLocal, select, smoothstep, uniform, uv, vec3 } from 'three/tsl'
+import { FLAT_GROUND, type Ground } from '../../../../game/ground'
 
 /** Pool size: bursts overwrite the oldest sparks. */
 const MAX = 768
@@ -45,7 +46,11 @@ export class Sparks {
   private readonly a0: InstancedBufferAttribute
   private readonly a1: InstancedBufferAttribute
   private readonly a2: InstancedBufferAttribute
+  /** the ground's height under each spark's birth: where it lands */
+  private readonly floor: InstancedBufferAttribute
   private liveUntil = -1
+  /** the ground the sparks land on */
+  ground: Ground = FLAT_GROUND
 
   constructor() {
     const quad = new PlaneGeometry(1, 1)
@@ -62,11 +67,14 @@ export class Sparks {
     this.a0 = make()
     this.a1 = make()
     this.a2 = make()
+    this.floor = new InstancedBufferAttribute(new Float32Array(MAX), 1)
+    this.floor.setUsage(DynamicDrawUsage)
     // unborn sparks: born in the far future, so they are culled
     for (let i = 0; i < MAX; i++) this.a0.array[i * 4 + 3] = 1e9
     const p0 = instancedBufferAttribute(this.a0, 'vec4') as any
     const v0 = instancedBufferAttribute(this.a1, 'vec4') as any
     const k = instancedBufferAttribute(this.a2, 'vec4') as any
+    const floor = (instancedBufferAttribute(this.floor, 'float') as any).add(0.015)
 
     const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending, fog: false })
     const age = this.time.sub(p0.w)
@@ -79,9 +87,9 @@ export class Sparks {
     const reach = float(1).sub(decay).div(drag)
     const vel = v0.xyz.mul(decay).add(g.div(drag).mul(float(1).sub(decay)))
     const pos = p0.xyz.add(v0.xyz.mul(reach)).add(g.div(drag).mul(t.sub(reach)))
-    const ground = max(pos.y, 0.015)
+    const ground = max(pos.y, floor)
     const center = vec3(pos.x, ground, pos.z)
-    const onGround = pos.y.lessThan(0.015)
+    const onGround = pos.y.lessThan(floor)
     const moving = select(onGround, vec3(vel.x, 0, vel.z).mul(0.25), vel)
     const speed = moving.length()
     const axis = normalize(moving.add(vec3(0, 1e-4, 0)))
@@ -118,6 +126,8 @@ export class Sparks {
     const a0 = this.a0.array as Float32Array
     const a1 = this.a1.array as Float32Array
     const a2 = this.a2.array as Float32Array
+    const floor = this.floor.array as Float32Array
+    const ground = this.ground.height(b.at.x, b.at.z)
     const start = this.cursor
     for (let n = 0; n < b.count; n++) {
       const i = this.cursor
@@ -140,14 +150,16 @@ export class Sparks {
       a2[i * 4 + 1] = b.drag
       a2[i * 4 + 2] = b.gravity
       a2[i * 4 + 3] = b.palette
+      floor[i] = ground
       this.liveUntil = Math.max(this.liveUntil, this.clock + life)
     }
     const count = Math.min(b.count, MAX)
-    for (const a of [this.a0, this.a1, this.a2]) {
-      if (start + count <= MAX) a.addUpdateRange(start * 4, count * 4)
+    for (const a of [this.a0, this.a1, this.a2, this.floor]) {
+      const n = a.itemSize
+      if (start + count <= MAX) a.addUpdateRange(start * n, count * n)
       else {
-        a.addUpdateRange(start * 4, (MAX - start) * 4)
-        a.addUpdateRange(0, (start + count - MAX) * 4)
+        a.addUpdateRange(start * n, (MAX - start) * n)
+        a.addUpdateRange(0, (start + count - MAX) * n)
       }
       a.needsUpdate = true
     }

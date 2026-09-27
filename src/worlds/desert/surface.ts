@@ -7,6 +7,7 @@ import { Footprints } from './footprints.ts'
 import { ScorchMarks } from './scorch.ts'
 import { Debris } from './debris.ts'
 import type { PavedGround } from './paved-ground.ts'
+import type { DesertTerrain } from './terrain.ts'
 
 /** Tread slide (m/s) at which a track reads as fully scraped. */
 const FULL_SCRAPE = 5
@@ -28,16 +29,22 @@ export class DesertSurface implements ContactEffects {
   readonly debris: Debris
 
   private readonly paving: PavedGround | null
+  private readonly terrain: DesertTerrain
 
-  /** `paving`: where the floor is paved (a blast marks concrete as concrete, and throws concrete) */
-  constructor(scene: Scene, paving: PavedGround | null = null) {
+  /** `paving`: where the floor is paved (a blast marks concrete as concrete, and throws concrete); `terrain`: the landform every mark lies on */
+  constructor(scene: Scene, paving: PavedGround | null, terrain: DesertTerrain) {
     this.paving = paving
-    this.dust = new Dust(scene)
-    this.grit = new Grit(scene)
-    this.tracks = new TyreTracks(scene)
-    this.footprints = new Footprints(scene)
-    this.scorch = new ScorchMarks(scene, paving)
-    this.debris = new Debris(scene)
+    this.terrain = terrain
+    this.dust = new Dust(scene, terrain)
+    this.grit = new Grit(scene, terrain)
+    this.tracks = new TyreTracks(scene, terrain)
+    this.footprints = new Footprints(scene, terrain)
+    this.scorch = new ScorchMarks(scene, paving, terrain)
+    this.debris = new Debris(scene, terrain)
+  }
+
+  height(x: number, z: number): number {
+    return this.terrain.height(x, z)
   }
 
   tyre(wheel: number, c: TyreContact, dt: number): void {

@@ -1,5 +1,5 @@
 import { DoubleSide, MeshBasicNodeMaterial, MeshStandardNodeMaterial, type Material } from 'three/webgpu'
-import { asin, atan, attribute, color, float, fwidth, max, min, mix, normalWorld, positionWorld, smoothstep, abs, fract, vec2 } from 'three/tsl'
+import { asin, atan, attribute, color, cross, dFdx, dFdy, dot, float, fwidth, length, max, min, mix, normalView, normalWorld, normalize, positionView, positionWorld, sign, smoothstep, abs, fract, vec2 } from 'three/tsl'
 import { N } from '../../../rendering/noise'
 
 /**
@@ -12,6 +12,48 @@ import { N } from '../../../rendering/noise'
  */
 
 const SAND = color(0xc3a57c)
+
+/**
+ * The surface's normal bumped by a relief (`height`, m, in world space: the
+ * modules carry no UVs), from the relief's and the surface's screen-space
+ * derivatives (Mikkelsen's surface gradient). Its inputs are band-limited
+ * (mipmapped noise; analytic features faded by their footprint), so it never
+ * aliases. The geometry's own normal (corrugation, facets) stays underneath.
+ */
+function relief(height) {
+  const p = positionView
+  const n = normalView
+  const dpx = dFdx(p), dpy = dFdy(p)
+  const r1 = cross(dpy, n), r2 = cross(n, dpx)
+  const det = dot(dpx, r1)
+  const grad = sign(det).mul(r1.mul(dFdx(height)).add(r2.mul(dFdy(height))))
+  return normalize(abs(det).mul(n).sub(grad))
+}
+
+/** The in-plane coordinates of a vertical face (along it, and up), and how vertical it is. */
+function facePlane() {
+  const p = positionWorld
+  const n = normalWorld
+  const u = mix(p.x, p.z, abs(n.x).greaterThan(abs(n.z)).select(float(1), float(0)))
+  return { u, v: p.y, vertical: float(1).sub(smoothstep(0.3, 0.6, abs(n.y))) }
+}
+
+/**
+ * Cast concrete's surface: the pores, the lift lines where one pour met the
+ * next (a groove every 1.2 m of height) and the plugged form-tie holes left
+ * by the shuttering (0.6 by 0.75 m), each faded out once it is under a pixel.
+ */
+function concreteRelief(pores) {
+  const { u, v, vertical } = facePlane()
+  const cell = vec2(u.div(0.6), v.div(0.75))
+  const hole = length(fract(cell.add(vec2(0.5, 0.25))).sub(0.5).mul(vec2(0.6, 0.75)))
+  const holeSeen = float(1).sub(smoothstep(0.03, 0.08, max(fwidth(cell.x), fwidth(cell.y))))
+  const holes = smoothstep(0.024, 0.014, hole).mul(holeSeen).mul(-0.01)
+  const lift = abs(fract(v.div(1.2).add(0.5)).sub(0.5)).mul(1.2)
+  const liftSeen = float(1).sub(smoothstep(0.004, 0.012, fwidth(v)))
+  const lines = smoothstep(0.012, 0.003, lift).mul(liftSeen).mul(-0.004)
+  return relief(pores.mul(0.0025).add(holes.add(lines).mul(vertical)))
+}
 
 function dust(amount = 1) {
   const p = positionWorld
@@ -35,6 +77,7 @@ function concrete(): Material {
   m.colorNode = mix(base, SAND, dust(0.9))
   m.roughnessNode = float(0.86).add(pores.mul(0.08))
   m.metalnessNode = float(0)
+  m.normalNode = concreteRelief(pores)
   return m
 }
 
@@ -48,6 +91,9 @@ function steel(tone: number): Material {
   m.colorNode = mix(mix(paint, rust, chip.mul(0.8)), SAND, dust(0.6))
   m.metalnessNode = mix(float(0.35), float(0.2), chip)
   m.roughnessNode = float(0.55).add(chip.mul(0.3))
+  // shallow dents in the sheet, and the paint's edge where it has chipped off
+  const dents = N(p.xz.mul(0.6).add(p.y.mul(0.45))).a
+  m.normalNode = relief(dents.mul(0.004).sub(chip.mul(0.0012)))
   return m
 }
 
@@ -77,6 +123,8 @@ function containerPaint(): Material {
   m.colorNode = mix(mix(livery.mul(bleach.mul(0.14).add(0.9)), rust, scratch.mul(0.7)), SAND, dust(0.7))
   m.metalnessNode = float(0.3).sub(scratch.mul(0.1))
   m.roughnessNode = float(0.58).add(bleach.mul(0.12)).add(scratch.mul(0.2))
+  // scratches score the paint
+  m.normalNode = relief(scratch.mul(-0.0008).add(bleach.mul(0.002)))
   return m
 }
 
@@ -117,6 +165,8 @@ function wood(): Material {
   m.colorNode = mix(grey.mul(grain.mul(0.14).add(0.92)), SAND, dust(0.6))
   m.metalnessNode = float(0)
   m.roughnessNode = float(0.84).add(grain.mul(0.1))
+  // weathered grain stands proud of the softer wood between
+  m.normalNode = relief(grain.mul(0.0015))
   return m
 }
 
@@ -145,6 +195,8 @@ function plaster(): Material {
   m.colorNode = mix(base, SAND, dust(0.8))
   m.metalnessNode = float(0)
   m.roughnessNode = float(0.9)
+  // the render's trowelled texture
+  m.normalNode = relief(texture.mul(0.004))
   return m
 }
 
@@ -199,9 +251,12 @@ function sandbag(): Material {
   const shade = attribute('shade', 'float')
   const m = new MeshStandardNodeMaterial()
   const tone = mix(color(0x8f7c5b), color(0xaa9670), shade)
-  m.colorNode = mix(tone.mul(N(vec2(p.x.add(p.z).mul(5.3), p.y.mul(5.3))).b.mul(0.1).add(0.95)), SAND, dust(0.7))
+  const weave = N(vec2(p.x.add(p.z).mul(5.3), p.y.mul(5.3))).b
+  m.colorNode = mix(tone.mul(weave.mul(0.1).add(0.95)), SAND, dust(0.7))
   m.metalnessNode = float(0)
   m.roughnessNode = float(0.95)
+  // the sacks' lumpy fill under the weave
+  m.normalNode = relief(weave.mul(0.006))
   return m
 }
 
@@ -225,6 +280,8 @@ function pavement(): Material {
   m.colorNode = mix(base, SAND, min(float(0.85), drift.mul(0.7).add(side.mul(0.4))))
   m.metalnessNode = float(0)
   m.roughnessNode = float(0.78).add(grain.mul(0.1)).sub(oil.mul(0.3))
+  // a broom-finished slab's grain, filled smooth where sand has drifted over it
+  m.normalNode = relief(grain.mul(0.0015).mul(float(1).sub(drift.mul(0.7))))
   return m
 }
 

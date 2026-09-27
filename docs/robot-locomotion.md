@@ -59,3 +59,7 @@ The timeline takes the forward momentum at take-off (speed over run speed). Timi
 - **Ground contact.** The airborne height reaches the model as the gait's `air` channel, on top of the live foot contact.
 
 All pose channels stay continuous through take-off and touchdown at standing, walking and running speed (tested against rate bounds that catch one-frame resets).
+
+## On the ground's relief
+
+Once the car form is half gone, the robot stands at the ground's height under its standing point (`game/ground-follow.ts`), eased while it transforms and exact once it stands; a jump's height is added to it. It stays upright on a slope: the car's tilt fades out over the first half of the transformation. There is no foot IK. The feet are placed relative to the body's footing, so on the steeper dune faces a foot can sink or float by a few centimetres over a stride. The fortress, where the fighting is, is level.

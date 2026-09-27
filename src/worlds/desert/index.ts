@@ -6,7 +6,7 @@ export function createDesertWorld(scene: Scene) {
   const world = new DesertWorld(scene)
   return {
     world,
-    contactEffects: new DesertSurface(scene, world.forts.paving),
+    contactEffects: new DesertSurface(scene, world.forts.paving, world.terrain),
     environmentScene: createDesertEnvironmentScene,
   }
 }

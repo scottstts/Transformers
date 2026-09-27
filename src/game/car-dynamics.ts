@@ -2,6 +2,7 @@ import type { Vector3 } from 'three/webgpu'
 import type { MotionState } from './types'
 import { clamp, damp, easedRange } from './math'
 import type { DriveProfile, TrailerProfile } from '../content/transformer/character'
+import { FLAT_GROUND, type Ground } from './ground'
 
 /**
  * Car handling: a dynamic single-track (bicycle) model. The body carries
@@ -32,6 +33,16 @@ import type { DriveProfile, TrailerProfile } from '../content/transformer/charac
  * same hands catch the slide. Past the widest angle a driver would hold, a
  * restoring yaw keeps the car from spinning at speed; a slow power slide can
  * still turn into a donut.
+ *
+ * The car rides the ground's relief on a spring-damper suspension (ride
+ * frequency, damping, bump stops). The ground is measured under both axles
+ * and both sides, so bumps shorter than the car average out; its support
+ * pushes along the ground's normal, so a slope pulls the car down it and a
+ * landing on a rising face knocks speed off. The tyres grip in proportion to
+ * the load the suspension carries: light over a crest, heavy in a dip, none
+ * in the air. Where the ground falls away faster than gravity can follow,
+ * the springs top out and the car flies (yaw rate kept, no tyre forces) until
+ * it lands into its bump stops.
  *
  * Integrated in fixed sub-steps, so handling does not change with frame rate.
  */
@@ -83,9 +94,26 @@ const DRIFT_LIMIT = 0.9
 const DRIFT_LIMIT_GAIN = 14
 /** The restoring yaw fades in with speed, so a slow power slide can still turn into a donut (m/s). */
 const DRIFT_LIMIT_SPEED: [number, number] = [7, 14]
+/** Suspension damping ratio, and the bump stops' stiffness as a multiple of the spring. */
+const DAMPING = 0.42
+const BUMP_STOP = 30
+/** Past this share of the bump travel the body can go no lower (the stops are solid). */
+const BOTTOM = 1.6
+/**
+ * Attitude: on the ground it follows the ground's plane through a stiff,
+ * lightly damped spring (a landing rocks it; plain tracking has no lag). In
+ * the air the pitch eases toward half the flight path (nose down as it
+ * falls) and the roll levels.
+ */
+const TILT_FREQUENCY = 2.6
+const TILT_DAMPING = 0.38
+const AIR_PITCH = 0.5
+const AIR_PITCH_GAIN = 8
+const AIR_ROLL_GAIN = 4
+const AIR_DAMPING = 5
 
 /** One driver-command evaluation per frame; the sub-steps integrate it. */
-export function updateCar(state: MotionState, input: CarControls, dt: number, locked: boolean, car: DriveProfile): void {
+export function updateCar(state: MotionState, input: CarControls, dt: number, locked: boolean, car: DriveProfile, ground: Ground = FLAT_GROUND): void {
   const throttle = locked ? 0 : input.driveThrottle
   const loose = !locked && input.driftHeld
   state.throttle = throttle
@@ -103,7 +131,9 @@ export function updateCar(state: MotionState, input: CarControls, dt: number, lo
   const h = dt / steps
   let ax = 0
   let ay = 0
+  state.impact = 0
   for (let i = 0; i < steps; i++) {
+    suspend(state, car, ground, h)
     step(state, car, throttle, locked, h)
     if (car.trailer) trail(state, car.trailer, h)
     ax += state.longAccel
@@ -131,6 +161,126 @@ export function updateCar(state: MotionState, input: CarControls, dt: number, lo
   state.rollV += ((targetRoll - state.roll) * 60 - state.rollV * 9) * dt
   state.pitch += state.pitchV * dt
   state.roll += state.rollV * dt
+  attitude(state, car, ground, dt)
+}
+
+/** The ground under the car (`under`): height at the centre of mass, rise per m forward and to the left. */
+const under = { h: 0, forward: 0, left: 0, pitch: 0, roll: 0 }
+function measure(state: MotionState, car: DriveProfile, ground: Ground): void {
+  const fx = Math.sin(state.yaw), fz = Math.cos(state.yaw)
+  const a = car.frontAxle, b = car.wheelbase - a, half = car.track / 2
+  const x = state.pos.x, z = state.pos.z
+  const hF = ground.height(x + fx * a, z + fz * a)
+  const hR = ground.height(x - fx * b, z - fz * b)
+  // left = (fz, -fx)
+  const hL = ground.height(x + fz * half, z - fx * half)
+  const hS = ground.height(x - fz * half, z + fx * half)
+  under.h = 0.5 * (hF * b + hR * a) / car.wheelbase + 0.25 * (hL + hS)
+  under.forward = (hF - hR) / car.wheelbase
+  under.left = (hL - hS) / car.track
+  under.pitch = -Math.atan(under.forward)
+  under.roll = Math.atan(under.left)
+}
+
+/** The ground's support this step (per unit mass, along its normal), for `step`: forward, leftward and upward parts. */
+const support = { forward: 0, left: 0 }
+
+/**
+ * The body on its springs over the ground: the support they give (none once
+ * they top out: the car is in the air), the body's vertical motion under it
+ * and gravity, the tyres' load, and a landing's closing speed.
+ */
+function suspend(state: MotionState, car: DriveProfile, ground: Ground, h: number): void {
+  measure(state, car, ground)
+  const w = 2 * Math.PI * car.rideFrequency
+  const k = w * w
+  const c = 2 * DAMPING * w
+  const sag = G / k
+  const g = under.h
+  const vg = (g - state.ground) / h
+  state.ground = g
+  const s = state.body - g
+  const closing = state.vy - vg
+  let force = 0
+  if (s < sag) {
+    force = G - k * s - c * closing
+    if (s < -car.bump) force += BUMP_STOP * k * (-car.bump - s) - BUMP_STOP * 0.2 * c * Math.min(0, closing)
+    force = Math.max(0, force)
+  }
+  const norm = Math.sqrt(1 + under.forward * under.forward + under.left * under.left)
+  state.vy += (force / norm - G) * h
+  state.body += state.vy * h
+  if (state.body - g < -car.bump * BOTTOM) {
+    state.body = g - car.bump * BOTTOM
+    state.vy = Math.max(state.vy, vg)
+  }
+  const extension = state.body - g
+  const airborne = extension >= sag && force === 0
+  if (state.airborne && !airborne) state.impact = Math.max(state.impact, -closing)
+  state.airborne = airborne
+  state.load = force / G
+  state.lift = Math.min(extension, sag)
+  state.pos.y = airborne ? state.body - sag : g
+  support.forward = -force * under.forward / norm
+  support.left = -force * under.left / norm
+}
+
+/** The car's attitude from the ground's plane (or its flight), per frame. */
+function attitude(state: MotionState, car: DriveProfile, ground: Ground, dt: number): void {
+  if (state.airborne) {
+    const flight = -Math.atan2(state.vy, Math.max(Math.abs(state.speed), 1)) * AIR_PITCH
+    state.tiltPitchV += ((flight - state.tiltPitch) * AIR_PITCH_GAIN - state.tiltPitchV * AIR_DAMPING) * dt
+    state.tiltRollV += (-state.tiltRoll * AIR_ROLL_GAIN - state.tiltRollV * AIR_DAMPING) * dt
+    state.tiltPitch += state.tiltPitchV * dt
+    state.tiltRoll += state.tiltRollV * dt
+    return
+  }
+  // the ground's own pitch and roll rates (measured a frame's travel back), fed forward so the spring only carries the error
+  const fx = Math.sin(state.yaw), fz = Math.cos(state.yaw)
+  const vx = fx * state.speed + fz * state.lateral, vz = fz * state.speed - fx * state.lateral
+  const x = state.pos.x, z = state.pos.z, yaw = state.yaw
+  state.pos.x = x - vx * dt
+  state.pos.z = z - vz * dt
+  state.yaw = yaw - state.yawRate * dt
+  measure(state, car, ground)
+  const lastPitch = under.pitch, lastRoll = under.roll
+  state.pos.x = x
+  state.pos.z = z
+  state.yaw = yaw
+  measure(state, car, ground)
+  const pitchRate = (under.pitch - lastPitch) / dt, rollRate = (under.roll - lastRoll) / dt
+  const w = 2 * Math.PI * TILT_FREQUENCY
+  let e = state.tiltPitch - under.pitch, eV = state.tiltPitchV - pitchRate
+  eV += (-w * w * e - 2 * TILT_DAMPING * w * eV) * dt
+  e += eV * dt
+  state.tiltPitch = under.pitch + e
+  state.tiltPitchV = pitchRate + eV
+  e = state.tiltRoll - under.roll
+  eV = state.tiltRollV - rollRate
+  eV += (-w * w * e - 2 * TILT_DAMPING * w * eV) * dt
+  e += eV * dt
+  state.tiltRoll = under.roll + e
+  state.tiltRollV = rollRate + eV
+}
+
+/**
+ * Stand the car at rest on the ground where it is (a spawn, a transformation
+ * back to the car): body on its springs, level with the ground's plane.
+ */
+export function placeCar(state: MotionState, car: DriveProfile, ground: Ground): void {
+  measure(state, car, ground)
+  state.ground = under.h
+  state.body = under.h
+  state.pos.y = under.h
+  state.vy = 0
+  state.lift = 0
+  state.load = 1
+  state.airborne = false
+  state.impact = 0
+  state.tiltPitch = under.pitch
+  state.tiltRoll = under.roll
+  state.tiltPitchV = 0
+  state.tiltRollV = 0
 }
 
 /**
@@ -170,13 +320,16 @@ function step(state: MotionState, car: DriveProfile, throttle: number, locked: b
   if (braking && Math.abs(demand) * h > au) demand = -u / h
   const coasting = !throttle && !locked
 
-  // axle loads (per unit mass): static split, load transfer, downforce
+  // axle loads (per unit mass): static split, load transfer, downforce; all carried by the springs (none in the air)
+  const load = state.load
   const aero = 1 + car.downforce * u * u
   const transfer = state.accel * car.cgHeight / car.wheelbase
-  const nF = Math.max(0.15 * G, G * b / car.wheelbase - transfer) * aero
-  const nR = Math.max(0.15 * G, G * a / car.wheelbase + transfer) * aero
-  const capF = car.grip * nF
-  const capR = car.grip * (1 + (car.driftGrip - 1) * state.release) * nR
+  const nF = Math.max(0.15 * G, G * b / car.wheelbase - transfer) * aero * load
+  const nR = Math.max(0.15 * G, G * a / car.wheelbase + transfer) * aero * load
+  const capF = Math.max(1e-6, car.grip * nF)
+  const capR = Math.max(1e-6, car.grip * (1 + (car.driftGrip - 1) * state.release) * nR)
+  // the aids deliver the demand only as far as the wheels are pressed on the ground
+  demand *= Math.min(1, load)
 
   // drive / brake per axle
   const release = state.release
@@ -233,15 +386,15 @@ function step(state: MotionState, car: DriveProfile, throttle: number, locked: b
   let yawAcc = (a * (fxF * sd + fyF * cd) - b * fyR) / car.yawInertia
   const beta = Math.atan2(v, Math.max(au, 0.5))
   const excess = beta - clamp(beta, -DRIFT_LIMIT, DRIFT_LIMIT)
-  if (u > 0) yawAcc += DRIFT_LIMIT_GAIN * excess * easedRange(Math.hypot(u, v), DRIFT_LIMIT_SPEED[0], DRIFT_LIMIT_SPEED[1])
+  if (u > 0) yawAcc += DRIFT_LIMIT_GAIN * excess * easedRange(Math.hypot(u, v), DRIFT_LIMIT_SPEED[0], DRIFT_LIMIT_SPEED[1]) * Math.min(1, load)
 
-  u += (bodyX + v * r) * h
-  v += (bodyY - u * r) * h
+  u += (bodyX + v * r + support.forward) * h
+  v += (bodyY - u * r + support.left) * h
   r += yawAcc * h
 
   // at walking pace the tyres just follow the steering geometry (the rear axle does not slip),
   // unless the rear is spinning: a donut pivots on the front wheels at a crawl
-  const kinematic = (1 - easedRange(Math.hypot(u, v), LOW_SPEED[0], LOW_SPEED[1])) * (1 - easedRange(Math.abs(spinR), 1, 3))
+  const kinematic = (1 - easedRange(Math.hypot(u, v), LOW_SPEED[0], LOW_SPEED[1])) * (1 - easedRange(Math.abs(spinR), 1, 3)) * Math.min(1, load)
   if (kinematic > 0) {
     const rKin = u * Math.tan(delta) / car.wheelbase
     r += (rKin - r) * kinematic

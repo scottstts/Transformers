@@ -118,9 +118,12 @@ export class CybertruckEffects implements CharacterEffects {
       this.tyres.update(state, this.contactEffects, dt)
       slide = Math.max(this.tyres.slideRear, this.tyres.slideFront)
       this.shake = Math.max(this.shake, Math.min(SLIDE_SHAKE_MAX, slide * SLIDE_SHAKE))
+      // a landing jolts the view by its closing speed
+      this.shake = Math.max(this.shake, Math.min(0.6, this.tyres.landing * 0.07))
     }
 
     const jets = this.thrusters
+    jets.floor = state.pos.y
     jets.update(t, dt)
     if (jets.impingement > 0.02) this.contactEffects.blast(jets.impact, jets.impingement, dt)
     this.shake = Math.max(this.shake, jets.power * 0.05)

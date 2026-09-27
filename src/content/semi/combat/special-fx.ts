@@ -1,6 +1,7 @@
 import { Vector3, type Object3D } from 'three/webgpu'
 import type { AudioMix } from '../../../audio/mix'
 import type { ContactEffects } from '../../../game/contact-effects'
+import { onGround } from '../../../game/ground'
 import type { CombatFrame } from '../../transformer/combat/effects'
 import type { MoveCue } from '../../transformer/combat/moves'
 import type { Sparks } from '../../transformer/combat/fx/sparks'
@@ -111,10 +112,10 @@ export class JuggernautFx {
   private gust(frame: CombatFrame, strength: number): void {
     const s = frame.state
     const f = this.p.robotOffset + 3.2
-    _a.set(s.pos.x + Math.sin(s.yaw) * f, 0, s.pos.z + Math.cos(s.yaw) * f)
+    _a.set(s.pos.x + Math.sin(s.yaw) * f, s.pos.y, s.pos.z + Math.cos(s.yaw) * f)
     _d.set(Math.sin(s.yaw), 0.25, Math.cos(s.yaw)).normalize()
     this.p.contact.burst(_a, 0.9 * strength, 14)
-    this.p.billows.emit({ count: Math.round(6 * strength), at: _a.setY(0.6), jitter: 1.2, dir: _d, spread: 0.3, speed: [4, 9], life: [1.2, 2], size: [0.8, 3.2], heat: 0, drag: 2, buoyancy: 0.2, tone: 1, opacity: 0.3 })
+    this.p.billows.emit({ count: Math.round(6 * strength), at: onGround(this.p.contact, _a, 0.6), jitter: 1.2, dir: _d, spread: 0.3, speed: [4, 9], life: [1.2, 2], size: [0.8, 3.2], heat: 0, drag: 2, buoyancy: 0.2, tone: 1, opacity: 0.3 })
   }
 
   /** The stamp: the ground heaves all round the robot. */
@@ -139,8 +140,8 @@ export class JuggernautFx {
       _d.set(Math.cos(a), 0.18, Math.sin(a)).normalize()
       p.billows.emit({ count: 1, at: _a.set(c.x + Math.cos(a) * 2, 0.4, c.z + Math.sin(a) * 2), jitter: 0.8, dir: _d, spread: 0.08, speed: [14, 24], life: [2.4, 3.6], size: [1.4, 6.5], heat: 0, drag: 1.4, buoyancy: 0.2, tone: 1, opacity: 0.36 })
     }
-    p.billows.emit({ count: 10, at: _a.copy(c).setY(1), jitter: 2.5, dir: _up, spread: 0.3, speed: [5, 14], life: [2, 3.2], size: [1.5, 5.5], heat: 0, drag: 1.2, buoyancy: 0.4, tone: 1, opacity: 0.3 })
-    p.sparks.emit({ count: 40, at: _a.copy(c).setY(0.3), dir: _up, spread: 0.8, speed: [4, 12], life: [0.3, 0.8], size: 0.02, drag: 1.5, gravity: 1, palette: 0, jitter: 2 })
+    p.billows.emit({ count: 10, at: onGround(p.contact, _a.copy(c), 1), jitter: 2.5, dir: _up, spread: 0.3, speed: [5, 14], life: [2, 3.2], size: [1.5, 5.5], heat: 0, drag: 1.2, buoyancy: 0.4, tone: 1, opacity: 0.3 })
+    p.sparks.emit({ count: 40, at: onGround(p.contact, _a.copy(c), 0.3), dir: _up, spread: 0.8, speed: [4, 12], life: [0.3, 0.8], size: 0.02, drag: 1.5, gravity: 1, palette: 0, jitter: 2 })
     frame.camera.shockwave(c, 1.1 * strength)
     frame.camera.flash(0.12, 0.2)
     frame.camera.kick(1)

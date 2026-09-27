@@ -74,9 +74,9 @@ function rayCylinder(ro, rd, base, axis, len, rad) {
   return vec2(tIn, select(h.lessThan(0), float(-1), tOut))
 }
 
-/** Distance along the ray to the ground plane (y = 0), or far when the ray climbs. */
-function groundHit(ro, rd) {
-  return select(rd.y.lessThan(-1e-4), ro.y.negate().div(rd.y), float(1e6))
+/** Distance along the ray to the ground's plane (height `floor`), or far when the ray climbs. */
+function groundHit(ro, rd, floor) {
+  return select(rd.y.lessThan(-1e-4), ro.y.sub(floor).negate().div(rd.y), float(1e6))
 }
 
 function volumeMaterial(): MeshBasicNodeMaterial {
@@ -106,6 +106,8 @@ export class PlasmaJet {
   private readonly time = uniform(0)
   private readonly top = uniform(0.2)
   private readonly bottom = uniform(1)
+  /** the ground's height under the jets: they end on it */
+  private readonly floor = uniform(0)
   private readonly quaternion = new Quaternion()
 
   constructor(seed: number) {
@@ -118,7 +120,7 @@ export class PlasmaJet {
       const rd = positionWorld.sub(ro).normalize()
       const tIn = positionWorld.sub(ro).length()
       const span = rayCylinder(ro, rd, this.origin, this.axis, this.length, this.bottom)
-      const tOut = min(span.y, groundHit(ro, rd))
+      const tOut = min(span.y, groundHit(ro, rd, this.floor))
       const dt = max(tOut.sub(tIn), 0).div(JET_STEPS)
       const up2 = cross(this.axis, this.side)
       const len = this.length
@@ -166,9 +168,10 @@ export class PlasmaJet {
     this.mesh.renderOrder = RENDER_ORDER
   }
 
-  /** Place the jet: port position, unit exhaust axis, a unit vector across it, throttle 0..1. */
-  set(origin: Vector3, axis: Vector3, side: Vector3, power: number, time: number): void {
+  /** Place the jet: port position, unit exhaust axis, a unit vector across it, throttle 0..1, the ground's height below. */
+  set(origin: Vector3, axis: Vector3, side: Vector3, power: number, time: number, floor: number): void {
     const len = jetLength(power)
+    this.floor.value = floor
     this.origin.value.copy(origin)
     this.axis.value.copy(axis)
     this.side.value.copy(side)
@@ -229,8 +232,8 @@ export class ImpingementSheet {
     this.mesh.renderOrder = RENDER_ORDER
   }
 
-  /** Two strike points on the ground and the sheet's strength 0..1. */
-  set(a: Vector3, b: Vector3, strength: number, time: number): void {
+  /** Two strike points on the ground (its height `floor`) and the sheet's strength 0..1. */
+  set(a: Vector3, b: Vector3, strength: number, time: number, floor: number): void {
     this.a.value.copy(a)
     this.b.value.copy(b)
     this.center.value.addVectors(a, b).multiplyScalar(0.5)
@@ -238,7 +241,7 @@ export class ImpingementSheet {
     this.reach.value = 0.22 + 0.3 * strength
     this.radius.value = (this.reach.value * 4.5 + a.distanceTo(b) * 0.5) * CIRCUMSCRIBE
     this.time.value = time
-    this.mesh.matrix.makeTranslation(this.center.value.x, SHEET_HEIGHT, this.center.value.z)
+    this.mesh.matrix.makeTranslation(this.center.value.x, floor + SHEET_HEIGHT, this.center.value.z)
     this.mesh.matrixWorldNeedsUpdate = true
   }
 }

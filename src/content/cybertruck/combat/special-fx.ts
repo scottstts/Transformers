@@ -210,7 +210,7 @@ export class SkyfallFx {
   /** The robot's standing point on the ground. */
   private standing(frame: CombatFrame, out: Vector3): Vector3 {
     const s = frame.state
-    return out.set(s.pos.x + Math.sin(s.yaw) * this.p.robotOffset, 0, s.pos.z + Math.cos(s.yaw) * this.p.robotOffset)
+    return out.set(s.pos.x + Math.sin(s.yaw) * this.p.robotOffset, s.pos.y, s.pos.z + Math.cos(s.yaw) * this.p.robotOffset)
   }
 }
 

@@ -48,11 +48,16 @@ export const F1_PROFILE: CharacterProfile = {
     rollGain: 0.002,
     rollLimit: 0.02,
     pivotHeight: 0.3,
+    track: 1.6,
+    rideFrequency: 3,
+    bump: 0.035,
   },
   robot: { walkSpeed: 4.8, runSpeed: 15.6 },
   camera: { carDistance: 7.2, robotDistance: 10.2, carFocus: 0.85, robotFocus: 2.9 },
   carRadius: 2.4,
   robotRadius: 1.2,
+  // the car (2.1 m over the wheels, nose 3.06 m ahead, gearbox 2.4 m behind) as circles along it
+  carBody: [[2.2, 0.85], [0.8, 1.05], [-0.9, 1.05], [-1.55, 0.85]],
 }
 
 /**

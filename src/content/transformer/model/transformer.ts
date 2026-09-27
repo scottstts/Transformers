@@ -5,6 +5,8 @@ import { supportPoints } from '../asset/loader'
 import type { NodeKind, RigDims } from '../asset/format'
 import { RobotRig, type GaitPose, type RigOverlay } from './rig'
 
+const FEET = ['L', 'R'] as const
+
 /**
  * A transformer character at runtime (the Cybertruck, the Ferrari F1, ...).
  *
@@ -364,11 +366,11 @@ export class TransformerModel {
   /** World-space contact points for dust and footstep effects. */
   contacts(): Contacts {
     const out = this.contactPoints
-    this.wheels.forEach((w, k) => {
-      out.wheels[k].p.setFromMatrixPosition(this.nodes[w.node].matrixWorld)
+    for (let k = 0; k < this.wheels.length; k++) {
+      out.wheels[k].p.setFromMatrixPosition(this.nodes[this.wheels[k].node].matrixWorld)
       out.wheels[k].p.y -= this.dims.wheelRadius
-    })
-    for (const side of ['L', 'R'] as const) {
+    }
+    for (const side of FEET) {
       out.feet[side].set(0, 0, -this.dims.ankleZ).applyMatrix4(this.nodes[this.footNode[side]].matrixWorld)
     }
     return out

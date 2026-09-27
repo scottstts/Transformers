@@ -43,6 +43,27 @@ export interface MotionState {
   pitchV: number
   rollV: number
   accel: number
+  /**
+   * On the ground's relief (car-dynamics.ts): `pos.y` is the car's footing
+   * (the ground under it, or where its hanging wheels are in the air);
+   * `body` the height of its sprung body at rest over that footing, `vy` its
+   * vertical velocity; `lift` the suspension's extension (m, + wheels hanging,
+   * - compressed); `load` the tyres' share of the car's weight (0 in the air,
+   * above 1 in a compression); `ground` the ground's height under it last step.
+   */
+  body: number
+  vy: number
+  lift: number
+  load: number
+  ground: number
+  airborne: boolean
+  /** closing speed (m/s) of a landing this frame, else 0 */
+  impact: number
+  /** the car's attitude on the ground or in the air (rad): pitch + nose down, roll + left side up; and their rates */
+  tiltPitch: number
+  tiltRoll: number
+  tiltPitchV: number
+  tiltRollV: number
 }
 
 export function createMotionState(): MotionState {
@@ -52,6 +73,8 @@ export function createMotionState(): MotionState {
     steer: 0, steerInput: 0, hands: 0, spin: 0, throttle: 0, boost: false, release: 0, slip: 0, drift: 0,
     slideFront: 0, slideRear: 0, spinFront: 0, spinRear: 0, longAccel: 0, latAccel: 0, articulation: 0,
     pitch: 0, roll: 0, pitchV: 0, rollV: 0, accel: 0,
+    body: 0, vy: 0, lift: 0, load: 1, ground: 0, airborne: false, impact: 0,
+    tiltPitch: 0, tiltRoll: 0, tiltPitchV: 0, tiltRollV: 0,
   }
 }
 

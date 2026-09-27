@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
 	instancedDynamicBufferAttribute, uv, vec2, float, color, mix, smoothstep, clamp
 } from 'three/tsl';
+import type { Ground } from '../../game/ground.ts';
 import { N } from '../../rendering/noise.ts';
 
 /**
@@ -21,13 +22,19 @@ export class Dust {
 	s1: Float32Array;
 	a0: Float32Array;
 	spin: Float32Array;
+	/** the ground's height under each puff's birth: its centre stays above it */
+	floor: Float32Array;
+	ground: Ground;
 	cursor = 0;
 	aPos: THREE.InstancedBufferAttribute;
 	aData: THREE.InstancedBufferAttribute;
 	mesh: THREE.Sprite;
 	wind: THREE.Vector3;
 
-	constructor( scene ) {
+	constructor( scene, ground: Ground ) {
+
+		this.ground = ground;
+		this.floor = new Float32Array( MAX );
 
 		this.pos = new Float32Array( MAX * 3 );
 		this.vel = new Float32Array( MAX * 3 );
@@ -76,11 +83,14 @@ export class Dust {
 
 	}
 
+	/** A puff at (x, z), `y` m above the ground there. */
 	emit( x, y, z, vx, vy, vz, { size = 0.5, grow = 2.5, life = 2.5, alpha = 0.25 } = {} ) {
 
 		const i = this.cursor;
 		this.cursor = ( this.cursor + 1 ) % MAX;
-		this.pos.set( [ x, y, z ], i * 3 );
+		const floor = this.ground.height( x, z );
+		this.floor[ i ] = floor;
+		this.pos.set( [ x, floor + y, z ], i * 3 );
 		this.vel.set( [ vx, vy, vz ], i * 3 );
 		this.age[ i ] = 0;
 		this.life[ i ] = life * ( 0.75 + Math.random() * 0.5 );
@@ -239,7 +249,7 @@ export class Dust {
 
 			const size = this.s0[ i ] + ( this.s1[ i ] - this.s0[ i ] ) * ( 1 - Math.pow( 1 - t, 2.2 ) );
 			// keep the billboard centre above the ground so it doesn't slice into it
-			const y = Math.max( P[ j + 1 ], size * 0.32 );
+			const y = Math.max( P[ j + 1 ], this.floor[ i ] + size * 0.32 );
 			O[ j ] = P[ j ]; O[ j + 1 ] = y; O[ j + 2 ] = P[ j + 2 ];
 			D[ k ] = size;
 			D[ k + 1 ] = this.a0[ i ] * Math.min( 1, t * 8 ) * Math.pow( 1 - t, 1.6 );
