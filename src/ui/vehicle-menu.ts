@@ -17,8 +17,16 @@ export interface VehicleHost {
   readonly specialReady: boolean
   /** a special's cutscene is playing: the menu stays shut */
   readonly cinematic: boolean
+  /** the pause menu is up: the menu stays shut */
+  readonly paused: boolean
   /** on-screen touch controls instead of mouse and keyboard */
   readonly touch: boolean
+  /**
+   * hold the game still behind the open menu (simulation, rendering and sound),
+   * or let it run: it runs while a switch is in progress, which may wait out a
+   * transformation and draws the new car's first frames under the cover
+   */
+  holdGame(held: boolean): void
   /** the menu opened or closed */
   openChanged?(open: boolean): void
 }
@@ -42,6 +50,9 @@ const HINTS: Record<HintMode, string> = {
  * switch and transform; opening it grows the same glass panel out of the pill
  * into a carousel of car names. The morph is one clip-path transition on the
  * panel, laid out at full size throughout, so nothing reflows while it runs.
+ *
+ * The game stands still while it is open (nothing moves, draws or sounds
+ * behind it) except while a switch is running.
  *
  * Tab opens it over the locked pointer (mouse look and game keys pause;
  * Escape still releases the pointer, as browsers require, leaving the menu open
@@ -78,7 +89,7 @@ export class VehicleMenu {
     if (!document.body.classList.contains('ready')) return
     if (event.code === 'Tab') {
       event.preventDefault()
-      if (this.host.cinematic) return
+      if (this.host.cinematic || this.host.paused) return
       // the menu stays until the car it is loading is ready
       if (this.loading) return
       if (this.open) this.close(true)
@@ -196,8 +207,11 @@ export class VehicleMenu {
     this.refreshHint()
   }
 
+  /** The panel is open (it holds the pointer and Escape, loading or not). */
+  get isOpen(): boolean { return this.open }
+
   show(): void {
-    if (this.open) return
+    if (this.open || this.host.paused) return
     this.open = true
     this.host.holdLook(true)
     this.index = this.currentIndex()
@@ -206,6 +220,7 @@ export class VehicleMenu {
     this.root.classList.add('open')
     this.body.inert = false
     this.hint.inert = true
+    this.host.holdGame(true)
     this.host.openChanged?.(true)
   }
 
@@ -217,6 +232,7 @@ export class VehicleMenu {
     this.hint.inert = false
     this.refreshHint()
     this.host.holdLook(false)
+    this.host.holdGame(false)
     this.host.openChanged?.(false)
     if (resume) this.host.resume()
   }
@@ -293,6 +309,7 @@ export class VehicleMenu {
   private async settle(): Promise<void> {
     if (this.loading) return
     this.loading = true
+    this.host.holdGame(false)
     let arrived = false
     try {
       while (this.host.roster[this.index].id !== this.host.current()) {
@@ -316,6 +333,7 @@ export class VehicleMenu {
       this.render(true)
     }
     if (arrived) this.close(true)
+    else if (this.open) this.host.holdGame(true)
   }
 
   private render(animate: boolean): void {

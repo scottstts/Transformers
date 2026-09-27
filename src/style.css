@@ -203,7 +203,34 @@ body.touch .energy { display: none; }
 body.cinematic .cinema i { transform: none; transition-duration: 0.45s; transition-timing-function: cubic-bezier(0.3, 0.8, 0.2, 1); }
 body.cinematic .garage, body.cinematic .touch-controls { opacity: 0; pointer-events: none; }
 
+/* ── pause: the frozen frame dimmed and softened under a Paused rule and the Resume plate ── */
+.pause { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; padding: 20px; background: radial-gradient(ellipse at 50% 46%, rgba(12, 13, 15, 0.3), rgba(12, 13, 15, 0.64) 78%); -webkit-backdrop-filter: blur(7px) saturate(0.82); backdrop-filter: blur(7px) saturate(0.82); color: #f3eee7; opacity: 0; visibility: hidden; transition: opacity 0.22s ease, visibility 0s 0.22s; }
+body.paused.ready .pause { opacity: 1; visibility: visible; transition: opacity 0.28s ease; }
+.pause-plate { display: grid; justify-items: center; gap: 26px; transform: translateY(10px) scale(0.985); transition: transform 0.22s ease; }
+body.paused .pause-plate { transform: none; transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.pause-title { display: flex; align-items: center; gap: 16px; margin: 0; font: 500 11px/1 var(--mono); letter-spacing: 0.46em; text-transform: uppercase; color: rgba(243, 238, 231, 0.74); }
+/* the tracking trails the last letter: pull it back so the word sits centred between its rules */
+.pause-title span { margin-right: -0.46em; }
+.pause-title i { width: 40px; height: 1px; background: linear-gradient(90deg, rgba(243, 238, 231, 0), rgba(243, 238, 231, 0.42)); }
+.pause-title i:last-child { transform: scaleX(-1); }
+/* the entry's plate in negative: chamfered, an ember sweep on hover */
+.pause-resume { --cut: 12px; position: relative; display: inline-flex; align-items: center; gap: 18px; height: 56px; padding: 0 28px 0 36px; border: 0; background: rgba(243, 238, 231, 0.95); color: #221f1c; font: 600 13px/1 system-ui, sans-serif; letter-spacing: 0.42em; text-transform: uppercase; cursor: pointer; clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); transition: --cut 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.3s ease; }
+.pause-resume::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--ember); transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.pause-resume > * { position: relative; }
+.pause-resume svg { width: 24px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.pause-resume:hover, .pause-resume:focus-visible { --cut: 20px; outline: none; color: #fff8ef; }
+.pause-resume:hover::before, .pause-resume:focus-visible::before { width: 100%; }
+.pause-resume:hover svg, .pause-resume:focus-visible svg { transform: translateX(5px); }
+.pause-resume:active { filter: brightness(0.92); }
+.pause-resume.nudge { animation: pause-nudge 0.42s cubic-bezier(0.3, 0.7, 0.3, 1); }
+.pause-keys { display: flex; align-items: center; gap: 8px; margin: -6px 0 0; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(243, 238, 231, 0.56); }
+.pause-keys kbd { min-width: 20px; padding: 1px 6px; border: 1px solid rgba(255, 255, 255, 0.22); border-bottom-width: 2px; border-radius: 5px; font: 600 10px/15px var(--mono); letter-spacing: 0.04em; text-align: center; color: #efe9e0; }
+body.paused .garage, body.paused .touch-controls, body.paused .energy, body.paused .fort-hint { opacity: 0; pointer-events: none; }
+@keyframes pause-nudge { 20% { transform: translateX(-7px); } 45% { transform: translateX(5px); } 70% { transform: translateX(-3px); } }
+
 @media (prefers-reduced-motion: reduce) {
+  .pause-plate, body.paused .pause-plate { transform: none; transition: none; }
+  .pause-resume.nudge { animation: none; }
   .entry-mark span, .entry-line, .entry-gauge, .entry-stage, body.entry .entry-button { animation: none; }
   .veil-sun, .entry-gauge-fill, .entry-gauge-mark, .garage-panel, .garage-hint, .garage-track, .garage-name, .garage-panel.loading .garage-view::after, .touch-stick, .garage-cover { transition: none; animation: none; }
   .energy.full .energy-cells::after, .energy.full .energy-core, .touch-special.ready { animation: none; }

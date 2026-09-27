@@ -5,6 +5,7 @@ import { VehicleMenu } from '../ui/vehicle-menu'
 import { TouchControls } from '../ui/touch-controls'
 import { CinemaBars, EnergyMeter } from '../ui/energy-meter'
 import { FortHint } from '../ui/fort-hint'
+import { PauseMenu } from '../ui/pause-menu'
 import { PerspectiveCamera } from 'three/webgpu'
 import { loadSoldierAsset } from '../content/soldier/asset'
 
@@ -51,12 +52,13 @@ export interface GameControls {
   readonly menu: VehicleMenu
   readonly touch: TouchControls | null
   readonly energy: EnergyMeter
+  readonly pause: PauseMenu
 }
 
 /**
- * The vehicle menu (switching remembers the choice), the special's energy
- * meter and cutscene bars and, on touch screens, the on-screen stick and
- * buttons in place of pointer lock, mouse look and keys.
+ * The vehicle menu (switching remembers the choice), the pause menu, the
+ * special's energy meter and cutscene bars and, on touch screens, the
+ * on-screen stick and buttons in place of pointer lock, mouse look and keys.
  */
 export function attachControls(session: GameSession, touch: boolean): GameControls {
   session.cameraRig.pointerLock = !touch
@@ -85,6 +87,7 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
     get standing() { return session.standingRobot },
     get specialReady() { return session.specialReady },
     get cinematic() { return session.inCutscene },
+    get paused() { return pause.isPaused },
     switchTo: async (entry) => {
       const switched = await session.switchCharacter(entry)
       if (switched) {
@@ -93,11 +96,23 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
       }
       return switched
     },
-    resume: () => session.cameraRig.activate(),
+    // closed from Escape or after a load (no gesture), the pointer stays free: the game pauses
+    resume: () => { void session.cameraRig.activate().then(() => pause.settle()) },
     holdLook: (held) => session.cameraRig.holdLook(held),
+    holdGame: (held) => session.hold('menu', held),
     openChanged: (open) => {
       document.body.classList.toggle('menu-open', open)
       if (open) pad?.release()
+    },
+  })
+  const pause = new PauseMenu({
+    touch,
+    get locked() { return session.cameraRig.locked },
+    get blocked() { return menu.isOpen },
+    lock: () => session.cameraRig.activate(),
+    pausedChanged: (paused) => {
+      session.hold('pause', paused)
+      if (paused) pad?.release()
     },
   })
   pad?.setCarAction(session.carActionsAvailable)
@@ -126,5 +141,5 @@ export function attachControls(session: GameSession, touch: boolean): GameContro
     document.body.classList.toggle('cinematic', on)
     if (on) pad?.release()
   }
-  return { menu, touch: pad, energy }
+  return { menu, touch: pad, energy, pause }
 }

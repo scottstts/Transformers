@@ -20,7 +20,7 @@ async function boot(): Promise<void> {
     document.addEventListener('pointerlockchange', enter)
     showEntry(() => {
       if (touch) enter()
-      else session.cameraRig.activate()
+      else void session.cameraRig.activate()
     })
   } catch (error) {
     showBootError(error)

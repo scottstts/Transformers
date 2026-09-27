@@ -10,6 +10,9 @@ const OUT_LEVEL = 0.9
 /** The air lowpass at rest, and fully muffled (Hz). */
 const AIR_OPEN = 11000
 const AIR_MUFFLED = 520
+/** The output's fade before the context suspends for a pause (s), and the wait for it (ms). */
+const PAUSE_FADE = 0.02
+const PAUSE_SUSPEND_MS = 90
 
 /**
  * The game's one audio context and mix, shared by every character's voices.
@@ -27,6 +30,9 @@ export class AudioMix {
   private muted = false
   /** output silenced for a moment (a car loading behind the switch modal); voices keep running */
   private held = false
+  /** the game is paused: the context is suspended, so every voice and scheduled event stops in place */
+  private paused = false
+  private suspendTimer = 0
   private out!: GainNode
   private dryBus!: GainNode
   private verbSend!: GainNode
@@ -52,7 +58,27 @@ export class AudioMix {
 
   /** Called on user interaction: resumes the prepared context, or creates it if needed. */
   resume(): void {
-    if (this.init() && this.ctx?.state === 'suspended') void this.ctx.resume()
+    if (this.init() && !this.paused && this.ctx?.state === 'suspended') void this.ctx.resume()
+  }
+
+  /**
+   * Pause with the game: the output fades in a few milliseconds (no click)
+   * and the context then suspends, freezing its clock with the world; resuming
+   * picks every voice up where it stopped and fades back in.
+   */
+  pause(paused: boolean): void {
+    if (paused === this.paused) return
+    this.paused = paused
+    clearTimeout(this.suspendTimer)
+    const ctx = this.ctx
+    if (!ctx) return
+    if (paused) {
+      this.level(PAUSE_FADE)
+      this.suspendTimer = window.setTimeout(() => { if (this.paused) void ctx.suspend() }, PAUSE_SUSPEND_MS)
+    } else {
+      void ctx.resume()
+      this.level(0.05)
+    }
   }
 
   setMuted(muted: boolean): void {
@@ -82,7 +108,7 @@ export class AudioMix {
   }
 
   private level(fade: number): void {
-    if (this.ctx) this.out.gain.setTargetAtTime(this.muted || this.held ? 0 : OUT_LEVEL, this.ctx.currentTime, fade)
+    if (this.ctx) this.out.gain.setTargetAtTime(this.muted || this.held || this.paused ? 0 : OUT_LEVEL, this.ctx.currentTime, fade)
   }
 
   private init(): boolean {
@@ -91,7 +117,7 @@ export class AudioMix {
     if (!Context) return false
     const ctx = new Context()
     this.out = ctx.createGain()
-    this.out.gain.value = this.muted || this.held ? 0 : OUT_LEVEL
+    this.out.gain.value = this.muted || this.held || this.paused ? 0 : OUT_LEVEL
     const comp = ctx.createDynamicsCompressor()
     comp.threshold.value = -16
     comp.knee.value = 10

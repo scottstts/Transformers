@@ -23,6 +23,9 @@ import { Horde, type EnemyTarget } from './enemies/horde'
 import { CarBarrier } from './enemies/barrier'
 import type { FortHold } from '../ui/fort-hint'
 
+/** What can hold the game still (`GameSession.hold`): the pause menu, or the vehicle menu while it is open and not switching. */
+export type GameHold = 'pause' | 'menu'
+
 /** Frames rendered behind the switch cover before the new car is revealed. */
 const SWITCH_SETTLE_FRAMES = 3
 
@@ -83,6 +86,11 @@ export class GameSession {
   private readonly barrier = new CarBarrier()
   private readonly target: EnemyTarget = { x: 0, z: 0, radius: 1, vx: 0, vz: 0, height: 4, heading: 0, guard: 0, present: true }
   private holding: FortHold = null
+  private readonly holds = new Set<GameHold>()
+  private paused = false
+  /** the drawing buffer the frozen frame was drawn at (a resize while paused redraws it) */
+  private frozenWidth = 0
+  private frozenHeight = 0
   private wallTime = 0
   /** how long the refusal of the car form inside a fort stays up (s) */
   private lockedTime = 0
@@ -276,12 +284,48 @@ export class GameSession {
     if (device) await device.queue.onSubmittedWorkDone()
   }
 
+  /** Something holds the game still: nothing is simulated, drawn or heard. */
+  get isPaused(): boolean { return this.paused }
+
+  /**
+   * Hold the whole game still for a reason (the pause menu, the open vehicle
+   * menu), or let go of it; it runs again once no reason is left. While held
+   * a frame does no work (the last picture stays on the canvas) unless the
+   * drawing buffer was resized, which clears it: the same frozen scene is then
+   * drawn once again. The clock restarts on release, so no time passes for the
+   * world.
+   */
+  hold(reason: GameHold, held: boolean): void {
+    if (held) this.holds.add(reason)
+    else this.holds.delete(reason)
+    const paused = this.holds.size > 0
+    if (paused === this.paused) return
+    this.paused = paused
+    this.audio.pause(paused)
+    if (paused) {
+      const canvas = this.renderer.domElement
+      this.frozenWidth = canvas.width
+      this.frozenHeight = canvas.height
+    } else {
+      this.timer.reset()
+    }
+  }
+
   frame(): void {
     try {
-      this.updateAndRender()
+      if (this.paused) this.redrawFrozen()
+      else this.updateAndRender()
     } catch (error) {
       this.onFrameError(error instanceof Error ? error : new Error(String(error)))
     }
+  }
+
+  private redrawFrozen(): void {
+    const canvas = this.renderer.domElement
+    if (canvas.width === this.frozenWidth && canvas.height === this.frozenHeight) return
+    this.frozenWidth = canvas.width
+    this.frozenHeight = canvas.height
+    this.pipeline.render()
   }
 
   private fightFor(character: Character): RobotCombat {

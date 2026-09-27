@@ -55,7 +55,7 @@ export class FollowCamera {
   private readonly placedPosition = new Vector3()
   private readonly localFocus = new Vector3()
   private readonly focus = new Vector3()
-  private readonly onPointerDown = (): void => { this.activate() }
+  private readonly onPointerDown = (): void => { void this.activate() }
   private lockedAt = -Infinity
   private freshLock = false
   /** mouse look held by an overlay (the vehicle menu) while the pointer stays locked */
@@ -158,15 +158,31 @@ export class FollowCamera {
     this.lastLook = performance.now() / 1000
   }
 
-  activate(): void {
-    if (!this.pointerLock || this.locked || !this.canvas.isConnected) return
-    try {
-      void Promise.resolve(this.canvas.requestPointerLock()).catch(() => {
-        // The entry veil or canvas click can retry with a user gesture.
-      })
-    } catch {
-      // A canvas click can retry after the browser has a user gesture.
-    }
+  /**
+   * Take the pointer (from a user gesture). Resolves true once the browser
+   * locks it, false when it refuses (no gesture, or too soon after the player
+   * released it); the entry, a canvas click or the pause menu can retry. The
+   * lock events decide, as not every browser returns a promise.
+   */
+  activate(): Promise<boolean> {
+    if (!this.pointerLock || !this.canvas.isConnected) return Promise.resolve(false)
+    if (this.locked) return Promise.resolve(true)
+    return new Promise<boolean>((resolve) => {
+      const settle = (locked: boolean): void => {
+        document.removeEventListener('pointerlockchange', onChange)
+        document.removeEventListener('pointerlockerror', onError)
+        resolve(locked)
+      }
+      const onChange = (): void => { if (this.locked) settle(true) }
+      const onError = (): void => { settle(false) }
+      document.addEventListener('pointerlockchange', onChange)
+      document.addEventListener('pointerlockerror', onError)
+      try {
+        void Promise.resolve(this.canvas.requestPointerLock()).catch(onError)
+      } catch {
+        onError()
+      }
+    })
   }
 
   focusPoint(state: MotionState, root: Object3D): Vector3 {
