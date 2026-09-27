@@ -1,4 +1,4 @@
-import { Euler, Matrix4, PerspectiveCamera, RenderPipeline, Scene, Timer, Vector3, WebGPURenderer } from 'three/webgpu'
+import { Euler, Matrix4, PerspectiveCamera, PointLight, RenderPipeline, Scene, Timer, Vector3, WebGPURenderer } from 'three/webgpu'
 import { bakeEnvironment, configureRenderer, createPostPipeline } from '../rendering/look'
 import { createDesertWorld } from '../worlds/desert'
 import { AudioMix } from '../audio/mix'
@@ -17,7 +17,8 @@ import { CameraFx } from './combat/camera-fx'
 import { Director, type DirectorSubject } from './combat/director'
 import { Energy } from './combat/energy'
 import { Lens } from '../rendering/lens'
-import { disableCulling } from '../rendering/warm'
+import { disableCulling, revealHidden } from '../rendering/warm'
+import { LightSlots } from '../rendering/light-slots'
 import type { SoldierAsset } from '../content/soldier/asset'
 import { Horde, type EnemyTarget } from './enemies/horde'
 import { CarBarrier } from './enemies/barrier'
@@ -26,7 +27,7 @@ import type { FortHold } from '../ui/fort-hint'
 /** What can hold the game still (`GameSession.hold`): the pause menu, or the vehicle menu while it is open and not switching. */
 export type GameHold = 'pause' | 'menu'
 
-/** Frames rendered behind the switch cover before the new car is revealed. */
+/** Frames rendered behind the switch cover before the new car is revealed (the first draws its every effect). */
 const SWITCH_SETTLE_FRAMES = 3
 
 export class GameSession {
@@ -44,6 +45,12 @@ export class GameSession {
   private readonly renderer: WebGPURenderer
   /** characters built so far (their GPU resources stay warm for switching back) */
   private readonly built = new Map<string, Character>()
+  /** the scene's point lights, which the playing character's lights drive (a switch never changes the scene's lights) */
+  private readonly lightSlots = new LightSlots()
+  /** each built character's point lights, taken out of its effects */
+  private readonly carLights = new Map<string, readonly PointLight[]>()
+  /** a car first switched in: its frames under the switch cover draw every effect it can show */
+  private warming: Character | null = null
   private switching: string | null = null
   /** a switch is waiting for a transformation, jump or special to end (the world runs on) */
   private waiting = false
@@ -101,11 +108,12 @@ export class GameSession {
     this.renderer = renderer
     this.camera = camera
     this.onFrameError = onFrameError
-    this.character = entry.create(asset, this.environment.contactEffects, this.audio)
+    this.character = this.build(entry, asset)
     this.built.set(entry.id, this.character)
+    this.lightSlots.use(this.lightsOf(this.character))
     placeCar(this.state, this.character.profile.drive, this.world.terrain)
     configureRenderer(renderer)
-    this.scene.add(this.character.model.root, this.character.effects.object)
+    this.scene.add(this.lightSlots.object, this.character.model.root, this.character.effects.object)
     this.character.model.pose(0, null)
     this.horde = new Horde(soldiers, this.world.forts, this.environment.contactEffects, this.audio)
     this.horde.onStruck = (at, from, strength) => this.character.combat.effects.struck(at, from, strength, this.fight.guarded)
@@ -206,7 +214,7 @@ export class GameSession {
       this.audio.hold(true)
       try {
         const asset = await loadRosterAsset(entry)
-        const next = entry.create(asset, this.environment.contactEffects, this.audio)
+        const next = this.build(entry, asset)
         this.stage(next)
         next.effects.audio.prepare()
         next.combat.effects.prepareAudio()
@@ -218,12 +226,17 @@ export class GameSession {
           await this.renderer.compileAsync(next.effects.object, this.camera, this.scene)
           this.built.set(entry.id, next)
           this.swap(next)
-          // Draw once before the frame update hides idle effects again. This
-          // uploads the gun's flashes, tracers and casings under the cover.
-          this.pipeline.render()
+          // The frames under the cover draw its every effect (`updateAndRender`):
+          // compileAsync alone left pipelines and uploads to the first real
+          // draw, a frame's update hides idle effects again, and a draw from
+          // here would reuse the scene pass the loop already drew this frame
+          // (three draws a pass once per frame), so the gun's flashes, tracers
+          // and casings would first be drawn at its first burst.
+          this.warming = next
           await this.settleFrames(SWITCH_SETTLE_FRAMES)
           return true
         } finally {
+          this.warming = null
           restoreEffectsCulling()
           restoreModelCulling()
           next.combat.effects.warm(false)
@@ -379,6 +392,19 @@ export class GameSession {
     this.onCinematicChange?.(on)
   }
 
+  /** Build a car for this scene: its point lights drive the scene's light slots rather than join the scene. */
+  private build(entry: RosterEntry, asset: PlayableTransformerAsset): Character {
+    const character = entry.create(asset, this.environment.contactEffects, this.audio)
+    this.carLights.set(character.id, LightSlots.adopt(character.model.root, character.effects.object))
+    return character
+  }
+
+  private lightsOf(character: Character): readonly PointLight[] {
+    const lights = this.carLights.get(character.id)
+    if (!lights) throw new Error(`${character.id}: not built for this scene`)
+    return lights
+  }
+
   /** Place a character's model where the current one stands (at the current pose). */
   private stage(next: Character): void {
     const root = next.model.root
@@ -406,6 +432,7 @@ export class GameSession {
     // a trailer is the new car's own: it starts in line
     state.articulation = 0
     this.character = next
+    this.lightSlots.use(this.lightsOf(next))
     this.fight = this.fightFor(next)
     this.stage(next)
     this.scene.add(next.model.root, next.effects.object)
@@ -521,7 +548,14 @@ export class GameSession {
     if (frozen) this.horde.drawFor(this.camera)
     else this.horde.update(dt, this.target, this.camera)
     this.world.update(this.camera, this.cameraRig.focusPoint(state, model.root), dt)
-    this.pipeline.render()
+    this.lightSlots.update()
+    const warming = this.warming
+    if (warming) {
+      warming.combat.effects.warm(true)
+      const restore = revealHidden(warming.effects.object)
+      this.pipeline.render()
+      restore()
+    } else this.pipeline.render()
   }
 
   /** Near a fortress but outside its perimeter (the walls' hint is about the way in, not the buildings inside). */

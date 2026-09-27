@@ -114,7 +114,7 @@ export class Fighter implements CombatEffects {
     this.style = style
     this.trail = style.trail ? new SwingTrail(style.trail) : null
     this.voice = new SwingVoice(mix, style.swing)
-    // kept in the scene at zero: the light count, and so every shader, never changes
+    // dark between uses; in play it drives one of the scene's fixed light slots (rendering/light-slots.ts)
     this.light = new PointLight(style.light, 0, 14, 2)
     // the shield encloses the robot's own parts, fitted as it moves
     this.shield = new Shield(style.shield, model.node('bone:pelvis'), model.root)

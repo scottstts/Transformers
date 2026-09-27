@@ -92,6 +92,41 @@ first car switch). When adding or changing anything that renders:
   vectors in update loops), so the garbage collector does not stall frames.
 - When adding a rendered feature, say how it is warmed, and add it to the
   warm-up path in the same change.
+- three keys every lit shader on the *identity* (object id) of the scene's
+  lights, not just their count and type. Replacing one light object with
+  another identical one invalidates every lit shader in the world, and each
+  rebuilds the next time it is drawn. Never add, remove or swap light objects
+  after boot, including on a car switch. A character's point lights drive the
+  scene's fixed slots (`rendering/light-slots.ts`): they are adopted out of its
+  effects when it is built. They must be world-positioned under untransformed
+  parents and cast no shadows. A car that needs more lights than the slot count
+  raises the count for everyone. A new world creates all of its lights at load.
+- `compileAsync` is not a warm-up on its own. It skips first-use uploads, and it
+  builds for the canvas target, not the post pipeline's pass targets. A warm-up
+  needs a real draw through the pipeline. Post-pipeline passes draw once per
+  animation frame: a `pipeline.render()` issued outside the loop (after an
+  `await`) reuses the pass the loop already drew, and draws nothing new. Draw
+  covered warm-ups through the loop's own frames (the session's `warming` path).
+- A frame's update re-hides idle effects (`visible = clock < liveUntil`), so a
+  warm state set once before the covered frames is undone before the draw.
+  Re-assert it after the update and just before the draw, for every covered
+  frame.
+- A new car must work through the same covered switch: its combat effects'
+  `warm(on)` covers everything its fight can show. Anything else that toggles
+  its own visibility lives under `character.effects.object`, where
+  `revealHidden` reaches it. A new world's `reveal()` must expose everything
+  it can ever draw: distance-hidden detail, empty instance pools and far
+  patches.
+- Verify with numbers, not by playing: `node tools/switch-probe.mjs <from> <to>`
+  for every switch direction a new car adds (0 pipelines built in play), and
+  extend the probe when a new world or scene swap is added.
+- Sustained frames over 33 ms slow the whole game (the frame dt is clamped),
+  which reads as slow motion rather than frame drops. Budget transparent
+  overdraw accordingly. For large overlapping sprites (dust, smoke), keep
+  per-fragment work minimal: no scene fog node (`fog: false`, with aerial
+  perspective taken once per particle in the vertex stage), no procedural
+  noise, and no work spent on particles too faint to see. Measure with
+  `node tools/dust-bench.mjs` or an equivalent bench.
 
 **Important:** DO NOT stuff everything in a generic GameRuntime.ts, over time it has become a monolithic code file. runtime should just be an entry point, if you need specific side logic, define it elsewhere and import into runtime code
 

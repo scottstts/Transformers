@@ -49,7 +49,7 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 ## Shared combat effects (`content/transformer/combat/fx/`)
 
 - **Billows:** fire, smoke and blast dust as one premultiplied sprite pool (One, OneMinusSrcAlpha blending, own premultiplication). A billow's gas cools with age: hot, it glows and hides little; cooled, it is opaque in proportion to its density, lit from above and warmed by the fire in it. Its whole flight is evaluated from its birth data.
-- **BlastLight:** one point light per fighter, kept at zero (constant light count). Its flash decays in world time. Keep it within a few times the sun: 3000 turned the sand white across the frame.
+- **BlastLight:** one point light per fighter, dark between flashes (it drives one of the scene's fixed light slots). Its flash decays in world time. Keep it within a few times the sun: 3000 turned the sand white across the frame.
 - **HeatHaze:** hot air as soft billboards that read the frame drawn so far (`viewportSharedTexture`) through rising screen-space ripples. They are drawn last (render order 4) and depth tested, so only what lies behind a patch wavers. The offset scales with the patch's size over its distance, so the ripple is the same in the world at any range. The frame copy happens only while a patch is drawn, and the mesh is hidden when none is alive. Where it is used: the truck's jets while they burn, its overcharged axe head, over its cooling glass; the racer's power unit on the limiter, along its hanging arcs, over the burning ring and its centre.
 - All three are warmed with the fighter (`warm`), as are the world's debris and the racer's arcs.
 

@@ -21,3 +21,20 @@ export function disableCulling(root: Object3D): () => void {
     for (const o of touched) o.frustumCulled = true
   }
 }
+
+/**
+ * Show everything hidden under `root`; returns the undo. For draws behind a
+ * loading cover of effects whose own updates hide them while idle (a
+ * character's jets, flashes and tracers), so each is drawn once before play.
+ */
+export function revealHidden(root: Object3D): () => void {
+  const touched: Object3D[] = []
+  root.traverse((o) => {
+    if (o.visible) return
+    o.visible = true
+    touched.push(o)
+  })
+  return () => {
+    for (const o of touched) o.visible = false
+  }
+}

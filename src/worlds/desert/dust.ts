@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu';
 import {
-	instancedDynamicBufferAttribute, uv, vec2, float, color, mix, smoothstep, clamp
+	instancedDynamicBufferAttribute, uv, vec2, float, color, mix, smoothstep, clamp, varying
 } from 'three/tsl';
 import type { Ground } from '../../game/ground.ts';
 import { N } from '../../rendering/noise.ts';
+import { aerial } from './atmosphere.ts';
 
 /**
  * Kicked-up desert dirt: soft, noisy, slowly expanding billboards.
@@ -12,6 +13,12 @@ import { N } from '../../rendering/noise.ts';
 const MAX = 3000;
 /** roost puffs per second per m/s of tread slide, per tyre */
 const ROOST_RATE = 7;
+/**
+ * Opacity below which a fading puff is retired early (about 1.5/255 over
+ * sand of nearly its own colour: no visible change). A puff is at its
+ * largest as it fades, so its last tenth of life is a fifth of its fill.
+ */
+const FADED = 0.006;
 
 export class Dust {
 	pos: Float32Array;
@@ -54,7 +61,10 @@ export class Dust {
 		const p = instancedDynamicBufferAttribute( this.aPos, 'vec3' );
 		const d = instancedDynamicBufferAttribute( this.aData, 'vec4' ) as any;
 
-		const m = new THREE.SpriteNodeMaterial( { transparent: true, depthWrite: false } );
+		// the scene's fog would run the aerial perspective for every one of the
+		// overlapping transparent fragments (two fifths of the dust's fill cost);
+		// the air hardly changes across a puff, so it is taken once, at its centre
+		const m = new THREE.SpriteNodeMaterial( { transparent: true, depthWrite: false, fog: false } );
 		m.positionNode = p;
 		m.scaleNode = d.x;
 		m.rotationNode = d.w;
@@ -70,8 +80,11 @@ export class Dust {
 
 		// fake lighting: sunlit top, shadowed underside
 		const lit = mix( color( 0x8f7a63 ), color( 0xe6d6c0 ), smoothstep( 0.0, 1.0, uv().y.add( n.sub( 0.5 ).mul( 0.6 ) ) ) );
-		m.colorNode = lit;
-		m.opacityNode = dens.mul( d.y );
+		const alpha = dens.mul( d.y );
+		const air = varying( aerial( p as THREE.Node<'vec3'> ), 'vDustAir' );
+		// as the fog node would: the puff's light dimmed by the air, the air's light added over its cover
+		m.colorNode = lit.mul( air.a ).add( air.rgb.mul( alpha ) );
+		m.opacityNode = alpha;
 
 		this.mesh = new THREE.Sprite( m );
 		this.mesh.count = MAX;
@@ -251,8 +264,17 @@ export class Dust {
 			// keep the billboard centre above the ground so it doesn't slice into it
 			const y = Math.max( P[ j + 1 ], this.floor[ i ] + size * 0.32 );
 			O[ j ] = P[ j ]; O[ j + 1 ] = y; O[ j + 2 ] = P[ j + 2 ];
+			const alpha = this.a0[ i ] * Math.min( 1, t * 8 ) * Math.pow( 1 - t, 1.6 );
+			if ( t > 0.5 && alpha < FADED ) {
+
+				this.age[ i ] = 1e9;
+				D[ k ] = 0;
+				D[ k + 1 ] = 0;
+				continue;
+
+			}
 			D[ k ] = size;
-			D[ k + 1 ] = this.a0[ i ] * Math.min( 1, t * 8 ) * Math.pow( 1 - t, 1.6 );
+			D[ k + 1 ] = alpha;
 			D[ k + 3 ] += this.spin[ i ] * dt;
 
 		}

@@ -1,9 +1,9 @@
 import { Color, PointLight, type Vector3 } from 'three/webgpu'
 
 /**
- * The light of a blast on everything around it: one point light that stays in
- * the scene at zero between flashes (so the light count, and every shader,
- * never changes). A flash rises in a few milliseconds, then falls away and
+ * The light of a blast on everything around it: one point light, dark between
+ * flashes (in play it drives one of the scene's fixed light slots,
+ * rendering/light-slots.ts, so the scene's lights never change). A flash rises in a few milliseconds, then falls away and
  * shifts from its first colour toward a fire's orange as the fireball cools.
  */
 export class BlastLight {

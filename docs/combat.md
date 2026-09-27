@@ -101,7 +101,7 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 - **Gun cues** (Semi, `semi/combat/gunnery.ts`): `fire` (1/0), `charge` (0..1 the coils), `fuse` (m: the next cannon shot bursts in the air that far out if it meets nothing first), `cannon` (strength); `gust` is a kick's blast of air throwing the sand ahead.
 - **Trail:** the smear a fast edge leaves on film. It is a faint additive ribbon between the cutting edge's ends over about 0.1 s, sub-sampled between frames, and only above swing speed. A bright opaque sheet was rejected as unrealistic.
 - **Sparks and embers:** one instanced pool. Flight (linear drag plus gravity, stopped on the sand) is evaluated in the vertex stage from birth data, so a burst uploads only its slots.
-- **Light:** one point light per fighter lights the forming weapon. It stays in the scene at zero, like the thruster light, so the light count and the shaders never change.
+- **Light:** one point light per fighter lights the forming weapon. It is dark between uses and, like every character light, drives one of the scene's fixed light slots (rendering-and-boot.md), so the scene's lights and shaders never change.
 - **Camera** (`game/combat/camera-fx.ts`): applied after the follow camera and never fed back into it.
   - A kick is a spring along the view.
   - Shakes are bounded sine sums.

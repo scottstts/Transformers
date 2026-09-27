@@ -27,6 +27,8 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 
 `tests/special.test.ts` checks, for every robot (each run as long as its tempo curve makes it in real time), that the special is well-formed (keys, cues, steps, shots and tempo inside it) and, played from the stance and cutting into a combo at 120 Hz, that it stays finite, keeps wrists, haft and edge out of the body cores, keeps the planted feet on the ground, flies and travels as far as it should, and hands back to the gait with the weapon gone. `tests/energy.test.ts` checks that three full combos fill the meter and two do not, and that it is spent whole. `tests/director.test.ts` checks the special frame's axes, hard cuts, the handback reaching the follow camera, the handback orbiting instead of passing through the robot, and the camera floor.
 
+`tests/light-slots.test.ts` checks that the scene's lights (their ids, on which three keys lit shaders) stay the same whichever car plays. `node tools/switch-probe.mjs [from] [to]` replays a car switch headlessly and counts the pipelines built afterwards in play (0 expected), and `node tools/dust-bench.mjs` times the dust's GPU cost at 1080p.
+
 `node tools/gun-model.mjs <machine_gun.mp3> <cannon.mp3>` refits the Semi's gun sounds from the two recordings (`--compare` prints a take's band-envelope error against them: about 3 dB for the shot and 4 dB for the cannon).
 
 `tests/combo.test.ts` checks the click combo (one click one move, chaining only inside the window, early clicks ignored, a late click restarting from move 1, nothing after move 4) and that keyed curves pass their keys without overshoot. `tests/combat.test.ts` checks, for every robot:
