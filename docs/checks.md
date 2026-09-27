@@ -61,6 +61,8 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 - planted feet moving back exactly at body speed;
 - the pelvis shifting over the planted leg.
 
+`tests/leap.test.ts` presses a running jump at four stride phases on each robot and checks that the leap springs off a loaded toe-off, keeps the run's carriage while loading, has no joint snaps, holds bent knees in the air, lands on the lead foot as a stride strike and lands without a jolt. `tests/locomotion-rig.test.ts` also checks that every walk keeps the cadence of its size, and that the heavy machines carry pelvis and chest as one block while walking. `node tools/gait-probe.mjs` measures gait timing, bounce, the view from behind (`--lateral`), sole fit (`--sole`) and jumps (`--jump`).
+
 `tools/drift-lab.mjs` prints handling telemetry for scripted driver inputs:
 
 ```bash

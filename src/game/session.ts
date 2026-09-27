@@ -467,7 +467,11 @@ export class GameSession {
     const steer = stance ? this.input.movementDirection(this.camera) : null
     fight.setSteer(steer)
     if (steer && !attack && fight.releasable) fight.release()
-    if (this.input.consumeJump() && stance && !attack && !fight.active) this.jump.start(Math.abs(state.speed) / profile.robot.runSpeed)
+    if (this.input.consumeJump() && stance && !attack && !fight.active) {
+      // a running leap springs off the stride's next toe-off
+      const momentum = Math.abs(state.speed) / profile.robot.runSpeed
+      this.jump.start(momentum, this.character.gait.leapTakeoff(momentum))
+    }
     const jump = this.jump.update(dt)
     fight.update(dt, state, this.camera)
     if (this.cinematic && !fight.cinematic) this.setCinematic(false)

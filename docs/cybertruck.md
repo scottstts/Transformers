@@ -52,7 +52,7 @@ The rise about the feet is carried by two plasma jets (`fx/thrusters.ts`, `fx/pl
 
 ## Robot locomotion
 
-The gait and jump are shared by every robot (robot-locomotion.md). The truck robot walks at 5.1 m/s and runs at 15 m/s with `HEAVY_GAIT`: 2.025 / 4.6 m steps at the original step rates, long stance, a 7 cm weight shift, heel and toe roll about its 0.31 / 0.62 m sole edges.
+The gait and jump are shared by every robot (robot-locomotion.md). The truck robot walks at 3.9 m/s and runs at 15 m/s with `HEAVY_GAIT`: 2.45 / 4.6 m steps, the walk at Froude 0.5 (it walked at 5.1 m/s, twice the natural rate for 3.1 m hips, with a catwalk hip swing), a half vault, a 7 cm weight shift under a pelvis and chest carried nearly as one block, heel and toe roll about its measured 0.29 / 0.62 m sole edges.
 
 ## Controls and camera
 

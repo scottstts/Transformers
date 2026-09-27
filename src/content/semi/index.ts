@@ -57,7 +57,7 @@ export const SEMI_PROFILE: CharacterProfile = {
     // the van's front wall clears the cab's extenders by only 25 cm: it swings about 11 degrees each way
     trailer: { hitch: -KINGPIN[1], length: 6.08, limit: 0.19, circles: [[-0.2, 1.45], [2.4, 1.45], [5.0, 1.45], [7.0, 1.4]] },
   },
-  robot: { walkSpeed: 5.9, runSpeed: 17 },
+  robot: { walkSpeed: 4.5, runSpeed: 17 },
   camera: { carDistance: 15, robotDistance: 16.5, carFocus: 2.3, robotFocus: 5.2, carAhead: -3.1, carHalfLength: 7.4 },
   carRadius: 3,
   robotRadius: 1.9,
@@ -65,32 +65,35 @@ export const SEMI_PROFILE: CharacterProfile = {
 }
 
 /**
- * A heavy machine a third larger than the pickup's robot: strides scaled with
- * the legs, speeds with their square root (big things move with a slower
- * cadence), the wide stand drawn in under the hips while it moves, the
- * torso carried upright (about 5 degrees walking, 8 running).
+ * A heavy machine a third larger than the pickup's robot: a walk at Froude 0.5
+ * with pelvis and chest carried nearly as one block, a run whose stride scales
+ * with the legs and speed with their square root (big things move with a slower
+ * cadence), the wide stand drawn in under the hips while it moves, the torso
+ * carried upright (about 5 degrees walking, 8 running).
  */
 export const SEMI_GAIT: GaitStyle = {
-  stride: [2.75, 5.6],
+  stride: [3.3, 5.6],
   // short support at a run and straight support legs: a long contact sweep sank the pelvis 0.8 m (a crouching run)
-  stance: [0.6, 0.26],
-  reach: [0.5, 0.38],
-  kneeFloor: [20, 8],
+  stance: [0.58, 0.26],
+  reach: [0.45, 0.38],
+  kneeFloor: [12, 8],
+  vault: 0.5,
   lift: [0.42, 0.9],
   runFlight: 0.08,
   runCompression: 0.06,
   runCrouch: 0,
-  sway: 0.09,
+  sway: [0.09, 0.0405],
   bob: 0.045,
-  hipYaw: 5,
-  hipList: 3,
-  shoulders: 4,
+  hipYaw: [3, 5],
+  hipList: [1.5, 1.8],
+  shoulders: [1.5, 4],
   armSwing: [16, 34],
-  heelStrike: [12, 5],
-  toeOff: [24, 30],
+  heelStrike: [20, 5],
+  toeOff: [38, 30],
   heel: 0.42,
-  toe: 0.95,
+  toe: 1.02,
   ankle: 0.55,
+  belly: [0.43, 0.012],
   jumpCrouch: 0.5,
   jumpTuck: 0.55,
   track: [0.72, 0.64],

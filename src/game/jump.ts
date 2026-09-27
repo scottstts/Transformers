@@ -41,6 +41,9 @@ export interface JumpPose {
   armSwing: number
   /** 0..1 forward momentum at take-off: 0 a standing jump, 1 a running leap */
   momentum: number
+  /** time in the air (s) and the vertical speed at touchdown (m/s): fixed by the take-off speed and gravity */
+  airTime: number
+  landSpeed: number
   airborne: boolean
   /** on the ground again, recovering */
   landing: boolean
@@ -63,13 +66,17 @@ export class RobotJump {
   /** True from the anticipation crouch until the landing has settled. */
   get active(): boolean { return this.jumping }
 
-  /** `momentum` 0..1: forward speed as a share of a full run. */
-  start(momentum = 0): void {
+  /**
+   * `momentum` 0..1: forward speed as a share of a full run. `takeoff` (s), when
+   * given, times the leap to the stride's next toe-off instead of the default
+   * anticipation.
+   */
+  start(momentum = 0, takeoff: number | null = null): void {
     if (this.jumping) return
     const m = Math.max(0, Math.min(1, momentum))
     this.jumping = true
     this.t = 0
-    this.crouchTime = lerp(CROUCH_TIME[0], CROUCH_TIME[1], m)
+    this.crouchTime = takeoff ?? lerp(CROUCH_TIME[0], CROUCH_TIME[1], m)
     this.landTime = lerp(LAND_TIME[0], LAND_TIME[1], m)
     this.impactTime = lerp(IMPACT_TIME[0], IMPACT_TIME[1], m)
     this.pose.momentum = m
@@ -130,7 +137,10 @@ export class RobotJump {
 }
 
 function idle(): JumpPose {
-  return { weight: 0, crouch: 0, push: 0, air: 0, flight: 0, tuck: 0, armSwing: 0, momentum: 0, airborne: false, landing: false, tookOff: false, landed: false }
+  return {
+    weight: 0, crouch: 0, push: 0, air: 0, flight: 0, tuck: 0, armSwing: 0, momentum: 0, airTime: AIR_TIME, landSpeed: TAKEOFF_SPEED,
+    airborne: false, landing: false, tookOff: false, landed: false,
+  }
 }
 
 function ease(start: number, end: number, value: number): number {

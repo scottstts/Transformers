@@ -45,7 +45,7 @@ export const CYBERTRUCK_PROFILE: CharacterProfile = {
     rideFrequency: 1.45,
     bump: 0.15,
   },
-  robot: { walkSpeed: 5.1, runSpeed: 15 },
+  robot: { walkSpeed: 3.9, runSpeed: 15 },
   camera: { carDistance: 7.875, robotDistance: 12.75, carFocus: 1.1, robotFocus: 3.9 },
   carRadius: 2.4,
   robotRadius: 1.5,

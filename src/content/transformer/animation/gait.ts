@@ -35,14 +35,25 @@ const SIDES = [ 'R', 'L' ] as const;
  * mid-stance and floats through the flight, knees lift higher, the torso leans
  * into the run and the arms pump with bent elbows.
  *
- * Jumps (see game/jump.ts) take over the pose by the jump's weight. A
- * The stride carries on through the take-off, so feet on the ground stay put
- * while the body loads over them. A standing or walking jump squats and
- * pushes off both feet (staggered as the stride left them), tucks and lands
- * two-footed. From a run the take-off is short: the free leg drives its knee
- * up, the body leaps off the planted foot's toe, scissors through the air and
- * lands on the lead foot straight into the stride.
+ * Jumps (see game/jump.ts) take over the pose by the jump's weight. The
+ * stride carries on through the take-off, so feet on the ground stay put while
+ * the body loads over them. A standing or walking jump squats and pushes off
+ * both feet (staggered as the stride left them), tucks and lands two-footed.
+ * A running leap is the stride itself: it springs off the stride's next toe-off
+ * and runs the stride's own flight, stretched over the jump's, so the legs leave
+ * and land at the stride's rate, hold a gathered leap between (lead knee up,
+ * trailing heel folded), and the lead foot lands as a running strike.
  */
+
+/** A walking and running value, or one walking value whose running share the gait sets. */
+export type Paced = number | [ number, number ];
+
+/** A paced value at run weight `run`; a single value is scaled by `runScale` at a full run. */
+function paced( value: Paced, run: number, runScale: number ): number {
+
+	return typeof value === 'number' ? value * lerp( 1, runScale, run ) : lerp( value[ 0 ], value[ 1 ], run );
+
+}
 
 /** A robot's build as seen in its gait: lengths in metres, angles in degrees. */
 export interface GaitStyle {
@@ -55,14 +66,18 @@ export interface GaitStyle {
 	runCompression?: number;
 	/** extra stance crouch at full run */
 	runCrouch: number;
-	/** pelvis shift over the planted leg, and the walk's rise and fall */
-	sway: number;
+	/**
+	 * Body motion over the stride (a pair is walking and running; a single value is
+	 * the walk, which the run scales itself: sway 0.45, list 0.6, the yaws in full):
+	 * the pelvis's shift over the planted leg (m), its yaw with the stepping leg and
+	 * its drop on the swing side (deg), and the shoulders' counter-rotation (deg).
+	 */
+	sway: Paced;
+	hipYaw: Paced;
+	hipList: Paced;
+	shoulders: Paced;
+	/** the walk's rise and fall */
 	bob: number;
-	/** pelvis yaw with the stepping leg, and its drop on the swing side */
-	hipYaw: number;
-	hipList: number;
-	/** shoulder counter-rotation */
-	shoulders: number;
 	/** arm swing, walking and running */
 	armSwing: [ number, number ];
 	/** foot pitch at the heel strike and at toe-off, walking and running */
@@ -125,34 +140,59 @@ export interface GaitStyle {
 	 * the levelled edges.
 	 */
 	soleTilt?: number;
-	/** Pelvis yaw and shoulder counter-rotation (deg) at a full run; default: the walking `hipYaw` and `shoulders`. */
-	runYaw?: [ number, number ];
+	/**
+	 * The flat sole's lowest point where it bulges below the heel/toe edge line:
+	 * forward of the ankle and depth below the edges (m). A foot rolling off a flat
+	 * stand bears on it until an edge takes over; modelled as flat, the switch drops
+	 * the ground-projected body by the depth within a frame or two.
+	 */
+	belly?: [ number, number ];
 }
 
-/** A heavy machine: long stance, weight shift over the planted leg. */
+/** A heavy machine: a walk at Froude 0.5 that shifts its weight over the planted leg with pelvis and chest carried as one block, a long-stance run. */
 export const HEAVY_GAIT: GaitStyle = {
-	stride: [ 2.025, 4.6 ],
+	stride: [ 2.45, 4.6 ],
+	stance: [ 0.58, 0.36 ],
+	reach: [ 0.45, 0.5 ],
+	kneeFloor: [ 12, 20 ],
+	vault: 0.5,
 	lift: [ 0.32, 0.7 ],
 	runFlight: 0.07,
 	runCompression: 0.07,
 	runCrouch: 0.12,
-	sway: 0.07,
+	sway: [ 0.07, 0.0315 ],
 	bob: 0.035,
-	hipYaw: 5,
-	hipList: 3,
-	shoulders: 4,
+	hipYaw: [ 3, 5 ],
+	hipList: [ 1.5, 1.8 ],
+	shoulders: [ 1.5, 4 ],
 	armSwing: [ 18, 38 ],
-	heelStrike: [ 12, 5 ],
-	toeOff: [ 26, 32 ],
-	heel: 0.31,
+	heelStrike: [ 20, 5 ],
+	toeOff: [ 38, 32 ],
+	heel: 0.29,
 	toe: 0.62,
 	ankle: 0.4,
+	belly: [ 0, 0.004 ],
 	jumpCrouch: 0.38,
 	jumpTuck: 0.42
 };
 
 /** Momentum (share of a full run) from which a jump is a one-footed leap. */
 const LEAP_MOMENTUM = 0.55;
+/**
+ * A leap springs off a toe-off of the stride: at least this long on the take-off
+ * foot (s), and only from a stride whose support leaves a flight (stance share
+ * below 0.5 by this margin).
+ */
+const LEAP_MIN_LOAD = 0.08;
+const LEAP_MIN_FLIGHT = 0.05;
+/** The leap's legs in the air: their rate while held (share of the flight's mean), and the gather at the apex. */
+const LEAP_HOLD = 0.15;
+/** Gather: the lead and trailing feet raised by these shares of `jumpTuck`, drawn in toward the hips by this share. */
+const LEAP_GATHER: [ number, number ] = [ 0.5, 0.9 ];
+const LEAP_DRAW = 0.3;
+/** The leap's landing: sink (share of `jumpCrouch`) taken at the touchdown speed, and the recovery (s). */
+const LEAP_LAND_DEPTH = 0.8;
+const LEAP_RECOVER = 0.22;
 /** Stance share of the cycle, walking and running. */
 const STANCE: [ number, number ] = [ 0.6, 0.36 ];
 /** Cadence floor near rest; the foot sweep itself still fades to zero. */
@@ -217,14 +257,26 @@ export class RobotGait {
 	private readonly armSpring: Record<Side, Spring> = { R: { x: 0, v: 0 }, L: { x: 0, v: 0 } };
 	private readonly elbowSpring: Record<Side, Spring> = { R: { x: 0, v: 0 }, L: { x: 0, v: 0 } };
 	private springsLive = false;
-	// jump: its own leg pose, the legs at take-off, which legs are planted
+	// a two-footed jump: its own leg pose and the legs at take-off
 	private jumping = false;
 	private landed = false;
 	private sinceLanding = 0;
+	private startLegs = false;
+	// leap: the stride's own flight stretched over the jump's (phase at take-off, span to the
+	// lead foot's strike, the stride's rate as a share of the flight's mean), then the landing sink
+	private leaping = false;
+	private leapLive = false;
+	private leapFrom = 0;
+	private leapSpan = 0;
+	private leapRate = 1;
+	private landClock = - 1;
+	private landSpeed = 0;
+	// last frame's support share and stride rate (cycles/s), for timing a leap
+	private stanceShare = 0.6;
+	private strideRate = 0;
 	private lead: Side = 'R';
 	private readonly jumpLegs: Record<Side, GaitLeg> = { R: { step: 0, up: 0, pitch: 0 }, L: { step: 0, up: 0, pitch: 0 } };
 	private readonly takeoff: Record<Side, GaitLeg> = { R: { step: 0, up: 0, pitch: 0 }, L: { step: 0, up: 0, pitch: 0 } };
-	private readonly planted: Record<Side, boolean> = { R: true, L: true };
 	private readonly stridePath: GaitLeg[] = Array.from( { length: STRIDE_SAMPLES }, () => ( { step: 0, up: 0, pitch: 0 } ) );
 
 	constructor( style: GaitStyle = HEAVY_GAIT ) {
@@ -252,8 +304,26 @@ export class RobotGait {
 		const cadenceStride = Math.max( stride, MIN_CADENCE_STRIDE );
 		const contact = st.stance ?? STANCE;
 		const stanceFrac = lerp( contact[ 0 ], contact[ 1 ], this.run );
-		// the stride freezes in the air; on the ground (loading, recovering) it keeps pace with the body
-		if ( stride > 0.02 && ! jump?.airborne ) this.phase += dir * ( eff / ( 2 * cadenceStride ) ) * TAU * dt;
+		const strideRate = eff / ( 2 * cadenceStride );
+		if ( jump && inJump && ! this.jumping ) {
+
+			this.jumping = true;
+			this.landed = false;
+			this.startLegs = true;
+			this.leaping = this.canLeap( jump.momentum, stanceFrac );
+			this.leapLive = false;
+
+		}
+		if ( this.leaping && jump?.airborne ) {
+
+			// a leap runs the stride's own flight, stretched over the jump's
+			if ( ! this.leapLive ) this.takeOff( stanceFrac, strideRate, jump.airTime, dir );
+			this.phase = this.leapFrom + this.leapSpan * leapWarp( jump.flight, this.leapRate );
+
+		} else if ( stride > 0.02 && ! jump?.airborne ) this.phase += dir * strideRate * TAU * dt;
+		// a two-footed jump freezes the stride in the air; on the ground (loading, recovering) it keeps pace with the body
+		this.stanceShare = stanceFrac;
+		this.strideRate = strideRate;
 
 		// stance sweep: what the body travels while the foot is down
 		// Blend translation into a pivot/stop without snapping an extended foot to its station.
@@ -285,7 +355,8 @@ export class RobotGait {
 			leg.pitch *= dir;
 			legs[ S ] = leg;
 			const stance = f < stanceFrac;
-			const recovering = ! jump || ( jump.landing && jumpWeight < 0.5 ) || jumpWeight === 0;
+			// a leap loads on the stride itself: its strikes still sound (the landing's own is the jump's)
+			const recovering = ! jump || ( jump.landing && jumpWeight < 0.5 ) || jumpWeight === 0 || ( this.leaping && ! jump.landing );
 			if ( stance && ! this.stance[ S ] && this.amp > 0.2 && recovering && ! jump?.airborne ) this.events.push( S );
 			this.stance[ S ] = stance;
 
@@ -313,7 +384,7 @@ export class RobotGait {
 		let air = flight >= 0 ? 4 * rise * run * flight * ( 1 - flight ) : 0;
 		const sink = flight < 0 ? dip * run * Math.sin( Math.PI * w / stanceFrac ) : 0;
 		// a coordinated run sinks after the pelvis is sized to the legs' reach, which would level a sink in the crouch
-		const compression = st.runCycle ? sink * locomotion : 0;
+		let compression = st.runCycle ? sink * locomotion : 0;
 		let crouch = 0.1 + st.runCrouch * run
 			+ st.bob * ( 1 - this.run ) * this.amp * ( 0.5 + 0.5 * Math.cos( 2 * ( this.phase - 0.5 ) ) )
 			+ ( st.runCycle ? 0 : sink );
@@ -321,8 +392,8 @@ export class RobotGait {
 		// weight over the planted leg: shift toward it, drop the swing side; the idle robot shifts its weight slowly
 		const weightPhase = Math.sin( this.phase - WEIGHT_LAG ) * this.amp;
 		const idle = Math.sin( this.time * IDLE_SHIFT[ 0 ] ) * ( 1 - this.amp );
-		const sway = ( - weightPhase * st.sway * lerp( 1, 0.45, this.run ) + idle * IDLE_SHIFT[ 1 ] ) * locomotion;
-		const list = ( weightPhase * st.hipList * lerp( 1, 0.6, this.run ) - idle * IDLE_SHIFT[ 2 ] ) * locomotion;
+		const sway = ( - weightPhase * paced( st.sway, this.run, 0.45 ) + idle * IDLE_SHIFT[ 1 ] ) * locomotion;
+		const list = ( weightPhase * paced( st.hipList, this.run, 0.6 ) - idle * IDLE_SHIFT[ 2 ] ) * locomotion;
 
 		// lean with speed and into acceleration; bank into turns
 		const accel = dt > 0 ? ( speed - this.lastSpeed ) / dt : 0;
@@ -332,10 +403,8 @@ export class RobotGait {
 		this.bank = lerp( this.bank, active ? clamp( speed * turnRate * TURN_BANK, - 9, 9 ) : 0, 1 - Math.exp( - dt * 4 ) );
 
 		// hips yaw with the stepping leg (right hip forward at the right heel strike), shoulders counter-rotate
-		const yawAmp = st.runYaw ? lerp( st.hipYaw, st.runYaw[ 0 ], this.run ) : st.hipYaw;
-		const shoulderAmp = st.runYaw ? lerp( st.shoulders, st.runYaw[ 1 ], this.run ) : st.shoulders;
-		const hipYaw = Math.cos( this.phase ) * yawAmp * this.amp * locomotion;
-		const shoulderYaw = - Math.cos( this.phase ) * shoulderAmp * this.amp * locomotion;
+		const hipYaw = Math.cos( this.phase ) * paced( st.hipYaw, this.run, 1 ) * this.amp * locomotion;
+		const shoulderYaw = - Math.cos( this.phase ) * paced( st.shoulders, this.run, 1 ) * this.amp * locomotion;
 		const twist = ( shoulderYaw - hipYaw ) / 1.6;
 
 		const carry = st.armCarry ? lerp( st.armCarry[ 0 ], st.armCarry[ 1 ], this.run ) * this.amp : 0;
@@ -367,51 +436,94 @@ export class RobotGait {
 		if ( jump && inJump ) {
 
 			const m = jump.momentum;
-			this.jumpLegsUpdate( dt, speed, jump, legs, stanceFrac, lift );
-			crouch = lerp( crouch, 0.1 + jump.crouch * st.jumpCrouch, jumpWeight );
-			const leap = this.jumpLead ? m : 0;
 			const hump = Math.sin( Math.PI * jump.flight );
 			lean = lerp( lean, lean * lerp( 0.35, 0.9, m ) + jump.crouch * 8 - jump.tuck * 3 * ( 1 - m ) + hump * 4 * m, jumpWeight );
-			for ( const S of SIDES ) {
+			if ( this.leaping ) {
 
-				legs[ S ].step = lerp( legs[ S ].step, this.jumpLegs[ S ].step, jumpWeight );
-				legs[ S ].up = lerp( legs[ S ].up, this.jumpLegs[ S ].up, jumpWeight );
-				legs[ S ].pitch = lerp( legs[ S ].pitch, this.jumpLegs[ S ].pitch, jumpWeight );
-				// standing: both arms swing back, then forward and up; leaping: the arm opposite the lead leg drives forward
-				const lead = S === this.lead;
-				const leapArm = lead ? 12 + 16 * Math.max( 0, jump.armSwing ) : - ( 18 + 22 * Math.max( 0, jump.armSwing ) );
-				arms[ S ] = lerp( arms[ S ], lerp( - JUMP_ARMS * jump.armSwing, leapArm, leap ), jumpWeight );
-				const standElbow = - 32 * Math.max( jump.crouch * 0.4, jump.armSwing, jump.tuck * 0.8 );
-				elbow[ S ] = lerp( elbow[ S ], lerp( standElbow, - 50, leap ), jumpWeight );
+				// The legs are the stride's (its flight stretched over the jump's); at the
+				// apex they gather, the lead knee up and the trailing heel folded. The load
+				// and the landing sink act on the pelvis after it is sized to the legs'
+				// reach, which would level them in the crouch. The arms run on with the stride.
+				this.jumpLead = this.leapLive ? this.lead : null;
+				if ( jump.airborne ) {
+
+					for ( const S of SIDES ) {
+
+						const lead = S === this.lead;
+						legs[ S ].up += st.jumpTuck * LEAP_GATHER[ lead ? 0 : 1 ] * jump.tuck;
+						if ( lead ) legs[ S ].step *= 1 - LEAP_DRAW * jump.tuck;
+
+					}
+
+				}
+				if ( ! jump.landing ) compression += jump.crouch * st.jumpCrouch * jumpWeight;
+				if ( jump.landed ) {
+
+					this.landClock = 0;
+					this.landSpeed = jump.landSpeed;
+
+				}
+
+			} else {
+
+				this.jumpLegsUpdate( dt, speed, jump, legs, stanceFrac );
+				crouch = lerp( crouch, 0.1 + jump.crouch * st.jumpCrouch, jumpWeight );
+				for ( const S of SIDES ) {
+
+					legs[ S ].step = lerp( legs[ S ].step, this.jumpLegs[ S ].step, jumpWeight );
+					legs[ S ].up = lerp( legs[ S ].up, this.jumpLegs[ S ].up, jumpWeight );
+					legs[ S ].pitch = lerp( legs[ S ].pitch, this.jumpLegs[ S ].pitch, jumpWeight );
+					// both arms swing back, then forward and up
+					arms[ S ] = lerp( arms[ S ], - JUMP_ARMS * jump.armSwing, jumpWeight );
+					const standElbow = - 32 * Math.max( jump.crouch * 0.4, jump.armSwing, jump.tuck * 0.8 );
+					elbow[ S ] = lerp( elbow[ S ], standElbow, jumpWeight );
+
+				}
 
 			}
 			air = lerp( air, jump.air, jumpWeight );
 			if ( ! jump.airborne && ! jump.landing && jumpWeight === 0 ) this.jumping = false;
 
 		} else this.jumping = false;
+		if ( ! this.jumping ) this.leaping = false;
 		if ( ! inJump ) this.jumpLead = null;
+		if ( this.landClock >= 0 ) {
+
+			// the lead leg takes the fall at the touchdown speed (a quarter sine that starts
+			// at that speed), then hands the weight back to the stride
+			const depth = st.jumpCrouch * LEAP_LAND_DEPTH;
+			const impact = Math.PI * depth / ( 2 * Math.max( this.landSpeed, 0.1 ) );
+			const t = this.landClock;
+			compression += depth * ( t < impact ? Math.sin( 0.5 * Math.PI * t / impact ) : 0.5 + 0.5 * Math.cos( Math.PI * Math.min( 1, ( t - impact ) / LEAP_RECOVER ) ) );
+			this.landClock = t + dt < impact + LEAP_RECOVER ? t + dt : - 1;
+
+		}
 
 		// Keep spring lag bounded as cadence rises, so the arms stay opposite the legs.
 		this.follow( arms, elbow, dt, armResponse );
 
 		const roll = list + this.bank;
-		const moving = this.amp * locomotion;
+		// a leap keeps the stride's carriage and track; a two-footed jump takes the legs over
+		const carried = this.leaping ? 1 : locomotion;
+		const moving = this.amp * carried;
 		const tilt = ( st.soleTilt ?? 0 ) * RAD * this.amp;
 		legs.R.pitch += tilt;
 		legs.L.pitch += tilt;
 		const cross = ( st.armCross ?? 0 ) * lerp( 0.35, 1, this.run ) * moving;
-		// the whole cycle's foot path, fading out as a jump takes over the legs
+		// the whole cycle's foot path, fading out as a two-footed jump takes over the legs
 		for ( let i = 0; i < STRIDE_SAMPLES; i ++ ) {
 
 			const leg = this.legAt( i / STRIDE_SAMPLES, stanceFrac, sweep, lift, strike, toeOff, this.stridePath[ i ] );
-			leg.step *= dir * locomotion;
-			leg.up *= locomotion;
+			leg.step *= dir * carried;
+			leg.up *= carried;
 
 		}
 		return {
-			freeFlight: st.runCycle ? run * locomotion : 0,
+			// the body owns its height in a run's flight and a leap's (recovering feet must not pull it down)
+			freeFlight: Math.max( st.runCycle ? run * locomotion : 0, this.leaping ? jumpWeight : 0 ),
 			compression,
-			steadyCarriage: !! st.runCycle,
+			// gaits that move the body with their own channels: a coordinated run, a vaulting walk
+			steadyCarriage: st.runCycle ? 1 : ( st.vault ?? 0 ) * ( 1 - this.run ),
 			minKnee: ( st.kneeFloor ? lerp( st.kneeFloor[ 0 ], st.kneeFloor[ 1 ], this.run ) : 20 ) * moving,
 			stridePath: this.stridePath,
 			strideCycle: this.cycle( 'R' ),
@@ -445,7 +557,7 @@ export class RobotGait {
 	}
 
 	/**
-	 * The leg at cycle fraction f: in stance its sole sweeps \`sweep\` back
+	 * The leg at cycle fraction f: in stance its sole sweeps `sweep` back
 	 * (heel strike, flat, toe-off), in swing it is carried forward.
 	 */
 	private legAt( f: number, stance: number, sweep: number, lift: number, strike: number, toeOff: number, out: GaitLeg ): GaitLeg {
@@ -497,6 +609,16 @@ export class RobotGait {
 			+ st.toe * ( 1 - Math.cos( toe ) ) + st.ankle * Math.sin( toe );
 		up += st.heel * Math.sin( heel ) + st.ankle * ( Math.cos( heel ) - 1 )
 			+ st.toe * Math.sin( toe ) + st.ankle * ( Math.cos( toe ) - 1 );
+		const pitch = toe - heel;
+		if ( st.belly && pitch !== 0 ) {
+
+			// the ankle stands on whichever of the edges and the belly reaches lowest (flat: the belly, the station)
+			const [ b, depth ] = st.belly;
+			const edges = Math.max( st.toe * Math.sin( pitch ), - st.heel * Math.sin( pitch ) ) + st.ankle * Math.cos( pitch );
+			const bulge = b * Math.sin( pitch ) + ( st.ankle + depth ) * Math.cos( pitch );
+			up += Math.max( 0, bulge - edges ) - depth;
+
+		}
 		out.step = step;
 		out.up = up;
 		out.pitch = toe - heel + relax;
@@ -505,49 +627,93 @@ export class RobotGait {
 	}
 
 	/**
-	 * The jump's own leg pose, from the locomotion legs \`legs\` of this frame:
-	 * planted feet stay where they are on the ground while the body moves over
-	 * them, the free leg drives to its take-off place, the legs tuck (standing)
-	 * or scissor (leaping) in the air and reach for the landing, which for a
-	 * leap is the stride itself at the lead foot's heel strike.
+	 * Seconds until the stride's next toe-off a running leap can spring from (at
+	 * least `LEAP_MIN_LOAD` on that foot), or null when the jump is two-footed:
+	 * too slow, or a stride whose support leaves no flight. The jump times its
+	 * take-off with it (`RobotJump.start`).
 	 */
-	private jumpLegsUpdate( dt: number, speed: number, jump: JumpPose, legs: Record<Side, GaitLeg>, stanceFrac: number, lift: number ): void {
+	leapTakeoff( momentum: number ): number | null {
 
-		const st = this.style;
-		const m = jump.momentum;
+		if ( ! this.canLeap( momentum, this.stanceShare ) || this.strideRate <= 0 ) return null;
+		let soonest = Infinity;
+		for ( const S of SIDES ) {
+
+			// cycles until this leg leaves the ground
+			let until = ( ( this.stanceShare - this.cycle( S ) ) % 1 + 1 ) % 1;
+			if ( until / this.strideRate < LEAP_MIN_LOAD ) until += 1;
+			soonest = Math.min( soonest, until / this.strideRate );
+
+		}
+		return soonest;
+
+	}
+
+	private canLeap( momentum: number, stanceFrac: number ): boolean {
+
+		return momentum > LEAP_MOMENTUM && this.amp > 0.2 && stanceFrac < 0.5 - LEAP_MIN_FLIGHT;
+
+	}
+
+	/**
+	 * The leap leaves the ground: the leg nearest its toe-off takes off, the other
+	 * lands. The flight runs the stride on to that leg's strike (half a cycle after
+	 * the take-off leg's strike) over the jump's air time, leaving and landing at
+	 * the stride's own rate.
+	 */
+	private takeOff( stanceFrac: number, strideRate: number, airTime: number, dir: number ): void {
+
+		let past = Infinity;
+		for ( const S of SIDES ) {
+
+			// how far past its toe-off, wrapped to half a cycle either way
+			const d = ( ( this.cycle( S ) - stanceFrac + 0.5 ) % 1 + 1 ) % 1 - 0.5;
+			if ( Math.abs( d ) < Math.abs( past ) ) {
+
+				past = d;
+				this.lead = S === 'R' ? 'L' : 'R';
+
+			}
+
+		}
+		const span = Math.max( 0.5 - stanceFrac - past, 0.05 );
+		this.leapFrom = this.phase;
+		this.leapSpan = dir * TAU * span;
+		this.leapRate = strideRate * airTime / span;
+		this.leapLive = true;
+
+	}
+
+	/**
+	 * A two-footed jump's own leg pose, from the locomotion legs `legs` of this
+	 * frame: planted feet stay where they are on the ground while the body moves
+	 * over them and push off their toes, the legs tuck in the air and reach for a
+	 * landing side by side.
+	 */
+	private jumpLegsUpdate( dt: number, speed: number, jump: JumpPose, legs: Record<Side, GaitLeg>, stanceFrac: number ): void {
+
 		const J = this.jumpLegs;
-		const leaping = m > LEAP_MOMENTUM && this.amp > 0.2;
-		if ( ! this.jumping ) {
+		if ( this.startLegs ) {
 
-			this.jumping = true;
-			this.landed = false;
+			this.startLegs = false;
 			// lead with the leg in the air, or the one further back (about to swing)
 			const swingR = ! this.stance.R, swingL = ! this.stance.L;
 			this.lead = swingR !== swingL ? ( swingR ? 'R' : 'L' ) : ( legs.R.step < legs.L.step ? 'R' : 'L' );
 			for ( const S of SIDES ) Object.assign( J[ S ], legs[ S ] );
 
 		}
-		this.jumpLead = leaping ? this.lead : null;
-		const runStride = st.stride[ 1 ];
+		this.jumpLead = null;
 
 		if ( ! jump.airborne && ! jump.landing ) {
 
-			// the stride carries on under the load; a leap drives the lead knee up, and the
-			// feet push off their toes (both for a two-footed jump, the take-off foot for a leap)
-			const k = smooth( clamp( ( jump.weight + jump.push ) / 2, 0, 1 ) );
-			const push = jump.push * lerp( 0.3, 0.5, m );
+			// the stride carries on under the load, and the feet push off their toes
+			const push = jump.push * lerp( 0.3, 0.5, jump.momentum );
 			for ( const S of SIDES ) {
 
 				const leg = J[ S ];
 				Object.assign( leg, legs[ S ] );
-				if ( leaping && S === this.lead ) leg.up = lerp( leg.up, Math.max( leg.up, st.jumpTuck * 0.7 ), k );
-				else {
-
-					const toe = Math.max( 0, push - leg.pitch );
-					leg.up += st.toe * Math.sin( toe ) + st.ankle * ( Math.cos( toe ) - 1 );
-					leg.pitch += toe;
-
-				}
+				const toe = Math.max( 0, push - leg.pitch );
+				leg.up += this.style.toe * Math.sin( toe ) + this.style.ankle * ( Math.cos( toe ) - 1 );
+				leg.pitch += toe;
 				Object.assign( this.takeoff[ S ], leg );
 
 			}
@@ -555,82 +721,39 @@ export class RobotGait {
 
 		}
 
-		// the landing: for a leap, the stride at the lead foot's strike; standing, two feet side by side
-		const landF = stanceFrac * 0.5 * ( 1 - m );
-		const landPhase = TAU * landF + ( this.lead === 'L' ? Math.PI : 0 );
-		const landSweep = 2 * stanceFrac * Math.max( lerp( st.stride[ 0 ], st.stride[ 1 ], this.run ), MIN_CADENCE_STRIDE );
-		const strike = lerp( st.heelStrike[ 0 ], st.heelStrike[ 1 ], this.run ) * RAD;
-		const toeOff = lerp( st.toeOff[ 0 ], st.toeOff[ 1 ], this.run ) * RAD;
-
 		if ( jump.airborne ) {
 
 			const f = jump.flight;
 			const toMid = ramp( 0, 0.4, f );
 			const toLand = ramp( 0.55, 0.95, f );
+			const t = jump.tuck;
 			for ( const S of SIDES ) {
 
+				// the tuck (the lead foot a little ahead), then both feet side by side for the landing
 				const lead = S === this.lead;
-				const t = jump.tuck;
-				// standing tuck (the lead foot a little ahead), leaping scissor
-				const tuck = { step: ( lead ? 0.28 : - 0.12 ) * t, up: st.jumpTuck * t, pitch: 0.15 * t };
-				const scissor = lead
-					? { step: 0.3 * runStride, up: st.jumpTuck * 0.8, pitch: - 0.1 }
-					: { step: - 0.3 * runStride, up: st.jumpTuck * 0.55, pitch: 0.35 };
-				const mid = leaping ? mixLeg( tuck, scissor, m ) : tuck;
-				const land = this.landingLeg( S, leaping ? m : 0, landPhase, stanceFrac, landSweep, lift, strike, toeOff );
 				const from = this.takeoff[ S ];
 				const leg = J[ S ];
-				// the tuck is timed by the jump itself; a leap reaches its scissor early
-				leg.step = lerp( lerp( from.step, mid.step, toMid ), land.step, toLand );
-				leg.up = lerp( lerp( from.up, mid.up, toMid ), land.up, toLand );
-				leg.pitch = lerp( lerp( from.pitch, mid.pitch, toMid ), land.pitch, toLand );
+				leg.step = lerp( lerp( from.step, ( lead ? 0.28 : - 0.12 ) * t, toMid ), 0, toLand );
+				leg.up = lerp( lerp( from.up, this.style.jumpTuck * t, toMid ), 0, toLand );
+				leg.pitch = lerp( lerp( from.pitch, 0.15 * t, toMid ), 0, toLand );
 
 			}
 			return;
 
 		}
 
-		// on the ground again: pick the stride up where the landing put the feet, planted feet hold the ground
+		// on the ground again: pick the stride up with the feet side by side, planted
 		if ( ! this.landed ) {
 
 			this.landed = true;
 			this.sinceLanding = 0;
-			this.phase = landPhase;
-			for ( const S of SIDES ) {
-
-				Object.assign( J[ S ], this.landingLeg( S, leaping ? m : 0, landPhase, stanceFrac, landSweep, lift, strike, toeOff ) );
-				this.planted[ S ] = J[ S ].up < 0.03;
-
-			}
+			this.phase = TAU * stanceFrac * 0.5 * ( 1 - jump.momentum ) + ( this.lead === 'L' ? Math.PI : 0 );
+			for ( const S of SIDES ) Object.assign( J[ S ], ZERO_LEG );
 			return;
 
 		}
-		// a foot still in the air (the trailing leg of a leap) swings on into the stride
 		this.sinceLanding += dt;
-		const into = ramp( 0, 0.18, this.sinceLanding );
-		for ( const S of SIDES ) {
-
-			const leg = J[ S ];
-			if ( this.planted[ S ] ) {
-
-				leg.step -= speed * dt;
-				continue;
-
-			}
-			const from = this.landingLeg( S, leaping ? m : 0, this.phase, stanceFrac, landSweep, lift, strike, toeOff );
-			leg.step = lerp( from.step, legs[ S ].step, into );
-			leg.up = lerp( from.up, legs[ S ].up, into );
-			leg.pitch = lerp( from.pitch, legs[ S ].pitch, into );
-
-		}
-
-	}
-
-	/** Where a leg lands: side by side (m = 0) blended toward the stride at the landing phase (a leap). */
-	private landingLeg( side: Side, m: number, phase: number, stanceFrac: number, sweep: number, lift: number, strike: number, toeOff: number ): GaitLeg {
-
-		const stride = this.legAt( this.cycle( side, phase ), stanceFrac, sweep, lift, strike, toeOff, { step: 0, up: 0, pitch: 0 } );
-		return { step: stride.step * m, up: stride.up * m, pitch: stride.pitch * m };
+		for ( const S of SIDES ) J[ S ].step -= speed * dt;
 
 	}
 
@@ -672,8 +795,33 @@ export class RobotGait {
 
 }
 
-function mixLeg( a: GaitLeg, b: GaitLeg, t: number ): GaitLeg {
+const ZERO_LEG: GaitLeg = { step: 0, up: 0, pitch: 0 };
 
-	return { step: lerp( a.step, b.step, t ), up: lerp( a.up, b.up, t ), pitch: lerp( a.pitch, b.pitch, t ) };
+/**
+ * The leap's progress through the stride's flight (0..1) at progress `u` through
+ * the jump's: it leaves and lands at `rate` (the stride's own rate as a share of
+ * the mean), slows into a hold at `LEAP_HOLD` of the mean in between, and is
+ * C1 throughout. The rate eases over `tau` at each end: `hold + (rate - hold) (1 - u / tau)^2`,
+ * with `tau` set so the whole comes to 1. A stride slower than the flight needs
+ * (rate below 3 - 2 hold) eases over half the flight and holds faster instead.
+ */
+function leapWarp( u: number, rate: number ): number {
+
+	let hold = LEAP_HOLD, tau = 1.5 * ( 1 - hold ) / ( rate - hold );
+	if ( ! ( tau <= 0.5 && tau > 0 ) ) {
+
+		tau = 0.5;
+		hold = ( 3 - rate ) / 2;
+
+	}
+	const v = clamp( u, 0, 1 );
+	return v <= 0.5 ? leapEase( v, rate, hold, tau ) : 1 - leapEase( 1 - v, rate, hold, tau );
+
+}
+
+/** The first half of `leapWarp`: the rate's integral from the start. */
+function leapEase( x: number, rate: number, hold: number, tau: number ): number {
+
+	return hold * x + ( rate - hold ) * tau / 3 * ( 1 - ( 1 - Math.min( x, tau ) / tau ) ** 3 );
 
 }

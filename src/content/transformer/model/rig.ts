@@ -59,9 +59,10 @@ export interface GaitPose {
    * Size the carriage from the hips without the pelvis's per-frame yaw and
    * list, for gaits whose own channels (vault, flight, compression) move the
    * body. Measured from the moving hips, the carriage kinks wherever the
-   * binding sample changes, and bobs incidentally with the hips.
+   * binding sample changes, and bobs incidentally with the hips. A weight (0..1)
+   * blends the measuring hips from the moving ones to the neutral ones.
    */
-  steadyCarriage?: boolean
+  steadyCarriage?: number
   /** the feet's track and the shoulders' abduction as shares of the rig's (default 1) */
   track?: number
   abduct?: number
@@ -220,8 +221,9 @@ export class RobotRig {
       if (path) {
         // the reach over the cycle, both legs at each sample (the left half a cycle on)
         const pelvisQ = this.local[this.index.pelvis].q
-        const neutralL = g.steadyCarriage ? this.neutralHip('hip.L', root, pelvisQ, _hipNL) : hipL
-        const neutralR = g.steadyCarriage ? this.neutralHip('hip.R', root, pelvisQ, _hipNR) : hipR
+        const steady = g.steadyCarriage ?? 0
+        const neutralL = steady > 0 ? this.neutralHip('hip.L', root, pelvisQ, _hipNL).lerp(hipL, 1 - steady) : hipL
+        const neutralR = steady > 0 ? this.neutralHip('hip.R', root, pelvisQ, _hipNR).lerp(hipR, 1 - steady) : hipR
         const n = path.length
         let mean = 0, c = 0, s = 0
         for (let j = 0; j < n; j++) {

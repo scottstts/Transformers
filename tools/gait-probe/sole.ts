@@ -1,25 +1,33 @@
 import { Matrix4, Vector3 } from 'three/webgpu'
 import { AudioMix } from '../../src/audio/mix.ts'
-import { createF1, f1FootNodes, RACER_GAIT } from '../../src/content/ferrari-f1/index.ts'
+import type { GaitStyle } from '../../src/content/transformer/animation/gait.ts'
+import type { Character } from '../../src/content/transformer/character.ts'
+import { createF1 } from '../../src/content/ferrari-f1/index.ts'
+import { createCybertruck } from '../../src/content/cybertruck/index.ts'
+import { createSemi } from '../../src/content/semi/index.ts'
 import { supportPoints } from '../../src/content/transformer/asset/loader.ts'
 import { NO_CONTACT, readAsset, REST_GAIT } from '../../tests/support/assets.ts'
 
 /**
- * The F1 sole in the ankle frame: its lowest point against the gait's foot pitch
+ * A robot's sole in the ankle frame: its lowest point against the gait's foot pitch
  * (the levelling tilt added), from the full mesh and from the 26-point support set
  * the ground projection uses, beside the heel/toe edge model the gait rolls on.
  */
-export function sole(): void {
-  const asset = readAsset('ferrari-f1')
-  const robot = createF1(asset, NO_CONTACT, new AudioMix())
+const create: Record<string, typeof createF1> = { 'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi }
+
+export function sole(name: string): void {
+  const asset = readAsset(name)
+  const robot: Character = create[name](asset, NO_CONTACT, new AudioMix())
+  const style = (robot.gait as unknown as { style: GaitStyle }).style
+  if (process.env.GAIT) Object.assign(style, JSON.parse(process.env.GAIT))
   robot.model.pose(1, REST_GAIT)
   const rig = robot.model.rig
   const ankle = rig.world[rig.index['foot.L']]
   const inv = new Matrix4().copy(ankle).invert()
   const all: Vector3[] = [], hull: Vector3[] = []
   const v = new Vector3()
-  for (const name of f1FootNodes(asset.manifest).filter((n) => n.endsWith('.L') || /\.L\./.test(n))) {
-    const i = asset.manifest.nodes.findIndex((n) => n.name === name)
+  const feet = (robot.model as unknown as { footSupport: Array<{ node: number; side: string }> }).footSupport.filter((s) => s.side === 'L')
+  for (const { node: i } of feet) {
     const W = new Matrix4().multiplyMatrices(inv, robot.model.world[i])
     for (const { geometry } of asset.meshes[i]) {
       const p = geometry.getAttribute('position')
@@ -28,7 +36,7 @@ export function sole(): void {
     for (const p of supportPoints(asset.meshes[i].map((m) => m.geometry))) hull.push(p.clone().applyMatrix4(W))
   }
   // ankle frame: +y is backward (forward is -y), z up; pitch + is toe down
-  const { heel, toe, ankle: ank, soleTilt = 0 } = RACER_GAIT
+  const { heel, toe, ankle: ank, soleTilt = 0 } = style
   for (let deg = -30; deg <= 45; deg += 5) {
     const g = deg * Math.PI / 180, a = g + soleTilt * Math.PI / 180, c = Math.cos(a), s = Math.sin(a)
     const low = (pts: Vector3[]) => {

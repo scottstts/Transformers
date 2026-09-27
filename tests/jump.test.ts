@@ -74,7 +74,9 @@ describe('jump choreography', () => {
     let previous = gait.update(dt, speed, 0, running, true)
     for (let frame = 0; frame < 480; frame++) previous = gait.update(dt, speed, 0, running, true)
     gait.events.length = 0
-    jump.start(speed / RUN_SPEED)
+    // as the session starts it: a running leap is timed to the stride's next toe-off
+    jump.start(speed / RUN_SPEED, gait.leapTakeoff(speed / RUN_SPEED))
+    const leaping = speed >= RUN_SPEED
     let peakBack = 0
     let peakForward = 0
     let lead: 'R' | 'L' | null = null
@@ -113,13 +115,17 @@ describe('jump choreography', () => {
           expect(pose.arms.R).toBeLessThan(-10)
         }
       }
-      // no stride footfalls while loading or in the air; they resume as the landing hands back
-      if (p.weight > 0 && !(p.landing && p.weight < 0.5)) expect(gait.events).toHaveLength(0)
+      // A two-footed jump silences the stride from the loading until the landing hands back. A
+      // leap loads on the stride itself, whose strikes still sound; only its flight and its landing
+      // (the jump's own footfall) are silent.
+      const silent = leaping ? p.airborne || (p.landing && p.weight >= 0.5) : p.weight > 0 && !(p.landing && p.weight < 0.5)
+      if (silent) expect(gait.events).toHaveLength(0)
       gait.events.length = 0
       previous = pose
     }
     expect(lead === null).toBe(speed < RUN_SPEED)
-    expect(peakBack).toBeGreaterThan(lead ? 10 : 20)
+    // the backswing reaches 14-23 degrees, depending on where the arm springs are in the stride when the jump starts
+    expect(peakBack).toBeGreaterThan(lead ? 10 : 13)
     expect(peakForward).toBeLessThan(lead ? -25 : -31)
   })
 })

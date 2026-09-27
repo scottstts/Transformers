@@ -10,9 +10,9 @@ import { NO_CONTACT, readAsset } from './support/assets.ts'
 
 const cases = [
   { name: 'ferrari-f1', style: RACER_GAIT, speeds: [F1_PROFILE.robot.walkSpeed, F1_PROFILE.robot.runSpeed], steps: [1.95, 5.2], cadence: [3.2 / 1.95, 15.6 / 5.2] },
-  { name: 'cybertruck', style: HEAVY_GAIT, speeds: [CYBERTRUCK_PROFILE.robot.walkSpeed, CYBERTRUCK_PROFILE.robot.runSpeed], steps: [2.025, 4.6], cadence: [3.4 / 1.35, 7.5 / 2.3] },
+  { name: 'cybertruck', style: HEAVY_GAIT, speeds: [CYBERTRUCK_PROFILE.robot.walkSpeed, CYBERTRUCK_PROFILE.robot.runSpeed], steps: [2.45, 4.6], cadence: [3.9 / 2.45, 15 / 4.6] },
   // the Semi steps at a slower cadence than the pickup: strides scale with the legs, speeds with their square root
-  { name: 'semi', style: SEMI_GAIT, speeds: [SEMI_PROFILE.robot.walkSpeed, SEMI_PROFILE.robot.runSpeed], steps: [2.75, 5.6], cadence: [5.9 / 2.75, 17 / 5.6] },
+  { name: 'semi', style: SEMI_GAIT, speeds: [SEMI_PROFILE.robot.walkSpeed, SEMI_PROFILE.robot.runSpeed], steps: [3.3, 5.6], cadence: [4.5 / 3.3, 17 / 5.6] },
 ]
 const dt = 1 / 240
 const sides = ['L', 'R'] as const
@@ -288,5 +288,38 @@ describe('F1 carriage', () => {
     expect(flexed).toBeGreaterThan(thigh[0])
     if (running) expect(flexed).toBeLessThan(60)
     expect(extended).toBeLessThan(thigh[1])
+  })
+})
+
+// The pickup's and the Semi's old walk (5.1 / 5.9 m/s) stepped at twice the rate of their size
+// (Froude 0.85) and swung the hips under a counter-held chest: a catwalk wiggle.
+describe.each([
+  { name: 'cybertruck', style: HEAVY_GAIT, walk: CYBERTRUCK_PROFILE.robot.walkSpeed },
+  { name: 'semi', style: SEMI_GAIT, walk: SEMI_PROFILE.robot.walkSpeed },
+])('$name walk', ({ name, style, walk }) => {
+  const { dims } = readAsset(name).manifest.rig
+
+  it('walks at the cadence of its size', () => {
+    const legTime = Math.sqrt(dims.hipZ / 9.81)
+    expect(walk * walk / (9.81 * dims.hipZ)).toBeLessThanOrEqual(0.51)
+    const cadence = walk / style.stride[0] * legTime
+    expect(cadence).toBeGreaterThan(0.75)
+    expect(cadence).toBeLessThan(0.95)
+  })
+
+  it('carries pelvis and chest as one heavy block, shifting its weight rather than swinging its hips', () => {
+    const gait = new RobotGait(style)
+    for (let frame = 0; frame < 2400; frame++) gait.update(dt, walk, 0, false, true)
+    let list = 0, yaw = 0, waist = 0
+    for (let frame = 0; frame < 720; frame++) {
+      const pose = gait.update(dt, walk, 0, false, true)
+      list = Math.max(list, Math.abs(pose.roll))
+      yaw = Math.max(yaw, Math.abs(pose.yaw ?? 0))
+      // the chest's yaw against the pelvis's (spine and chest share the twist 1 : 0.6)
+      waist = Math.max(waist, Math.abs(pose.twist * 1.6))
+    }
+    expect(list).toBeLessThan(1.6)
+    expect(yaw).toBeLessThan(3.1)
+    expect(waist).toBeLessThan(4.6)
   })
 })
