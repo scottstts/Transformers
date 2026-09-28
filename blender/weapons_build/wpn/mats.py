@@ -3,6 +3,7 @@
 
   glow   the axe's light-bar strip, the gun's capacitor coils (emissive, driven in game)
   blade  the sword's polished blade steel
+  lacquer, bronzeDark, edge  the spear's black shaft, patinated flutes, honed edges
 
 Blender materials are named `<weapon>.<slot>`; the exporter writes the slot."""
 import bpy
@@ -32,6 +33,12 @@ SLOTS = {
         'orange': (0xe8641a, 0.0, 0.4, None, 0, 1.0),
         'lamp': (0xf4f7ff, 0.0, 0.2, 0xf4f7ff, 12.0, 0.0),
         'glow': (0xbfe6ff, 0.0, 0.3, 0xbfe6ff, 8.0, 0.0),
+    },
+    'spear': {
+        'lacquer': (0x0a0b0d, 0.2, 0.14, None, 0, 1.0),
+        'bronze': (0x745a3c, 1.0, 0.38, None, 0, 0.0),
+        'bronzeDark': (0x2e2419, 1.0, 0.55, None, 0, 0.0),
+        'edge': (0xb89a6c, 1.0, 0.16, None, 0, 0.0),
     },
     'sword': {
         'blade': (0xc9ccd0, 1.0, 0.16, None, 0, 0.0),
