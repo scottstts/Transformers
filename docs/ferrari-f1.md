@@ -6,7 +6,16 @@ The SF-25-style car, its robot and the transformation are authored procedurally 
 /Applications/Blender.app/Contents/MacOS/Blender -b blender/ferrari-f1-transformer.blend --python blender/ferrari-f1_build/export_game.py
 ```
 
-The export rebuilds the scene from the scripts (they reproduce the working `.blend` exactly) and does not save the `.blend`; the working file already carries the baked timeline for scrubbing.
+The export rebuilds the scene from the scripts and does not save the `.blend`; the working file already carries the baked timeline for scrubbing. Car-only review edits can retain that timeline while updating the geometry with `f1b.build.refresh_car()`. A later full build/export recalculates geometry-dependent assembly fitting and ground support.
+
+For a car-only inspection pass in the open Blender file, reload `run.py`, then call `from f1b import build; build.refresh_car()`. This stages the car, validates its object inventory, mesh coordinates and object bases, and swaps only mesh data on the existing car objects. It leaves the robot meshes, parents and animation actions intact. Save the working `.blend` for inspection; do not export to `public/models` until the user explicitly approves the result.
+
+After changes to the front wing, `review_sync.foot_mounts()` updates the heel-wing fit and the four foot carriers using the open file's existing timeline pacing. `review_sync.ground_clearance()` then updates the common vertical ground offset without changing joint poses or timing. The carrier rods now park at their physical collapsed length horizontally inside the feet. The rear diffuser is part of the continuous floor, and the single tapered spine fin belongs to the tail so the telescoping hood cannot duplicate its surfaces.
+
+Two packaging constraints surfaced while reshaping the body:
+
+- The sidepod's lower flank (the cage point near z 0.2 in `bodycage.STATIONS`) conceals the folded arm stack. The arms reach about x 0.55 over z 0.20–0.45 from the inlet back to f −0.75. A scoop pulled inside that line shows the forearms and gauntlets beneath the pod. The undercut can deepen only below z ≈ 0.2.
+- The diffuser drop is a vertical shear applied to the floor's resampled rings. Applied to the section's control points, the top skin spans them linearly while the tunnel roof below follows its own points, so the two cross near the exit and z-fight. The tunnel fences stay clear of the floor's edge wall and bury their tops inside the floor sheet.
 
 ## Export (`f1b/export.py`)
 
@@ -42,7 +51,7 @@ The export rebuilds the scene from the scripts (they reproduce the working `.ble
   - drive: 3.6 m wheelbase, 0.36 m rolling radius, 58 / 80 m/s top speed (Shift), 11 / 15 m/s² drive, 34 m/s² braking;
   - handling: rear drive, grip 1.45 plus downforce (+75 % at 50 m/s), a small steering lock, so its drifts hold shallower angles than the truck's (car-handling.md);
   - chassis: a stiff low car (a third of the truck's pitch and roll) pivoting at 0.3 m;
-  - robot: walk 3.2 m/s with 1.95 m steps (1.64 steps/s), run 15.6 m/s with 5.2 m steps (3 steps/s). Both are timed for 2.08 m hips, as a human scaled to that size: the walk sits at the walk-to-run transition and the run at a sprint (robot-locomotion.md, "Timing and scale"). The earlier 4.8 m/s walk was past the physical limit of a walk for these legs, and both gaits stepped at a rate set for a smaller body, which read as sped up. Running support occupies 20 % of each leg's cycle. Its gait rolls on a long sole (heel 0.43, toe 0.78 m from the ankle; the wing halves dock on the foot), levelled by 0.8° while stepping because its bottom rakes toe-up in the stand. The run uses a 0.79 m rounded heel-recovery arc, a ballistic flight (about 5 cm) and stance compression, a stronger forward torso lean, more pelvis and shoulder counter-rotation, and narrow opposing arm pumps timed to thigh drive. The torso's flight is not pulled down by recovering feet. Walking retains its vault; both use parallel foot tracks and forward knee alignment that ignores the pelvis's step yaw (robot-locomotion.md, "Carriage per robot");
+  - robot: walk 3.2 m/s with 1.95 m steps (1.64 steps/s), run 15.6 m/s with 5.2 m steps (3 steps/s). Both are timed for 2.08 m hips, as a human scaled to that size: the walk sits at the walk-to-run transition and the run at a sprint (robot-locomotion.md, "Timing and scale"). The earlier 4.8 m/s walk was past the physical limit of a walk for these legs, and both gaits stepped at a rate set for a smaller body, which read as sped up. Running support occupies 20 % of each leg's cycle. Its gait rolls on a flat sole with 5 cm rounded edges (heel 0.17, toe 0.75 m from the ankle); the heel wing docks inside the foot, so the heel is short and the walk strikes at 30° (robot-locomotion.md). The model samples the soles along their rolling plane (`rollSupport`) so the ground lift follows the rounded heel. The run uses a 0.79 m rounded heel-recovery arc, a ballistic flight (about 5 cm) and stance compression, a stronger forward torso lean, more pelvis and shoulder counter-rotation, and narrow opposing arm pumps timed to thigh drive. The torso's flight is not pulled down by recovering feet. Walking retains its vault; both use parallel foot tracks and forward knee alignment that ignores the pelvis's step yaw (robot-locomotion.md, "Carriage per robot");
   - camera: 7.2 m behind the car and 10.2 m from the robot.
 - **Materials** (`materials.ts`), one per `f1b/mats.py` slot:
   - Paint is clearcoated, with faint orange peel in the coat.
@@ -75,6 +84,5 @@ Everything must sound like a recording of the real thing: no percussive, novelty
 
 ## Build issues found at export (left as authored)
 
-- From T ≈ 0.8, each foot's retracted heel-arm strut stages nest behind their base, down through the sole. They reach about 10 cm below it, so the Blender stand rests on them. In game they are below the sand while standing, but they show under a lifted foot.
 - In car form the backpack mast's strut base hangs about 2 cm below the floor to the ground.
 - The front hubs sit 1 cm above `dims.FR_R`, so the front tyres clear the ground by about 9 mm; the rear tyres carry the car.

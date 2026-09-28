@@ -21,7 +21,7 @@ ENGAGE = 0.05             # minimum overlap between telescoping stages
 
 class Strut:
     def __init__(self, name, bone, anchor, target, attach, r=0.026, stages=None, length=None, ref=(1.0, 0.0, 0.0),
-                 window=None, engage=0.05, snap=True):
+                 window=None, engage=0.05, snap=True, pocket=None):
         """window (t_in, t_out): the arm reaches out to the part over `engage` before t_in and
         retracts into its socket over `engage` after t_out (None: always engaged).
         snap: move the attach point onto the part's surface (nearest point, car mode)."""
@@ -31,6 +31,7 @@ class Strut:
         self.n, self.L = stages, length
         self.ref = V(*ref)
         self.window, self.engage, self.snap = window, engage, snap
+        self.pocket = V(*pocket) if pocket is not None else None
         self.objs = []
 
     def reach(self, T):
@@ -53,6 +54,13 @@ class Strut:
         A = W[self.bone] @ self.anchor
         B = N[self.target] @ self.attach
         k = 1.0 if T is None else self.reach(T)
+        if self.pocket is not None:
+            # A disengaged ram parks at its physical collapsed length in
+            # the foot, instead of forcing a zero span and sending all four
+            # rigid stages backwards through the sole.
+            length = self.L or self.pocket.length
+            parked = A + W[self.bone].to_3x3() @ (self.pocket.normalized()*length)
+            return A, parked.lerp(B,k)
         return A, A.lerp(B, k)
 
     def aim(self, W, N):
@@ -102,7 +110,7 @@ class Strut:
         """{object: world matrix} spanning anchor -> attach."""
         A, B = self.ends(W, N, T)
         e = (B - A).length
-        z = self.aim(W, N)
+        z = (B-A).normalized() if e > 1e-6 else self.aim(W, N)
         x = W[self.bone].to_3x3() @ self.ref
         x = x - z * x.dot(z)
         if x.length < 1e-6:
@@ -148,6 +156,8 @@ def mirrored(s):
     m = Strut(s.name[:-2] + '.R' if s.name.endswith('.L') else s.name + '.R', s.bone.replace('.L', '.R'),
               (-s.anchor.x, -s.anchor.y, s.anchor.z), s.target.replace('.L', '.R'), (-s.attach.x, -s.attach.y, s.attach.z),
               s.r, s.n, s.L, (-s.ref.x, -s.ref.y, s.ref.z), s.window, s.engage, False)
+    if s.pocket is not None:
+        m.pocket = Vector((-s.pocket.x,s.pocket.y,s.pocket.z))
     return m
 
 

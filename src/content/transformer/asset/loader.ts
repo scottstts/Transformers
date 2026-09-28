@@ -118,12 +118,17 @@ function normals(buffer: ArrayBuffer, offset: number, n: number): Float32Array {
   return normal
 }
 
-/** 26-direction extreme vertices of a node's geometry (cheap ground contact). */
-export function supportPoints(geometries: BufferGeometry[]): Vector3[] {
+/**
+ * 26-direction extreme vertices of a node's geometry (cheap ground contact),
+ * plus the extremes along any `extra` unit directions (node-local). A vertex
+ * extreme in several directions is kept once.
+ */
+export function supportPoints(geometries: BufferGeometry[], extra: Vector3[] = []): Vector3[] {
   const dirs: Vector3[] = []
   for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
     if (x || y || z) dirs.push(new Vector3(x, y, z).normalize())
   }
+  dirs.push(...extra)
   const best = dirs.map(() => ({ d: -Infinity, p: new Vector3() }))
   const v = new Vector3()
   for (const geometry of geometries) {
@@ -136,5 +141,9 @@ export function supportPoints(geometries: BufferGeometry[]): Vector3[] {
       }
     }
   }
-  return best.filter((b) => Number.isFinite(b.d)).map((b) => b.p)
+  const out: Vector3[] = []
+  for (const b of best) {
+    if (Number.isFinite(b.d) && !out.some((p) => p.equals(b.p))) out.push(b.p)
+  }
+  return out
 }

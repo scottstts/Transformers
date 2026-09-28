@@ -18,6 +18,46 @@ def car_only():
     return parts
 
 
+def refresh_car():
+    """Sync car mesh edits into an open baked scene without rebuilding its rig.
+
+    Stage the complete car first; preserve the existing objects, parents,
+    object transforms, modifiers and animation. A changed object inventory
+    or modifier recipe requires an explicit full build instead.
+    """
+    import math
+    current = {o.name: o for o in bpy.data.collections['CAR'].objects}
+    scratch = bpy.data.collections.new('F1_CAR_REFRESH')
+    bpy.context.scene.collection.children.link(scratch)
+    try:
+        for name, obj in current.items():
+            obj.name = '__car_refresh_old__' + name
+        fresh = car.build(scratch)
+        if set(fresh) != set(current):
+            raise RuntimeError('Car inventory changed: %s' % (set(fresh) ^ set(current)))
+        for name, obj in fresh.items():
+            old = current[name]
+            if [m.type for m in obj.modifiers] != [m.type for m in old.modifiers]:
+                raise RuntimeError('Modifier recipe changed: ' + name)
+            if not obj.data.polygons or any(not math.isfinite(c) for v in obj.data.vertices for c in v.co):
+                raise RuntimeError('Invalid car geometry: ' + name)
+            if any(abs(a-b) > 1e-5 for ra,rb in zip(obj.matrix_basis,old.matrix_basis) for a,b in zip(ra,rb)):
+                raise RuntimeError('Object basis changed: ' + name)
+        for name, obj in fresh.items():
+            old_mesh = current[name].data
+            current[name].data = obj.data
+            if old_mesh.users == 0:
+                bpy.data.meshes.remove(old_mesh)
+        print('Refreshed %d car meshes; existing rig and animation retained.' % len(fresh))
+    finally:
+        kit.clear_collection(scratch)
+        bpy.data.collections.remove(scratch)
+        for name, obj in current.items():
+            obj.name = name
+    bpy.context.view_layer.update()
+    return current
+
+
 def stats(coll_name):
     dg = bpy.context.evaluated_depsgraph_get()
     tris = n = 0

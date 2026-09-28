@@ -81,7 +81,9 @@ describe('ferrari f1 transformation playback', () => {
     model.pose(0, null)
     expect(centre('asm:toecap.L').z).toBeGreaterThan(2.3)
     expect(centre('asm:toecap.L').x).toBeGreaterThan(0)
-    expect(centre('asm:tail').z).toBeLessThan(-1.5)
+    // the tail carries the engine cover's spine fin forward, so test its rear end
+    const tail = new Box3().setFromObject(model.root.children[0].children.find((n) => n.name === 'asm:tail')!)
+    expect(tail.min.z).toBeLessThan(-2.2)
     expect(centre('asm:chest').y).toBeLessThan(1.2)
     model.pose(1, null)
     const head = centre('part:R.head.helmet')

@@ -35,6 +35,11 @@ def floor_pieces(coll):
     details = aero.floor_details()
     fl = _obj('floor.solid', [(aero.floor_surface(), 'carbonMatte')] + details +
               [(kit.mirror_x(m),s) for m,s in details], coll, finish=None)
+    # Tunnel walls meet the actual floor roof; no detached rear diffuser kit.
+    for mesh in aero.diffuser_vanes():
+        cutter=kit.obj_from_pydata('diffuser.fence',*mesh,['carbonMatte'],coll=coll)
+        kit.fix_normals(cutter)
+        kit.boolean(fl,cutter,'UNION')
     parts = {}
 
     def keep(o):
@@ -75,10 +80,10 @@ def build(coll):
         parts['rimR.' + S] = _obj('rimR.' + S, [(chassis.rim_pad(1, 'rear'), 'interior')], coll, mir)
         parts['mirror.' + S] = _obj('mirror.' + S, chassis.mirror(1), coll, mir)
         parts['duct.' + S] = _obj('duct.' + S, chassis.inlet_duct(1), coll, mir)
-        ep, fp = aero.front_endplate()
+        ep = aero.front_endplate()
         # the wing half splits at mid-span: the foot is the outer piece (endplate upright), the inner
         # piece folds under it as the sole; the nose pylon stays with the nose (shin)
-        whole = _obj('fwing.' + S, aero.front_wing_elements() + aero.front_flap_hardware() + [(ep, 'carbon'), (fp, 'carbon')], coll, mir, None)
+        whole = _obj('fwing.' + S, aero.front_wing_elements() + aero.front_flap_hardware() + [(ep, 'carbon')], coll, mir, None)
         for name, (x0, x1) in (('fwingIn', (0.0, FW_SPLIT)), ('fwingOut', (FW_SPLIT, 2.0))):
             poly = [(x0, 2.0), (x1, 2.0), (x1, 3.4), (x0, 3.4)]
             o = cut_region(whole, '%s.%s' % (name, S), [top_prism(poly if s > 0 else mirror_xf(poly), -1.0, 2.0)], coll)

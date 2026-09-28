@@ -1,6 +1,7 @@
 import { MathUtils, Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import { eulerXYZ, type GaitLeg, type GaitPose, type RigOverlay, type RobotRig } from '../model/rig'
 import { ARM, CH, CHANNELS, SIDES, WEAPON, createCombatPose, type CombatPose, type Side } from './pose'
+import { toeRoll, type AnkleOffset, type SoleEdges } from '../animation/sole'
 
 const deg = MathUtils.degToRad
 const FINGERS = ['index', 'middle', 'ring', 'pinky'] as const
@@ -20,8 +21,8 @@ export interface CombatBuild {
   thumb: [number, number, number]
   /** the weapon's second grip in the weapon frame (m) */
   offGrip: [number, number, number]
-  /** sole: heel and toe edges behind / ahead of the ankle, ankle height (m), as the gait style has them */
-  sole: { heel: number; toe: number; ankle: number }
+  /** sole: heel and toe edges behind / ahead of the ankle, ankle height and edge rounding (m), as the gait style has them */
+  sole: SoleEdges
   /**
    * The weapon is held by pistol grips (a gun): its grips run across the
    * fist, its barrels (weapon +z) leave past the knuckles and its top
@@ -365,9 +366,10 @@ export class CombatOverlay implements RigOverlay {
 }
 
 /** Raise the heel by `phi` (rad) about the toe edge: the ankle rides the arc about it. */
-export function toePivot(step: number, up: number, pitch: number, phi: number, sole: CombatBuild['sole'], out: GaitLeg): GaitLeg {
-  out.step = step + sole.toe * (1 - Math.cos(phi)) + sole.ankle * Math.sin(phi)
-  out.up = up + sole.toe * Math.sin(phi) + sole.ankle * (Math.cos(phi) - 1)
+export function toePivot(step: number, up: number, pitch: number, phi: number, sole: SoleEdges, out: GaitLeg): GaitLeg {
+  toeRoll(sole, phi, _roll)
+  out.step = step + _roll.step
+  out.up = up + _roll.up
   out.pitch = pitch + phi
   return out
 }
@@ -418,6 +420,7 @@ const REST_GAIT: GaitPose = {
 }
 
 const _one = new Vector3(1, 1, 1)
+const _roll: AnkleOffset = { step: 0, up: 0 }
 const _x = new Vector3(1, 0, 0)
 const _z = new Vector3(0, 0, 1)
 const _s = new Vector3()

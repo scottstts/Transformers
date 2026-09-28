@@ -69,18 +69,14 @@ def airbox():
 
 
 def tcam():
+    """Transverse camera bar on the roll-hoop pedestal, as in the plan photo."""
     rows = []
-    x, fc, z, sc = 0.0, -0.205, 0.985, 1.2
-    Lh = 0.108 * sc
-    for i in range(15):
-        t = i / 14
-        taper = math.sin(math.pi * (0.10 + t * 0.86)) ** 0.55
-        w, h = sc * 0.0215 * taper, sc * 0.0195 * taper
-        ff = fc + Lh * (0.42 - t)
-        rows.append([(x + math.copysign(abs(math.sin(a)) ** 0.78, math.sin(a)) * w, ff,
-                      z + math.copysign(abs(math.cos(a)) ** 0.78, math.cos(a)) * h) for a in (2 * math.pi * k / 24 for k in range(24))])
-    pod = loft_rings(rows, True, True, cap_segs=3)
-    stalk = tube([(0.0, -0.215, 0.925), (0.0, -0.212, 0.972)], 0.008, 12)
+    for x, scale in ((-.160,.65),(-.148,1),(-.105,1),(.105,1),(.148,1),(.160,.65)):
+        rows.append([(x, -.205 + f, 1.004 + z)
+                     for f,z in squircle(.048*scale,.018*scale,3.5,24)])
+    pod = loft_rings(rows, True, True)
+    stalk = sweep([(0,-.215,.935),(0,-.215,.987)],
+                  lambda t:squircle(.025,.024,3,16),up=(0,1,0))
     return [(pod, 'carbon'), (stalk, 'carbon')]
 
 
@@ -95,9 +91,10 @@ def halo():
     path = []
     for i in range(41):
         t = i / 40
-        s = smooth01(t)
-        x = lerp(HALO_REAR[0], HALO_APEX[0], s) + math.sin(t * math.pi) * 0.126
-        z = lerp(HALO_REAR[2], HALO_APEX[2], smoother01(t)) + math.sin(t * math.pi) * 0.050
+        # Rear legs rise rapidly to a nearly level hoop. The old diagonal
+        # sides made a triangular canopy, especially in the front 3/4 view.
+        x = HALO_REAR[0] * math.cos(t * math.pi / 2) + .047 * math.sin(t * math.pi)
+        z = lerp(HALO_REAR[2], HALO_APEX[2], smooth01(t / .38)) + .010 * math.sin(t * math.pi)
         f = lerp(HALO_REAR[1], HALO_APEX[1], t ** 0.86)
         path.append((x, f, z))
     sec = lambda t: squircle(lerp(0.0225, 0.0170, smooth01(t)), lerp(0.0330, 0.0250, smooth01(t)), 2.5, 16)
@@ -140,34 +137,44 @@ def mirror(s=1):
     """Mirror housing on a faired stalk rising from the pod shelf (left: s = 1)."""
     out = []
     from .hull import POD
-    f0 = 0.640
+    f0 = 0.760
     base = (s * 0.470, f0, POD(f0)['zTop'] - 0.010)
-    top = (s * 0.535, 0.690, 0.662)
-    stalk = sweep([base, ((base[0] + top[0]) / 2, (f0 + 0.69) / 2, 0.625), top],
+    top = (s * 0.575, 0.820, 0.662)
+    stalk = sweep([base, ((base[0] + top[0]) / 2, (f0 + 0.82) / 2, 0.625), top],
                   lambda t: squircle(lerp(0.030, 0.020, t), lerp(0.008, 0.007, t), 2.6, 12), up=(0, 1, 0))
     out.append((stalk, 'carbon'))
     rows = []
     for i in range(11):
         t = i / 10
-        x = s * lerp(0.480, 0.600, t)
+        x = s * lerp(0.475, 0.690, t)
         sc = math.sin(math.pi * (0.22 + t * 0.60)) / math.sin(math.pi * 0.52)
-        rows.append([(x, 0.700 + math.copysign(abs(math.sin(a)) ** 0.42, math.sin(a)) * 0.030 * sc,
-                      0.672 + math.copysign(abs(math.cos(a)) ** 0.42, math.cos(a)) * 0.034 * sc) for a in (2 * math.pi * k / 28 for k in range(28))])
+        rows.append([(x, 0.830 + math.copysign(abs(math.sin(a)) ** 0.42, math.sin(a)) * 0.041 * sc,
+                      0.672 + math.copysign(abs(math.cos(a)) ** 0.42, math.cos(a)) * 0.025 * sc) for a in (2 * math.pi * k / 28 for k in range(28))])
     out.append((loft_rings(rows, True, True, cap_segs=3, bulge=0.35), 'paint'))
-    glass = plate([(-0.048, -0.024), (0.048, -0.024), (0.048, 0.024), (-0.048, 0.024)], 0.004,
-                  warp=lambda u, v, w: (s * 0.540 + u, 0.670 - 0.002 + w, 0.672 + v))
+    glass = plate([(-0.084, -0.016), (0.084, -0.016), (0.084, 0.016), (-0.084, 0.016)], 0.004,
+                  warp=lambda u, v, w: (s * 0.5825 + u, 0.789 - 0.002 + w, 0.672 + v))
     out.append((glass, 'mirror'))
     return out
 
 
 # ---------------------------------------------------------------------- fin
 def shark_fin():
-    top = [(-0.470, 0.842), (-0.700, 0.818), (-0.950, 0.768), (-1.200, 0.700), (-1.420, 0.628), (-1.580, 0.580)]
-    bot = [(-1.580, 0.560), (-1.400, 0.600), (-1.150, 0.640), (-0.900, 0.690), (-0.650, 0.748), (-0.470, 0.790)]
-    # bottom edge sinks 12 mm into the deck along its length
-    bot = [(f, deck_z(0, f) - 0.012) for f, _ in bot]
-    outline = spline2(top + bot, 90, closed=True)
-    return plate(outline, 0.014, warp=lambda u, v, w: (w * (1 - 0.3 * clamp01((u + 1.58) / 1.1)), u, v))
+    from .bodycage import STATIONS
+    from .shape import curve1
+    deck = curve1([(f, pts[0][1]) for f,pts in STATIONS])
+    height=curve1([(-.420,.872),(-.700,.846),(-1.050,.800),
+                   (-1.350,.742),(-1.650,.683),(-1.950,.610)])
+    rows=[]
+    for i in range(57):
+        t=i/56
+        f=lerp(-.420,-1.950,t)
+        base=deck(f)-.022
+        top=max(base+.026,height(f))
+        # An aerofoil-thin upper edge grows out of a broad radiused root.
+        w=.004+.011*math.sin(math.pi*t)**.7
+        rows.append([(-w,f,base),(-w*.80,f,base+.017),(-.003,f,top-.003),
+                     (0,f,top),(.003,f,top-.003),(w*.80,f,base+.017),(w,f,base)])
+    return loft_rings(rows,True,True)
 
 
 # ---------------------------------------------------------------- inlet duct

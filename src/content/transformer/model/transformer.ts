@@ -61,6 +61,11 @@ export interface TransformerOptions {
   label: string
   /** nodes whose support points form the soles (a `.L` / `.R` suffix gives the side) */
   footNodes: string[]
+  /**
+   * Also sample the soles along their rolling plane, for rounded heels and
+   * toes the 26 box directions miss (see `rollSupport`). Off: box directions only.
+   */
+  rollSupport?: boolean
   /** T at which the skeleton starts blending into the live gait */
   gaitBlendFrom?: number
   /** world-hosted nodes and the bone node that carries each once the skeleton is live (`asm:van0` -> `bone:chest`) */
@@ -163,7 +168,7 @@ export class TransformerModel {
     for (const name of options.footNodes) {
       const i = byName[name]
       if (i === undefined) throw new Error(`${this.label} asset lacks ${name}`)
-      this.footSupport.push({ node: i, side: /\.L($|\.)/.test(name) ? 'L' : 'R', points: supportPoints(asset.meshes[i].map((m) => m.geometry)) })
+      this.footSupport.push({ node: i, side: /\.L($|\.)/.test(name) ? 'L' : 'R', points: options.rollSupport ? [] : supportPoints(asset.meshes[i].map((m) => m.geometry)) })
     }
     this.footNode = { L: this.index('bone:foot.L'), R: this.index('bone:foot.R') }
     this.frontWheel = new Uint8Array(count)
@@ -192,7 +197,31 @@ export class TransformerModel {
     manifest.nodes.forEach((record, i) => {
       if (record.kind === 'bone') this.boneOf[i] = this.rig.index[record.name.slice(5)]
     })
+    if (options.rollSupport) this.rollSupport(asset)
     this.pose(0, null)
+  }
+
+  /**
+   * Adds each sole node's extremes along directions in its foot's rolling
+   * plane (pitch -60..60 deg, measured in the stand), so a rounded heel or toe
+   * bears where it really does. The 26 box directions alone meet a rounding
+   * only at 45 deg, and a heel strike rolls over it at 5-30 deg.
+   */
+  private rollSupport(asset: TransformerAsset): void {
+    this.pose(1, null)
+    const inv = new Matrix4()
+    const dirs: Vector3[] = []
+    for (const s of this.footSupport) {
+      inv.copy(this.world[s.node]).invert()
+      const foot = this.world[this.footNode[s.side]]
+      dirs.length = 0
+      for (let deg = -60; deg <= 60; deg += 5) {
+        const a = deg * Math.PI / 180
+        // foot frame: +y is backward, z up; the sole's lowest point at pitch a lies along (0, sin a, -cos a)
+        dirs.push(new Vector3(0, Math.sin(a), -Math.cos(a)).transformDirection(foot).transformDirection(inv))
+      }
+      s.points = supportPoints(asset.meshes[s.node].map((m) => m.geometry), dirs)
+    }
   }
 
   /** A mechanism node (bone, assembly, wheel or lifter stage) by its asset name. */

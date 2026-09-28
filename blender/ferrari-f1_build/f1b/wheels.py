@@ -31,7 +31,7 @@ def tyre(R, hw, rim, segs=80):
     dense = []
     for a,b in zip(half,half[1:]):
         dense.append(a)
-        for r in (R*.815,R*.829):
+        for r in (R*.878,R*.902):
             if a[0]<r<b[0]:
                 dense.append((r,lerp(a[1],b[1],(r-a[0])/(b[0]-a[0]))))
     half = dense+[half[-1]]
@@ -39,8 +39,10 @@ def tyre(R, hw, rim, segs=80):
     full = [(r, x) for r, x in half] + [(r, -x) for r, x in reversed(half[:-1])]
     m = len(full)
     v, f = lathe(full, segs, 'x', closed=True)
-    band = [R * 0.815 <= 0.5 * (full[j][0] + full[(j + 1) % m][0]) <= R * 0.829 for j in range(m)]
-    slots = ['tyreMark' if band[k % m] else 'rubber' for k in range(len(f))]
+    band = [R * 0.878 <= 0.5 * (full[j][0] + full[(j + 1) % m][0]) <= R * 0.902 for j in range(m)]
+    # Broad interrupted compound arcs leave space for the two wordmarks.
+    slots = ['tyreMark' if band[k % m] and abs(math.sin(math.tau * (k // m + .5) / segs)) < .81
+             else 'rubber' for k in range(len(f))]
     return v, f, slots
 
 
@@ -64,7 +66,7 @@ def rim(rim_r, hw):
     # SF-25 cover: machined bead lip, concentric lock socket and the small
     # recessed cooling ports around the red aero disc. All ride the wheel.
     for r, width, x, slot in ((rim_r - 0.010, 0.004, hw * 0.848, 'rim'),
-                               (0.065, 0.004, hw * 0.872, 'rim'),
+                               (0.076, 0.005, hw * 0.872, 'paintWhite'),
                                (0.048, 0.003, hw * 0.903, 'darkSteel')):
         profile = [(r-width, x-0.002), (r+width, x-0.002),
                    (r+width, x+0.002), (r-width, x+0.002)]
@@ -98,6 +100,22 @@ def brake_drum(R, hw, front):
             zc = lerp(-0.090, -0.050, t)
             rows.append([(x0 * 0.4 + math.sin(a) * w * 0.5, f, zc + math.cos(a) * h * 0.5) for a in (2 * math.pi * k / 24 for k in range(24))])
         out.append((loft_rings(rows, True, True), 'carbon'))
+        # Stationary over-wheel aero blade: a narrow arc above the inner
+        # shoulder, with its stays rooted in the brake drum. This is carried
+        # by the corner, so it never spins with the tyre.
+        rows = []
+        for i in range(33):
+            a = lerp(-.72,.86,i/32)
+            r = R + .019
+            rows.append([(-hw+.006,r*math.sin(a),r*math.cos(a)),
+                         (-hw+.082,r*math.sin(a),r*math.cos(a)),
+                         (-hw+.082,(r+.005)*math.sin(a),(r+.005)*math.cos(a)),
+                         (-hw+.006,(r+.005)*math.sin(a),(r+.005)*math.cos(a))])
+        out.append((loft_rings(rows,True,True),'carbon'))
+        for a in (-.48,.58):
+            out.append((strut((-hw*.65,.15*math.sin(a),.15*math.cos(a)),
+                              (-hw+.025,(R+.021)*math.sin(a),(R+.021)*math.cos(a)),
+                              chord=.042,ratio=.14,steps=8,stream=(0,1,0)),'carbon'))
     return out
 
 
@@ -152,13 +170,13 @@ def sidewall_lettering(R, hw, rim):
         mesh=bpy.data.meshes.new_from_object(obj.evaluated_get(dg))
         mid=(min(v.co.x for v in mesh.vertices)+max(v.co.x for v in mesh.vertices))/2
         upright=1 if angle>0 else -1
-        scale=.030;radius=R*(.877 if upright>0 else .944)
+        scale=.044;radius=R*(.866 if upright>0 else .970)
         for side in (1,-1):
             verts=[]
             for v in mesh.vertices:
                 r=radius+upright*v.co.y*scale
                 a=angle+side*upright*(v.co.x-mid)*scale/radius
-                verts.append(kit.V(side*(surface(r)+.0006+v.co.z*scale),r*math.cos(a),r*math.sin(a)))
+                verts.append(kit.V(side*(surface(r)+.002+v.co.z*scale),r*math.cos(a),r*math.sin(a)))
             faces=[list(p.vertices) for p in mesh.polygons]
             if side<0:faces=[list(reversed(f)) for f in faces]
             out.append(((verts,faces),'tyreMark'))
@@ -194,8 +212,8 @@ def _members(front):
         lo = [((0.196, ax + 0.250, 0.232), (hx + 0.012, ax + 0.016, zc - 0.186), dict(chord=0.080, taper=0.70, ratio=0.22)),
               ((0.206, ax - 0.236, 0.226), (hx + 0.012, ax - 0.008, zc - 0.188), dict(chord=0.076, taper=0.72, ratio=0.22))]
         toe = [((0.206, ax + 0.150, 0.300), (hx + 0.004, ax + 0.086, zc - 0.110), dict(chord=0.036, taper=0.92, ratio=0.34))]
-        # pushrod runs from the lower upright up to the rocker, passing behind the upper wishbone's rear leg
-        rod = [((hx + 0.006, ax + 0.030, zc - 0.170), (0.214, ax - 0.130, 0.500), dict(chord=0.040, taper=0.90, ratio=0.34))]
+        # SF-25 front pullrod: high outboard pickup to the low chassis rocker.
+        rod = [((hx + 0.006, ax + 0.030, zc + 0.073), (0.214, ax - 0.130, 0.270), dict(chord=0.054, taper=0.90, ratio=0.22))]
     else:
         ax, hx, zc = D.RA, D.RR_X - 0.190, D.RR_R
         # (front legs pick up behind the knee: the thigh's knee cheeks reach RA + 0.27)
@@ -213,7 +231,48 @@ def _members(front):
 
 def suspension(front):
     """{group: [(mesh, slot)]} for the left corner (groups: up, lo, toe, rod)."""
-    return {g: [(strut(a, b, **kw), 'carbon') for a, b, kw in m] for g, m in _members(front).items()}
+    groups = _members(front)
+    if not front:
+        return {g: [(strut(a, b, **kw), 'carbon') for a, b, kw in m] for g, m in groups.items()}
+    out={}
+    for group, members in groups.items():
+        meshes=[]
+        for a,b,kw in members:
+            if group in ('up','lo'):
+                meshes.append(wishbone_blade(a,b,.145 if group=='up' else .155))
+            else:
+                meshes.append(strut(a,b,**kw))
+        # The two legs meet in a single faired outer junction, not two
+        # blunt-ended sticks. The original inner/outer pickup axes remain.
+        if group in ('up','lo'):
+            end=sum((Vector(b) for a,b,kw in members),Vector())/len(members)
+            root=end-Vector((.047,0,0))
+            meshes.append(wishbone_blade(root,end+Vector((.034,0,0)),.125))
+            joined=kit.cut_mesh(meshes[0],meshes[1:],op='UNION')
+            out[group]=[(joined,'carbon')]
+        else:
+            out[group]=[(m,'carbon') for m in meshes]
+    return out
+
+
+def wishbone_blade(a,b,chord):
+    """Airfoil-section carbon wishbone with a broad root and tapered junction."""
+    from .shape import airfoil
+    a,b=Vector(a),Vector(b)
+    axis=(b-a).normalized()
+    forward=Vector((0,1,0))
+    forward=(forward-axis*axis.dot(forward)).normalized()
+    up=axis.cross(forward).normalized()
+    rows=[]
+    # A little overlap at both pickups seats the fairing in the chassis and
+    # upright. Thickness stays low while chord carries the visible width.
+    for i in range(25):
+        t=i/24
+        centre=a.lerp(b,t)+axis*lerp(-.014,.012,t)
+        width=chord*(1-.30*smooth01(t)+.12*math.exp(-((t-.08)/.15)**2))
+        profile=airfoil(36,.12,0,te=.002)
+        rows.append([tuple(centre+forward*((.36-u)*width)+up*(v*width)) for u,v in profile])
+    return loft_rings(rows,True,True)
 
 
 def pivots(front):

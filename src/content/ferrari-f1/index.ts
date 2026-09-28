@@ -64,8 +64,8 @@ export const F1_PROFILE: CharacterProfile = {
  * A brisk walk and a sprint, timed for the robot's size: a human scaled to
  * 2.08 m hips (dynamic similarity), so the walk sits at the walk-to-run
  * transition (Froude 0.5) and the sprint steps about three times a second.
- * The broad soles stay on parallel tracks under the hips, levelled and rolled
- * heel to toe at human angles; the knees bend forward, facing the direction of
+ * The broad soles stay on parallel tracks under the hips and roll heel to toe
+ * over their rounded edges; the knees bend forward, facing the direction of
  * travel. Tuned against human joint ranges: a walk that vaults over near-straight
  * stance legs, and a sprinter's run with short support, heel recovery, knee
  * drive and a ballistic flight (docs/robot-locomotion.md).
@@ -81,13 +81,12 @@ export const RACER_GAIT: GaitStyle = {
   hipList: 2,
   shoulders: [3, 9],
   armSwing: [18, 42],
-  heelStrike: [20, 3],
+  heelStrike: [30, 3],
   toeOff: [38, 40],
-  heel: 0.43,
-  toe: 0.78,
-  ankle: 0.271,
-  soleTilt: 0.8,
-  belly: [0.75, 0.005],
+  heel: 0.17,
+  toe: 0.75,
+  ankle: 0.266,
+  soleRadius: 0.05,
   jumpCrouch: 0.3,
   jumpTuck: 0.34,
   track: [0.82, 0.7],
@@ -96,7 +95,7 @@ export const RACER_GAIT: GaitStyle = {
   armCross: 6,
   kneePoleUp: [1, 0],
   lean: [0, 0.65],
-  reach: [0.45, 0.38],
+  reach: [0.43, 0.38],
   kneeFloor: [12, 18],
   vault: 1,
   liftWindow: [[0.25, 0.3], [0.25, 0.6]],
@@ -133,9 +132,9 @@ export function f1FootNodes(manifest: TransformerManifest): string[] {
 
 /** The Ferrari F1's authored parts and simulation settings. */
 export function createF1(asset: TransformerAsset, contactEffects: ContactEffects, mix: AudioMix): Character & { effects: F1Effects } {
-  const model = new TransformerModel(asset, createF1Materials(), { label: F1_LABEL, footNodes: f1FootNodes(asset.manifest) })
+  const model = new TransformerModel(asset, createF1Materials(), { label: F1_LABEL, footNodes: f1FootNodes(asset.manifest), rollSupport: true })
   const effects = new F1Effects(model, contactEffects, asset.manifest.events, model.duration, mix)
-  const sole = { heel: RACER_GAIT.heel, toe: RACER_GAIT.toe, ankle: RACER_GAIT.ankle }
+  const sole = { heel: RACER_GAIT.heel, toe: RACER_GAIT.toe, ankle: RACER_GAIT.ankle, soleRadius: RACER_GAIT.soleRadius }
   return {
     id: 'ferrari-f1',
     model,

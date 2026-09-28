@@ -70,9 +70,9 @@ def mirror_xf(poly):
 
 def outer_body(coll):
     """The continuous body surface (bodycage: one subdivision cage, mirrored),
-    evaluated to a closed manifold mesh."""
+    evaluated with an open cooling exit; skin() folds a solid lip around it."""
     from . import bodycage
-    o = bodycage.build(coll, 'body.outer')
+    o = bodycage.build(coll, 'body.outer', open_tail=True)
     kit.apply_modifiers(o)
     return o
 
@@ -90,7 +90,8 @@ def cockpit_cutter():
 def inlet_outline(s=1):
     """Sidepod mouth (x, z): a letterbox under the overhanging shelf lip, its inboard
     edge clear of the chassis flank and its outer edge inside the pod's outer face."""
-    pts = kit.fillet_poly([(0.372, 0.392), (0.586, 0.400), (0.590, 0.562), (0.372, 0.566)], 0.030, 4)
+    pts = kit.fillet_poly([(0.368, 0.461), (0.635, 0.468), (0.675, 0.540),
+                          (0.657, 0.574), (0.370, 0.575)], 0.016, 4)
     return [(s * x, z) for x, z in pts]
 
 
@@ -213,6 +214,10 @@ def livery(parts):
             if base == 'chest':
                 planes.append(((0.0, -0.10, 0.0), (0.0, -1.0, 0.0)))     # white starts behind the roll hoop
             paint_split(o, planes)
+        if base in ('thigh', 'hip', 'podF', 'podM', 'podR'):
+            # The launch photos show exposed carbon beneath the red shoulder
+            # and across the sidepod's deeply scooped lower flank.
+            paint_split(o, [((0.0, 0.0, 0.365), (0.0, 0.0, -1.0))], 'carbon')
 
 
 # ------------------------------------------------------------------ joint notches
@@ -245,54 +250,8 @@ def notch(parts):
 # ------------------------------------------------------------------ build
 
 def rear_hardware(coll):
-    """Attached crash spine, exhaust and rain light behind the short rear cover."""
-    from . import rkit, aero
-    from .shape import loft_rings
-    b=kit.Builder()
-    # Narrow structural spine intersects the cover and supports both wing pylons.
-    rows=[]
-    for f,w,lo,hi in [(-1.82,.135,.30,.410),(-1.95,.130,.30,.410),(-2.16,.125,.31,.410),(-2.27,.064,.32,.40)]:
-        rows.append([(-w,f,lo),(w,f,lo),(w,f,hi),(-w,f,hi)])
-    b.add_mesh(loft_rings(rows,True,True),'carbonMatte')
-    for side in (-1,1):
-        b.add_mesh(rkit.plate_x([(-2.17,.397),(-2.04,.397),(-2.085,.555),(-2.155,.555)],
-                                side*.112-.014,side*.112+.014,.004,3),'carbon')
-    # Hollow exhaust: the annular lip and inner wall have real thickness.
-    rings=[]
-    for f,r in [(-1.87,.048),(-2.18,.048),(-2.18,.041),(-1.87,.041)]:
-        rings.append([(r*math.cos(k*math.tau/48),f,.483+r*math.sin(k*math.tau/48)) for k in range(48)])
-    rings.append(rings[0])
-    b.add_mesh(loft_rings(rings,False,False),'titanium')
-    b.add_mesh(rkit.cylinder((0,-1.871,.483),.040,.003,axis='f',seg=48,chamfer=.0005),'interior')
-    # Two broad beam-wing elements, rooted in the central crash structure.
-    for height,fore,chord in [(.408,-2.03,.17),(.335,-2.08,.14)]:
-        wing=aero._el(.055,.552,22,lambda t:fore+.035*t*t,
-                     lambda t:height+.030*t*t,lambda t:chord-.025*t,
-                     lambda t:-.18,lambda t:.095,lambda t:-.03)
-        b.add_mesh(wing,'carbon');b.add_mesh(kit.mirror_x(wing),'carbon')
-    # Separate open diffuser exits: roof and deep side fences, not a solid
-    # painted body extension. Forward ends overlap the existing underfloor.
-    for side in (-1,1):
-        roof=[]
-        for f,z in [(-2.12,.183),(-2.22,.215),(-2.35,.244)]:
-            roof.append([(.08,f,z),(.55,f,z),(.55,f,z+.010),(.08,f,z+.010)])
-        m=loft_rings(roof,True,True)
-        b.add_mesh(kit.mirror_x(m) if side<0 else m,'carbonMatte')
-        for x in (.14,.34,.55):
-            b.add_mesh(rkit.plate_x([(-2.12,.085),(-2.35,.060),(-2.35,.25),(-2.12,.194)],
-                                    side*x-.0035,side*x+.0035,.002,2),'carbonMatte')
-        # The diffuser roof sits below floorTail at its forward edge.  Tie the
-        # inner fence into the underfloor with a short web that overlaps both
-        # meshes, so rearStructure is physically attached instead of floating.
-        b.add_mesh(rkit.plate_x([(-2.08,.188),(-2.18,.208),(-2.18,.330),(-2.08,.286)],
-                                side*.14-.005,side*.14+.005,.002,2),'carbonMatte')
-    b.add_mesh(rkit.plate_f([(-.049,.308),(.049,.308),(.049,.414),(-.049,.414)],-2.289,-2.260,.008,3),'carbon')
-    for x in range(4):
-        for z in range(6):
-            b.add_mesh(rkit.plate_f([(x*.020-.035,z*.014+.318),(x*.020-.025,z*.014+.318),
-                                    (x*.020-.025,z*.014+.327),(x*.020-.035,z*.014+.327)],
-                                   -2.292,-2.289,.0015,2),'lightRed')
-    return b.build('rearStructure',coll)
+    from . import rear
+    return rear.hardware(coll)
 
 def close_medial_panel(o):
     """Union a fitted inner cheek into the split nose shell's medial rim.
@@ -323,6 +282,7 @@ def close_medial_panel(o):
 def build(coll):
     outer = outer_body(coll)
     sk = skin(outer, 'skin.body', D.SKIN, coll)
+    from . import chassis
     parts = {}
     for base, (poly, zr) in regions().items():
         for S, s in (('L', 1), ('R', -1)):
@@ -337,10 +297,15 @@ def build(coll):
         cut.append(side_prism([(-3.0, z0), (3.5, z0), (3.5, z1), (-3.0, z1)], -BIG, BIG))
         o = cut_region(sk, name, cut, coll)
         parts[name] = o
+    # The ridge is a single tapered tail feature. Splitting it across the
+    # telescoping hood used to put two coplanar fin sides on top of one
+    # another in robot mode. Fuse its root into the tail shell instead.
+    fin=kit.obj_from_pydata('tail.spine',*chassis.shark_fin(),['paint'],coll=coll)
+    kit.fix_normals(fin)
+    kit.boolean(parts['tail'],fin,'UNION')
     notch(parts)
     livery(parts)
-    from . import rkit
-    kit.cut(parts['tail'],rkit.cylinder((0,-1.925,.483),.041,.13,axis='f',seg=48,chamfer=.001))
+    paint_split(parts['tail'], [((0,0,.400),(0,0,-1))], 'carbon')
     parts['rearStructure']=rear_hardware(coll)
     for name in ('toe.L', 'toe.R', 'shin.L', 'shin.R'):
         close_medial_panel(parts[name])

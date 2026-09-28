@@ -6,6 +6,7 @@ import { createF1 } from '../../src/content/ferrari-f1/index.ts'
 import { createCybertruck } from '../../src/content/cybertruck/index.ts'
 import { createSemi } from '../../src/content/semi/index.ts'
 import { supportPoints } from '../../src/content/transformer/asset/loader.ts'
+import { edgeDepth } from '../../src/content/transformer/animation/sole.ts'
 import { NO_CONTACT, readAsset, REST_GAIT } from '../../tests/support/assets.ts'
 
 /**
@@ -36,7 +37,7 @@ export function sole(name: string): void {
     for (const p of supportPoints(asset.meshes[i].map((m) => m.geometry))) hull.push(p.clone().applyMatrix4(W))
   }
   // ankle frame: +y is backward (forward is -y), z up; pitch + is toe down
-  const { heel, toe, ankle: ank, soleTilt = 0 } = style
+  const { soleTilt = 0 } = style
   for (let deg = -30; deg <= 45; deg += 5) {
     const g = deg * Math.PI / 180, a = g + soleTilt * Math.PI / 180, c = Math.cos(a), s = Math.sin(a)
     const low = (pts: Vector3[]) => {
@@ -50,7 +51,7 @@ export function sole(name: string): void {
     }
     const [zm, ym] = low(all), [zh, yh] = low(hull)
     // the gait's assumed contact: heel edge when toe up, toe edge when toe down
-    const model = deg < 0 ? -(heel * Math.sin(-g) + ank * Math.cos(g)) : deg > 0 ? -(toe * Math.sin(g) + ank * Math.cos(g)) : -ank
+    const model = -edgeDepth(style, g)
     console.log(`pitch ${String(deg).padStart(4)}  mesh low ${zm.toFixed(3)} at fwd ${ym.toFixed(2)}   hull low ${zh.toFixed(3)} at ${yh.toFixed(2)}   gait assumes ${model.toFixed(3)}`)
   }
 }

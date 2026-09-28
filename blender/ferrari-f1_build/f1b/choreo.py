@@ -85,7 +85,7 @@ def sided():
     FOOT = move((-0.640, -0.210, 0.150), (0.60, 0.76))
     A['foot'] = dict(host='foot', parts=['fwingOut'], steps=[FOOT])
     A['heelfin'] = dict(host='foot', parts=['fwingIn'], steps=[move((0.0, 0.0, 0.30), (0.56, 0.62)), rot('x', 90.0, 'c', (0.60, 0.68)),
-                                                                fit({'xc': 0.0, 'fc': -0.300, 'zc': 0.040}, (0.66, 0.74))])
+                                                                fit({'xc': 0.0, 'f-': -0.195, 'z-': -0.225}, (0.66, 0.74))])
     A['toecap'] = dict(host='foot', parts=['toe', 'pylon'], steps=[move((0.040, -0.080, 0.185), (0.78, 0.90))])
     # the nose half lifts straight off the shin's front and stays there as the shin guard
     A['shin'] = dict(host='shin', parts=['shin', 'floorShin'], steps=[move((0.0, NOSE_LIFT, NOSE_RISE), (0.14, 0.24))])
@@ -175,5 +175,5 @@ def carriers():
     return [(Strut('mast.L', 'chest', (0.12, hf, 0.70), 'tail', (0.12, -0.03 - hz, 0.325 + hf), r=0.030), True),
             (Strut('airArm.L', 'chest', (0.27, af, az), 'chest', (0.27, -0.62, 0.54), r=0.022), True),
             # feet: arms reach out of the foot, carry a wing half to its place, and retract
-            (Strut('heelArm.L', 'foot.L', (0.0, -0.10, -0.12), 'heelfin.L', (0.25, 2.45, 0.15), r=0.016, window=(0.56, 0.74), engage=0.06), True),
-            (Strut('wingArm.L', 'foot.L', (0.065, 0.08, -0.125), 'foot.L', (0.55, 2.50, 0.10), r=0.016, window=(0.60, 0.76), engage=0.06), True)]
+            (Strut('heelArm.L', 'foot.L', (0.0, -0.10, -0.12), 'heelfin.L', (0.25, 2.45, 0.15), r=0.016, window=(0.56, 0.74), engage=0.06, pocket=(0,.28,0)), True),
+            (Strut('wingArm.L', 'foot.L', (0.065, 0.08, -0.125), 'foot.L', (0.55, 2.50, 0.10), r=0.016, window=(0.60, 0.76), engage=0.06, pocket=(0,.28,0)), True)]

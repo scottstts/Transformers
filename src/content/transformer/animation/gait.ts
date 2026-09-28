@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { GaitLeg, GaitPose } from '../model/rig.ts';
 import type { JumpPose } from '../../../game/jump.ts';
+import { edgeDepth, heelRoll, toeRoll, type AnkleOffset } from './sole.ts';
 
 const TAU = Math.PI * 2;
 const clamp = THREE.MathUtils.clamp;
@@ -11,6 +12,8 @@ const RAD = Math.PI / 180;
 
 type Side = 'R' | 'L';
 const SIDES = [ 'R', 'L' ] as const;
+const _heelRoll: AnkleOffset = { step: 0, up: 0 };
+const _toeRoll: AnkleOffset = { step: 0, up: 0 };
 
 /**
  * Procedural gait. Produces foot targets (step forward / lift, metres, and
@@ -87,6 +90,12 @@ export interface GaitStyle {
 	heel: number;
 	toe: number;
 	ankle: number;
+	/**
+	 * Rounding radius of the heel and toe edges (m): the sole rolls over them
+	 * instead of pivoting on a sharp corner. `heel` and `toe` are then the
+	 * roundings' centres. Default 0.
+	 */
+	soleRadius?: number;
 	/** jump: crouch depth at full load, leg tuck at the apex */
 	jumpCrouch: number;
 	jumpTuck: number;
@@ -604,17 +613,16 @@ export class RobotGait {
 		base += ( this.reachShare - 0.5 ) * sweep;
 		const st = this.style;
 		// rolling about the heel (toe up) and the toe (heel up) moves the ankle along an arc about that edge
-		const step = base
-			+ st.heel * ( Math.cos( heel ) - 1 ) - st.ankle * Math.sin( heel )
-			+ st.toe * ( 1 - Math.cos( toe ) ) + st.ankle * Math.sin( toe );
-		up += st.heel * Math.sin( heel ) + st.ankle * ( Math.cos( heel ) - 1 )
-			+ st.toe * Math.sin( toe ) + st.ankle * ( Math.cos( toe ) - 1 );
+		heelRoll( st, heel, _heelRoll );
+		toeRoll( st, toe, _toeRoll );
+		const step = base + _heelRoll.step + _toeRoll.step;
+		up += _heelRoll.up + _toeRoll.up;
 		const pitch = toe - heel;
 		if ( st.belly && pitch !== 0 ) {
 
 			// the ankle stands on whichever of the edges and the belly reaches lowest (flat: the belly, the station)
 			const [ b, depth ] = st.belly;
-			const edges = Math.max( st.toe * Math.sin( pitch ), - st.heel * Math.sin( pitch ) ) + st.ankle * Math.cos( pitch );
+			const edges = edgeDepth( st, pitch );
 			const bulge = b * Math.sin( pitch ) + ( st.ankle + depth ) * Math.cos( pitch );
 			up += Math.max( 0, bulge - edges ) - depth;
 
@@ -712,7 +720,7 @@ export class RobotGait {
 				const leg = J[ S ];
 				Object.assign( leg, legs[ S ] );
 				const toe = Math.max( 0, push - leg.pitch );
-				leg.up += this.style.toe * Math.sin( toe ) + this.style.ankle * ( Math.cos( toe ) - 1 );
+				leg.up += toeRoll( this.style, toe, _toeRoll ).up;
 				leg.pitch += toe;
 				Object.assign( this.takeoff[ S ], leg );
 
