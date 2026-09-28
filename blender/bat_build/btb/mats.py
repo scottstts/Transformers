@@ -7,10 +7,10 @@ PREFIX = 'bat.'
 # slot: (base color sRGB hex, metallic, roughness, emission hex or None, emission strength, clearcoat)
 SLOTS = {
     # the Tumbler: flat military black armour over a dark chassis, bronze accents
-    'armor': (0x1c1d1f, 0.35, 0.58, None, 0, 0.0),       # matte black armour plate (satin, faint sheen)
+    'armor': (0x25272a, 0.48, 0.43, None, 0, 0.0),       # satin black with readable planar highlights
     'armorDark': (0x121314, 0.3, 0.66, None, 0, 0.0),    # recessed / underside plates, vents
     'bronze': (0x8a6a45, 1.0, 0.36, None, 0, 0.0),       # brushed bronze accent panels, nozzle rim
-    'glass': (0x06080a, 0.0, 0.05, None, 0, 1.0),        # dark tinted canopy glass
+    'glass': (0x090c10, 0.15, 0.16, None, 0, 0.35),      # smoked canopy glass, subdued reflections
     'rubber': (0x141414, 0.0, 0.90, None, 0, 0.0),       # off-road tyres
     'rim': (0x1a1b1c, 0.8, 0.46, None, 0, 0.0),          # black steel wheels
     'chassis': (0x202225, 0.6, 0.50, None, 0, 0.0),      # tube frame, arms, struts
@@ -27,7 +27,7 @@ SLOTS = {
     'chrome': (0xd8dbde, 1.0, 0.10, None, 0, 0.0),       # hydraulic rods
     'mech': (0x34373c, 0.9, 0.42, None, 0, 0.0),         # secondary mechanism parts
     'blackChrome': (0x0b0c0e, 1.0, 0.16, None, 0, 0.0),  # cowl, dark trim
-    'eye': (0xffb23a, 0.0, 0.25, 0xffb23a, 4.0, 0.0),    # robot eyes: amber gold
+    'eye': (0xffc35b, 0.0, 0.25, 0xffb23a, 3.5, 0.0),    # narrow warm gold optics
 }
 
 
@@ -67,4 +67,4 @@ def build(m, slot):
 
 def ensure_all():
     for s in SLOTS:
-        get(s)
+        build(get(s), s)

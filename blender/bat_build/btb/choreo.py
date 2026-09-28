@@ -62,7 +62,7 @@ def sided():
     A['shinPlate'] = dict(host='shin', parts=['shelfF', 'flankF', 'louvre', 'flankFront'], steps=[
         dock(c=(-0.02, 0.50, -0.44), rot=_euler((0, 1, 0), (-1, 0, 0)), at=(0.18, 0.62))])
     A['thighPlate'] = dict(host='thigh', parts=['shelfR', 'flankR', 'hip', 'intake', 'flankRear'], steps=[
-        dock(c=(0.57, 0.0, -0.50), rot=(90, 0, 0), at=(0.30, 0.66))])
+        dock(c=(0.32, 0.0, -0.50), rot=(90, 0, 0), at=(0.30, 0.66))])
     A['wing'] = dict(host='chest', parts=['csideF', 'glassS0'], steps=[
         move((-0.35, -0.06, 0.0), (0.40, 0.52)),
         dock(c=(0.72, -0.30, 1.62), rot=(-90, 24, 0), at=(0.52, 0.90))])

@@ -38,11 +38,13 @@ def coilover(a, b, r=0.055, turns=7):
 
 
 def front(coll):
-    """Inner steering links from the beak to the knuckles inside the front wheels."""
+    """The front spindles: each wheel hangs on its arm's outer hub carrier."""
     out = {}
     for S, s in (('L', 1), ('R', -1)):
-        p = [_tube((s * 0.18, D.f(0.62), 0.36), (s * 0.40, D.f(0.60), 0.37), 0.016, 'steel'),
-             (rkit.cylinder((s * 0.42, D.FA_F, D.FR_R), 0.06, 0.05, 'x', 20), 'darkSteel')]
+        # the spindle: from the rim's centre disc out through the tyre's open bore to the
+        # arm's hub carrier on the outer face (the rims are dished inward)
+        p = [_tube((s * 0.42, D.FA_F, D.FR_R), (s * 0.90, D.FA_F, D.FR_R), 0.042, 'steel'),
+             (rkit.cylinder((s * 0.80, D.FA_F, D.FR_R), 0.085, 0.05, 'x', 24), 'darkSteel')]
         out['steer.' + S] = solid('steer.' + S, p, coll)
     return out
 

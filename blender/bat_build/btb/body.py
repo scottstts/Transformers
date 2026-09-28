@@ -122,9 +122,23 @@ SPLIT_S = 2.36
 SHELF_F = [(0.84, 1.32, 0.935), (1.00, 1.92, 0.955), (1.03, SPLIT_S, 0.975), (1.205, SPLIT_S, 0.940), (1.19, 1.92, 0.930), (1.10, 1.32, 0.890)]
 SHELF_R = [(1.03, SPLIT_S, 0.975), (1.05, 2.60, 0.985), (1.04, 3.40, 1.020), (1.22, 3.40, 1.000), (1.22, 2.60, 0.955), (1.205, SPLIT_S, 0.940)]
 
+
+def shelf_z(x, s):
+    """Height of the front shelf's top surface at (x, station), from its triangulated faces."""
+    tris = [(0, 1, 4), (0, 4, 5), (1, 2, 3), (1, 3, 4)]
+    for tri in tris:
+        (xa, sa, za), (xb, sb, zb), (xc, sc, zc) = [SHELF_F[i] for i in tri]
+        d = (sb - sc) * (xa - xc) + (xc - xb) * (sa - sc)
+        u = ((sb - sc) * (x - xc) + (xc - xb) * (s - sc)) / d
+        v = ((sc - sa) * (x - xc) + (xa - xc) * (s - sc)) / d
+        if min(u, v, 1 - u - v) >= -1e-6:
+            return u * za + v * zb + (1 - u - v) * zc
+    raise ValueError('point off the shelf: %s' % ((x, s),))
+
+
 # the flank: crease -> widest line -> sill, faceted in long bands, split at SPLIT_S
 FLANK_FRONT = [(1.10, 1.32, 0.890), (1.19, 1.92, 0.930), (1.205, SPLIT_S, 0.940),
-               (1.22, 1.30, 0.560), (1.31, 1.92, 0.600), (1.315, SPLIT_S, 0.612),
+               (1.22, 1.30, 0.560), (1.35, 1.92, 0.600), (1.315, SPLIT_S, 0.612),
                (1.08, 1.32, 0.200), (1.23, 1.92, 0.160), (1.24, SPLIT_S, 0.155)]
 FLANK_REAR = [(1.205, SPLIT_S, 0.940), (1.22, 2.60, 0.955), (1.22, 3.40, 1.000),
               (1.315, SPLIT_S, 0.612), (1.32, 2.60, 0.625), (1.30, 3.40, 0.660),
@@ -149,7 +163,15 @@ def flanks(coll):
     out.update(sided('shelfF', SHELF_F, [[0, 1, 4, 5], [1, 2, 3, 4]], coll, t=0.03, hint=_hint()))
     out.update(sided('shelfR', SHELF_R, [[0, 1, 4, 5], [1, 2, 3, 4]], coll, t=0.03, hint=_hint()))
     cut = cutter([(1.3, s, z) for _, s, z in INTAKE], (1, 0, 0), 0.3)
-    out.update(sided('flankF', _floor(FLANK_FRONT), FLANK_F, coll, t=0.035, hint=_hint()))
+    # A continuous folded skin: each flank face is planar and shares its
+    # crease vertices with its neighbor, so there are no intersecting scales.
+    front_faces = [[0,1,4],[0,4,3],[1,2,5,4],[3,4,7],[3,7,6],
+                   [4,5,8,7],[6,7,10,9],[7,8,11,10]]
+    front_points = _floor(FLANK_FRONT)
+    front_slots = ['armor','armor','armor','armor','armorDark',
+                   'armor','armorDark','armorDark']
+    out.update(sided('flankF',front_points,front_faces,coll,t=.035,
+                     hint=_hint(),slots=front_slots))
     out.update(sided('flankR', _floor(FLANK_REAR), FLANK_F, coll, t=0.035, hint=_hint(), cuts=[cut]))
     out.update(sided('hip', HIP, HIP_F, coll, t=0.035, hint=_hint(), cuts=[cut]))
     # the intake: a dark box sunk behind the opening, with a slatted grille
@@ -160,12 +182,19 @@ def flanks(coll):
                     'armorDark'))
     out['intake.L'] = solid('intake.L', box, coll)
     out['intake.R'] = solid('intake.R', [(kit.mirror_x(m), s) for m, s in box], coll)
-    # the bronze panel on the shelf's front (the film car's gold plate): one plate on standoffs,
-    # 6 mm proud of the shelf, clear of the windows
-    br = [(0.93, 1.46, 0.962), (1.00, 1.86, 0.972), (1.17, 1.86, 0.943), (1.12, 1.46, 0.918)]
-    pl = [(x, s_, z + 0.012) for x, s_, z in br]
-    out['louvre.L'] = solid('louvre.L', [(_slab(pl, 0.012), 'bronze')], coll)
-    out['louvre.R'] = solid('louvre.R', [(kit.mirror_x(_slab(pl, 0.012)), 'bronze')], coll)
+    # Three individually folded bronze vanes with dark slots between them.
+    # The pointed ends and diagonal cuts match the film car's little gold vent.
+    # The vanes are seated in the shelf's skin: each corner is sunk to the shelf surface.
+    vanes = []
+    for k in range(3):
+        s0 = 1.45 + k * .135
+        s1 = s0 + .118
+        x0 = .925 + k * .023
+        x1 = 1.11 + k * .019
+        corners = [(x0, s0), (x0 + .025, s1), (x1, s1 - .028), (x1 - .035, s0)]
+        vanes.append((_slab([(x, s_, shelf_z(x, s_) + .006) for x, s_ in corners], .012), 'bronze'))
+    out['louvre.L'] = solid('louvre.L', vanes, coll)
+    out['louvre.R'] = solid('louvre.R', [(kit.mirror_x(m),slot) for m,slot in vanes], coll)
     # the flank's front end: a raked face behind the cone's root (it closes the arm bay)
     ff = [(0.84, 1.32, 0.935), (1.10, 1.32, 0.890), (1.08, 1.32, 0.200), (0.86, 1.32, 0.190)]
     out.update(sided('flankFront', ff, [[0, 1, 2, 3]], coll, t=0.03, hint=_hint(0.9, 2.2, 0.6)))
@@ -242,11 +271,20 @@ def cheeks(coll):
         wall = [(sg * 0.855, 0.99, 0.20), (sg * 0.855, 1.31, 0.20), (sg * 0.855, 1.31, 0.93), (sg * 0.855, 0.99, 0.905)]
         parts.append((rkit.plate_x([(D.f(s_), z) for _, s_, z in wall], min(sg * 0.84, sg * 0.87), max(sg * 0.84, sg * 0.87), 0.004), 'armorDark'))
         out['grille.' + S] = solid('grille.' + S, parts, coll)
-    # headlamps in pods hung under each cheek (their mounts run 1 cm up into the plate)
+    # Streamlined lamp nacelles seated into the sloping cheek. The rear cap
+    # follows the body surface; there is no upright block mounting the lamp.
     for S, sg in (('L', 1), ('R', -1)):
-        lp = [(kit.bar(V(sg * 0.34, D.f(0.84), 0.905), V(sg * 0.34, D.f(0.84), 0.83), kit.chamfer_rect(0.05, 0.05, 0.01)), 'chassis'),
-              (rkit.cylinder((sg * 0.34, D.f(0.82), 0.80), 0.050, 0.10, 'f', 20), 'chassis'),
-              (rkit.cylinder((sg * 0.34, D.f(0.768), 0.80), 0.036, 0.010, 'f', 20), 'lamp')]
+        rings = []
+        for st,zc,rx,rz in ((.762,.823,.052,.046),(.805,.832,.057,.051),
+                            (.885,.853,.050,.040),(.965,.874,.029,.020),
+                            (1.015,.890,.005,.005)):
+            rings.append([P(sg*.34+rx*math.cos(a*math.tau/16),st,
+                            zc+rz*math.sin(a*math.tau/16)) for a in range(16)])
+        lp = [(kit.loft(rings,True,True),'armor'),
+              (kit.transform(lathe([(.033,-.007),(.045,-.007),(.047,.0),
+                                    (.043,.012),(.033,.012)],32,'f',closed=True),
+                             Matrix.Translation(V(sg*.34,D.f(.758),.823))),'darkSteel'),
+              (rkit.cylinder((sg*.34,D.f(.75),.823),.033,.006,'f',32,.001),'lamp')]
         out['headlamp.' + S] = solid('headlamp.' + S, lp, coll)
     return out
 
@@ -289,9 +327,14 @@ def deck(coll):
     pts = [(0.0, 3.40, 1.285), (0.66, 3.40, 1.250), (0.62, 3.72, 1.180), (0.0, 3.72, 1.200)]
     out['deck'] = panel('deck', pts, [[0, 1, 2, 3]], sym=True, coll=coll, t=0.03)
     # roll hoop over the pod (seen from behind)
-    hoop = [V(-0.22, D.f(4.02), 1.16), V(-0.22, D.f(4.02), 1.34), V(-0.16, D.f(4.02), 1.41), V(0.16, D.f(4.02), 1.41),
-            V(0.22, D.f(4.02), 1.34), V(0.22, D.f(4.02), 1.16)]
-    out['hoop'] = solid('hoop', [(kit.tube(hoop, 0.035, 14), 'chassis')], coll)
+    # the legs stand on the pod's top, inboard of its rounded shoulders, each seated in a
+    # mounting boss sunk into the skin (the top runs z 1.11-1.19 under the boss)
+    hoop = [V(-0.15, D.f(4.02), 1.10), V(-0.15, D.f(4.02), 1.34), V(-0.10, D.f(4.02), 1.41), V(0.10, D.f(4.02), 1.41),
+            V(0.15, D.f(4.02), 1.34), V(0.15, D.f(4.02), 1.10)]
+    mesh = [(kit.tube(hoop, 0.035, 14), 'chassis')]
+    for x in (-0.15, 0.15):
+        mesh.append((rkit.cylinder((x, D.f(4.02), 1.145), 0.058, 0.13, 'z', 20), 'darkSteel'))
+    out['hoop'] = solid('hoop', mesh, coll)
     return out
 
 
@@ -409,4 +452,6 @@ def build(coll):
     out = {}
     for fn in (canopy, flanks, beak, cheeks, arms, deck, pod, fenders, flaps):
         out.update(fn(coll))
+    from .car_detail import detail
+    detail(out)
     return out

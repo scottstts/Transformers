@@ -84,22 +84,23 @@ def swamper(R=D.RR_R, W=D.RR_W, pitches=22):
     return out
 
 
-def turf(R=D.FR_R, W=D.FR_W, pitches=30, rows=6):
+def turf(R=D.FR_R, W=D.FR_W, pitches=46, rows=9):
     """Front tyre: casing + a close grid of square blocks (the film car's front tread)."""
-    lug_h = 0.020
+    lug_h = 0.013
     base = R - lug_h
     out = [(kit.revolve(carcass(R, W, lug_h, 0.19, 0.05), 64, axis='X'), 'rubber')]
     hw = W / 2 - 0.018
     step = 2 * math.pi * base / pitches
-    bw = step * 0.70
-    bh = (2 * hw) / rows * 0.74
+    bw = step * 0.82
+    bh = (2 * hw) / rows * 0.84
     for k in range(pitches):
         a = 2 * math.pi * k / pitches
         for j in range(rows):
             hc = -hw + (2 * hw) * (j + 0.5) / rows
             off = step * 0.5 if j % 2 else 0.0
-            poly = [(-bw / 2 + off, hc - bh / 2), (bw / 2 + off, hc - bh / 2), (bw / 2 + off, hc + bh / 2), (-bw / 2 + off, hc + bh / 2)]
-            out.append((rot_x(lug(poly, base - 0.004, R, 0.004), a), 'rubber'))
+            # Chamfered dense tread blocks, closer to the film car's turf tires.
+            poly = [(u+off,v+hc) for u,v in kit.chamfer_rect(bw,bh,.004)]
+            out.append((rot_x(lug(poly, base - 0.003, R, 0.0015), a), 'rubber'))
     return out
 
 

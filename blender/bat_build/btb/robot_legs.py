@@ -19,6 +19,7 @@ from .rkit import Part
 from .rcommon import cheeks, axle_caps, ball, ram, build_sided, items
 from .robot_head import plate
 from .robot_arms import slab
+from .refine import foot_detail
 
 KNEE_R, KNEE_W = 0.23, 0.38
 KNEE_CHEEK_IN = 0.20
@@ -125,6 +126,7 @@ def foot():
                        SOLE, SOLE + 0.05, 0.01), 'rubber')
     ankle = Part('R.foot.ankle')
     ankle.add(rkit.drum((0, 0, 0), ANKLE_R, ANKLE_W, 'x', 36, 0.010), 'darkSteel')
+    foot_detail(p)
     return [p, ankle]
 
 

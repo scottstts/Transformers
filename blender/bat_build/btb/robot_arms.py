@@ -13,6 +13,7 @@ from .rkit import Part
 from .rcommon import cheeks, axle_caps, ball, ram, build_sided, items
 from .robot_panels import shield, inset, surface_forward
 from .robot_head import plate
+from .refine import limb_detail
 
 
 def slab(points, depth, out):
@@ -80,6 +81,7 @@ def upperarm():
     items(lo, ram((0.0, -0.22, -0.46), (0.0, -0.20, -0.98), 0.036, 0.017))
     for x in (-0.15, 0.15):
         items(lo, ram((x, 0.18, -0.48), (x, 0.19, -0.92), 0.030, 0.015))
+    limb_detail(a, 'upperarm')
     return [p, a, b, lo]
 
 

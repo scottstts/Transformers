@@ -82,6 +82,7 @@ def spine():
 
 # -------------------------------------------------------------------- chest
 def chest():
+    from .refine import chest as breastplate
     p = Part('R.chest.core')
     p.add(facet_block([(0.02, 0.46, 0.22, CHEST_BACK, 0.40), (0.30, 0.70, CHEST_FRONT, CHEST_BACK, 0.50),
                        (0.70, CHEST_W / 2, CHEST_FRONT, CHEST_BACK, BACK_HW), (1.00, CHEST_W / 2 - 0.08, 0.24, CHEST_BACK + 0.02, BACK_HW - 0.04)]),
@@ -96,7 +97,9 @@ def chest():
     # back frame: a raised rectangular frame the canopy seats on, rails for the jet pod
     for s in (1, -1):
         # the jet pod's rails up the back
-        p.add(rkit.plate_f([(s * 0.30 - 0.05, -0.30), (s * 0.30 + 0.05, -0.30), (s * 0.30 + 0.05, 0.98), (s * 0.30 - 0.05, 0.98)],
+        # Stop the jet rails below the shoulder line. Their old square ends
+        # protruded through both windshield panes in the folded car pose.
+        p.add(rkit.plate_f([(s * 0.30 - 0.05, -0.30), (s * 0.30 + 0.05, -0.30), (s * 0.30 + 0.05, 0.68), (s * 0.30 - 0.05, 0.68)],
                            CHEST_BACK - 0.06, CHEST_BACK + 0.01, 0.01), 'darkSteel')
     a = Part('R.chest.armor')
     # collar plates between the chevron's top edge and the neck, bronze-lined (the concept's gold strakes)
@@ -110,7 +113,7 @@ def chest():
     # the collar: a faceted half ring in front of the neck (the back of the neck is the canopy's collar)
     a.add(lathe([(0.20, CHEST_TOP - 0.06), (0.30, CHEST_TOP - 0.06), (0.33, CHEST_TOP + 0.03), (0.30, CHEST_TOP + 0.10),
                  (0.22, CHEST_TOP + 0.10)], 6, 'z', center=(0, -0.04, 0), arc=3.14159, phase=0.0, closed=True), 'mech')
-    return [p, a]
+    return [p, a, breastplate()]
 
 
 # -------------------------------------------------------------------- neck

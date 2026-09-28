@@ -17,6 +17,14 @@ from .mech import move, rot, fit
 
 # object base name -> [step specs] (bone-local coordinates, windows in T)
 SPECS = {
+    # The deeper helmet seats farther down into its bay in car mode. Every
+    # head component follows the same slide, preserving the designed face.
+    'R.head.skull': [move((0.0, 0.12, -0.44), (0.16, 0.48))],
+    'R.head.cowl': [move((0.0, 0.12, -0.44), (0.16, 0.48))],
+    'R.head.face': [move((0.0, 0.12, -0.44), (0.16, 0.48))],
+    'R.head.optics': [move((0.0, 0.12, -0.44), (0.16, 0.48))],
+    # Layered concept chest plates nest into the torso during the existing fold.
+    'R.chest.breastplate': [move((0.0, -0.70, -0.12), (0.56, 0.86))],
     # the knee guard slides back over the knee drum while the knees splay in the car
     'R.shin.kneecap': [move((0.0, -0.26, 0.10), (0.06, 0.40))],
     # the forearm fins slide into the gauntlet in the car
