@@ -91,7 +91,10 @@ export class DescentFx {
         p.mix.muffle(v * 0.5, v > 0 ? 0.45 : 0.15)
         return true
       case 'launch': this.launch(frame, v); return true
-      case 'vortex': this.vortexOn = v > 0; return true
+      case 'vortex':
+        this.vortexOn = v > 0
+        if (!this.vortexOn) this.p.vortex.release()
+        return true
       case 'wake': this.waking = v > 0; return true
       case 'burst': this.burst(frame, v); return true
       case 'charge': this.chargeTarget = v; return true
@@ -113,11 +116,11 @@ export class DescentFx {
     if (p.weapon && p.weapon.presence > 0.9 && this.charge > 0.3) {
       const n = Math.min(5, Math.round(dt * 60 * this.charge))
       for (let k = 0; k < n; k++) {
-        _a.set((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12, 1.8 + Math.random() * 1.2).applyMatrix4(p.weapon.object.matrixWorld)
+        _a.set((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12, p.weapon.asset.manifest.extent[1] - 1.2 * Math.random()).applyMatrix4(p.weapon.object.matrixWorld)
         p.sparks.emit({ count: 1, at: _a, dir: _up, spread: 1, speed: [0.3, 2], life: [0.2, 0.5], size: 0.012, drag: 3, gravity: -0.1, palette: 0 })
       }
       if (Math.random() < dt * 12) {
-        _a.set(0, 0, 2.5).applyMatrix4(p.weapon.object.matrixWorld)
+        _a.set(0, 0, p.weapon.asset.manifest.extent[1] - 0.5).applyMatrix4(p.weapon.object.matrixWorld)
         p.haze.emit({ at: _a, jitter: 0.4, size: [1.2, 2], rise: 0.6, life: [0.3, 0.5], strength: 0.6 * this.charge })
       }
     }
@@ -127,6 +130,7 @@ export class DescentFx {
   reset(): void {
     this.charge = this.chargeTarget = 0
     if (this.p.weapon) this.p.weapon.charge = 0
+    if (this.vortexOn) this.p.vortex.release()
     this.vortexOn = false
     this.waking = false
     this.smoke = 0
@@ -168,7 +172,7 @@ export class DescentFx {
     }
     const w = p.weapon
     if (w && w.presence > 0.9) {
-      _a.set(0, 0, 3.0).applyMatrix4(w.object.matrixWorld)
+      _a.set(0, 0, w.asset.manifest.extent[1]).applyMatrix4(w.object.matrixWorld)
       const ground = p.contact.height(_a.x, _a.z)
       if (_a.y - ground < 0.6 && Math.random() < dt * 30) {
         _a.y = ground
@@ -198,7 +202,7 @@ export class DescentFx {
     const c = this.marked ? _c.copy(this.center) : this.standing(frame, _c)
     // the spear's point: where it went in
     if (p.weapon && p.weapon.presence > 0.5) {
-      _a.set(0, 0, 3.0).applyMatrix4(p.weapon.object.matrixWorld)
+      _a.set(0, 0, p.weapon.asset.manifest.extent[1]).applyMatrix4(p.weapon.object.matrixWorld)
       c.x = _a.x
       c.z = _a.z
       c.y = p.contact.height(c.x, c.z)

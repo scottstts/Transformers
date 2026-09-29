@@ -10,6 +10,9 @@ import { createMotionState } from '../src/game/types.ts'
 import { updateCar } from '../src/game/car-dynamics.ts'
 import { RobotJump } from '../src/game/jump.ts'
 import { NO_CONTACT, REST_GAIT, readAsset, readWeapon } from './support/assets.ts'
+import { runFight } from './support/fight.ts'
+import { crossings, surfaces } from './support/clash.ts'
+import { Vortex } from '../src/content/bat/combat/fx/vortex.ts'
 
 const asset = { ...readAsset('bat'), weapon: readWeapon('bat-spear') }
 const manifest = asset.manifest
@@ -200,6 +203,23 @@ describe('bat locomotion', () => {
     expect(groundedFrames).toBeGreaterThan(180)
   })
 
+  it('runs with its feet drawn in under its hips, not straddling', () => {
+    const gait = bat.gait
+    let widest = 0
+    for (let frame = 0; frame < 240; frame++) {
+      model.pose(1, gait.update(1 / 120, BAT_PROFILE.robot.runSpeed, 0, true, true))
+      if (frame < 120) continue
+      for (const side of ['L', 'R'] as const) {
+        const hip = position(`bone:thigh.${side}`)
+        const ankle = position(`bone:foot.${side}`)
+        widest = Math.max(widest, Math.abs(ankle.x) - Math.abs(hip.x))
+      }
+    }
+    // the stand's feet are 0.46 m outside the hips; at a run they come in under them
+    expect(widest).toBeLessThan(0.2)
+    model.pose(0, null)
+  })
+
   it('jumps: the whole robot leaves the ground and lands back on its feet', () => {
     const gait = bat.gait
     const jump = new RobotJump()
@@ -261,5 +281,78 @@ describe('bat car', () => {
     for (let i = 1; i < gears.length; i++) expect(gears[i]).toBeGreaterThanOrEqual(gears[i - 1])
     for (let v = 46; v >= 0; v -= 0.25) box.update(v, 0)
     expect(box.gear).toBe(0)
+  })
+})
+
+describe('bat fighting', () => {
+  /** The spear hand's own chain: the butt cap may brush its gauntlet, which the clash probe watches (tools/clash-probe.mjs). */
+  const SPEAR_ARM = /(clav|upperarm|forearm|hand|index\d|middle\d|ring\d|pinky\d|thumb\d)\.R($|\.)/
+  /** What an arm must never pass through: the torso, the head and the legs. */
+  const TRUNK = /bone:(pelvis|spine|chest|neck|hip|thigh|shin|foot|toe)\.?|part:R\.(chest|head|thigh|shin)|asm:(keel|grille|chev|collar|cape|pod|scapula|wing|thighPlate|shinPlate|tail)/
+
+  const check = (clicks: number[], specials: number[], until: number): string[] => {
+    const c = createBat({ ...readAsset('bat'), weapon: readWeapon('bat-spear') }, NO_CONTACT, new AudioMix())
+    const bodies = surfaces(c.model.root.children[0].children)
+    const weapon = c.model.node('bone:hand.R').children.find((o) => o.name.startsWith('weapon:'))!
+    const extent = c.combat.effects.weapon!.asset.manifest.extent
+    const found = new Set<string>()
+    const a = new Vector3(), b = new Vector3(), hits: number[] = []
+    runFight(c, clicks, until, (t) => {
+      const formed = c.combat.effects.weapon!
+      if (weapon.visible) {
+        const reach = formed.presence * Math.max(-extent[0], extent[1])
+        const z0 = Math.max(-reach, extent[0]), z1 = Math.min(reach, extent[1])
+        for (let z = z0; z < z1; z += 0.2) {
+          a.set(0, 0, z).applyMatrix4(weapon.matrixWorld)
+          b.set(0, 0, Math.min(z + 0.2, z1)).applyMatrix4(weapon.matrixWorld)
+          for (const body of bodies) {
+            if (SPEAR_ARM.test(body.name)) continue
+            hits.length = 0
+            crossings(body, a, b, hits)
+            if (hits.length) found.add(`spear ${z.toFixed(1)} through ${body.name} at ${t.toFixed(2)}`)
+          }
+        }
+      }
+      for (const side of ['R', 'L']) {
+        a.setFromMatrixPosition(c.model.node(`bone:forearm.${side}`).matrixWorld)
+        b.setFromMatrixPosition(c.model.node(`bone:middle1.${side}`).matrixWorld)
+        for (const body of bodies) {
+          if (!TRUNK.test(body.name)) continue
+          hits.length = 0
+          crossings(body, a, b, hits)
+          if (hits.length) found.add(`${side} forearm through ${body.name} at ${t.toFixed(2)}`)
+        }
+      }
+    }, 1 / 60, specials)
+    return [...found]
+  }
+
+  it('keeps the spear and the forearms out of its body through the whole combo', () => {
+    expect(check([0, 0.6, 1.4, 3.3], [], 7)).toEqual([])
+  })
+
+  it('keeps the spear and the forearms out of its body through the special', () => {
+    expect(check([], [0], 10.5)).toEqual([])
+  })
+
+  it('lets the vortex dust go: no mote outlives its cap, and a released vortex clears within 0.6 s', () => {
+    const vortex = new Vortex()
+    const center = new Vector3()
+    for (let i = 0; i < 60; i++) {
+      vortex.emit(center, 17, 150, 1 / 60, 1, 6, 4.5, 3.2)
+      vortex.update(1 / 60)
+    }
+    for (let i = 0; i < 36; i++) vortex.update(1 / 60)
+    expect(vortex.mesh.visible).toBe(true)
+    vortex.release()
+    for (let i = 0; i < 37; i++) vortex.update(1 / 60)
+    expect(vortex.mesh.visible).toBe(false)
+    // left alone, the far motes are drawn in within the cap
+    for (let i = 0; i < 30; i++) {
+      vortex.emit(center, 17, 150, 1 / 60, 1, 6, 4.5, 3.2)
+      vortex.update(1 / 60)
+    }
+    for (let i = 0; i < 60 * 2.65; i++) vortex.update(1 / 60)
+    expect(vortex.mesh.visible).toBe(false)
   })
 })

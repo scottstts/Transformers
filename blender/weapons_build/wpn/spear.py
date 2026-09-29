@@ -1,22 +1,25 @@
 """The Bat robot's spear: a slim, sleek lance. A glossy black lacquered shaft
 carries brushed bronze fittings (the Tumbler's bronze accents): a ringed
 socket collar, a diamond-knurled grip bulb and a knurled neck under the head,
-and a ribbed butt ferrule with a rounded end. The head is a long fluted leaf
+a knurled grip band between two rings where the main hand holds it, and a
+ribbed butt ferrule with a rounded end. The head is a long fluted leaf
 blade with angled shoulders; its flutes run parallel to the edges and
 converge at the point, patinated dark, and the edges are honed bright.
 
-Sized for the 5.4 m Bat robot: 4.32 m overall (80 % of its height), a
-0.105 m shaft, the main hand at the origin and the off hand 1.0 m up the
-shaft, the tip 3.02 m up.
+Sized for the 5.4 m Bat robot and longer than it stands, as a pike: 6.5 m
+overall (1.2 times its height), a 0.105 m shaft, the main hand at the origin
+a quarter of the way up from the butt (it is held one-handed at the side, the
+long end ahead), the off hand 1.0 m up the shaft, the tip 4.9 m up.
 
-  ferrule   ribbed bronze butt cap          z -1.30 .. -0.96
-  shaft     black lacquer                   z -0.98 .. 1.86
-  collar    rings, knurled bulb, knurled neck, socket cone   z 1.80 .. 2.37
-  blade     fluted leaf blade               z 2.33 .. 3.02
+  ferrule   ribbed bronze butt cap          z -1.60 .. -1.26
+  shaft     black lacquer                   z -1.28 .. 3.60
+  grip      knurled band between two rings  z -0.30 .. 0.30
+  collar    rings, knurled bulb, knurled neck, socket cone   z 3.54 .. 4.11
+  blade     fluted leaf blade               z 4.07 .. 4.90
 
-Declared joins: the shaft runs into the ferrule and the collar sleeves; the
-knurled bands sit over the collar's core; the blade root is sunk into the
-socket cone.
+Declared joins: the shaft runs into the ferrule, the grip rings and the
+collar sleeves; the knurled bands sit over the collar's core and the shaft;
+the blade root is sunk into the socket cone.
 """
 import math
 from mathutils import Vector
@@ -26,16 +29,25 @@ from .kit import Part, revolve
 NAME = 'spear'
 
 SHAFT_R = 0.0525
-SHAFT_Z = (-0.98, 1.86)
 OFF_HAND = 1.0
+# the head's fittings and blade are drawn at their first length (tip 3.02) and carried up the longer
+# shaft by HEAD_DZ, the blade lengthened by BLADE_STRETCH about its root; the butt carried down by BUTT_DZ
+HEAD_DZ = 1.742
+BLADE_STRETCH = 1.2
+BUTT_DZ = -0.3
+SHAFT_Z = (-0.98 + BUTT_DZ, 1.86 + HEAD_DZ)
+# the grip band: rings (r, z) either side of a knurled band just over the shaft, fitting the fist's curl
+GRIP_Z = 0.26
+GRIP_RING = [(0.0, 0.0), (0.056, 0.0), (0.060, 0.01), (0.060, 0.03), (0.056, 0.04), (0.0, 0.04)]
 
 # the collar under the head, (r, z) from the sleeve over the shaft to the socket cone
 COLLAR = [(0.0, 1.80), (0.056, 1.80), (0.056, 1.84), (0.064, 1.85), (0.064, 1.87), (0.057, 1.875), (0.064, 1.88), (0.064, 1.90),
           (0.057, 1.905), (0.064, 1.91), (0.064, 1.93), (0.056, 1.945), (0.048, 1.99), (0.048, 2.16), (0.058, 2.165), (0.060, 2.175),
           (0.058, 2.185), (0.045, 2.19), (0.045, 2.27), (0.058, 2.275), (0.062, 2.285), (0.057, 2.29), (0.062, 2.295), (0.062, 2.31),
           (0.052, 2.325), (0.034, 2.36), (0.0, 2.365)]
-BULB_Z = (2.02, 2.16)
-NECK_Z = (2.19, 2.27)
+COLLAR = [(r, z + HEAD_DZ) for r, z in COLLAR]
+BULB_Z = (2.02 + HEAD_DZ, 2.16 + HEAD_DZ)
+NECK_Z = (2.19 + HEAD_DZ, 2.27 + HEAD_DZ)
 
 
 def _ferrule():
@@ -46,7 +58,7 @@ def _ferrule():
         prof += [(0.055, z), (0.055, z - 0.006), (0.051, z - 0.008)]
         z -= 0.014
     prof += [(0.047, -1.25), (0.040, -1.28), (0.026, -1.297), (0.0, -1.302)]
-    return prof
+    return [(r, z + BUTT_DZ) for r, z in prof]
 
 
 # blade stations: (z, half width, half thickness at the ridge); the point closes at BLADE_TIP
@@ -54,6 +66,14 @@ def _ferrule():
 BLADE = [(2.33, 0.028, 0.019), (2.37, 0.030, 0.019), (2.41, 0.088, 0.019), (2.45, 0.090, 0.018), (2.52, 0.078, 0.017),
          (2.66, 0.066, 0.014), (2.80, 0.048, 0.011), (2.93, 0.026, 0.007), (2.99, 0.010, 0.004)]
 BLADE_TIP = 3.02
+
+
+def _blade_z(z):
+    return 2.33 + HEAD_DZ + (z - 2.33) * BLADE_STRETCH
+
+
+BLADE = [(_blade_z(z), hw, t) for z, hw, t in BLADE]
+BLADE_TIP = _blade_z(BLADE_TIP)
 EDGE_LAND = 0.0012
 # across each face from the edge bevel to the ridge: (u = share of the half width, groove?, slot of the
 # side arriving at this point); three narrow flutes between broad flats
@@ -62,7 +82,7 @@ FACE = [(0.80, False, 'edge'), (0.70, False, 'bronze'), (0.66, True, 'bronzeDark
         (0.16, False, 'bronze'), (0.12, True, 'bronzeDark'), (0.08, False, 'bronzeDark')]
 FLUTE_DEPTH = 0.25                                     # share of the local thickness
 
-EDGE = ((0.0, 0.0, 2.40), (0.0, 0.0, BLADE_TIP))
+EDGE = ((0.0, 0.0, _blade_z(2.40)), (0.0, 0.0, BLADE_TIP))
 
 
 def _face_height(u, t, groove):
@@ -146,11 +166,14 @@ def build(coll):
     fit = Part(NAME, 'spear.fittings')
     fit.add(revolve(COLLAR, 40), 'bronze')
     fit.add(revolve(_ferrule(), 40), 'bronze')
+    for z0 in (-GRIP_Z - 0.04, GRIP_Z):
+        fit.add(revolve([(r, z + z0) for r, z in GRIP_RING], 40), 'bronze')
     K.finish(fit.build(coll), width=0.0012, seg=1, angle=30)
 
     knurl = Part(NAME, 'spear.knurl')
     knurl.add(_knurl(BULB_Z[0], BULB_Z[1], _bulb_r, 12, 20, 0.004), 'bronze')
     knurl.add(_knurl(NECK_Z[0], NECK_Z[1], lambda z: 0.047, 6, 20, 0.003), 'bronze')
+    knurl.add(_knurl(-GRIP_Z - 0.01, GRIP_Z + 0.01, lambda z: SHAFT_R + 0.001, 32, 24, 0.002), 'bronze')  # ends sunk in the rings
     o = knurl.build(coll)
     o.data.shade_flat()
     K.finish(o, width=0.0006, seg=1, angle=15)

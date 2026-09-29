@@ -1,10 +1,10 @@
 import type { CombatHits, StrikeHit } from '../../transformer/combat/hits'
-import { FLURRY_HOME, FLURRY_LAST, MAELSTROM, VORTEX } from './moves'
+import { BAT_MOVES, FLURRY_HOME, FLURRY_LAST, MAELSTROM, VORTEX } from './moves'
 import { DESCENT } from './special'
 
 /**
  * What the Bat's spear does to the soldiers (combat/hits.ts). It reaches:
- * the thrust goes home five metres out, the sweep takes a wide arc ahead.
+ * the thrust goes home nine metres out, the sweeps take the whole front.
  * The flurry hits everything in the front half circle over and over, too
  * fast for hit-stops (a dozen light blows, then the heavy last). The
  * maelstrom's spin draws everything within 17 m in toward the front before
@@ -12,7 +12,7 @@ import { DESCENT } from './special'
  * the vortex holds, and the spear driven into the ground where it drew them
  * breaks everything within twenty metres.
  */
-const flurry: StrikeHit[] = FLURRY_HOME.map((t) => ({ t, kind: 'cut', reach: 7, arc: 180, damage: 9, knock: 1.2, lift: 0.3, outward: true, bite: false }))
+const flurry: StrikeHit[] = FLURRY_HOME.map((t) => ({ t, kind: 'cut', reach: 8.8, arc: 180, damage: 9, knock: 1.2, lift: 0.3, outward: true, bite: false }))
 
 /** Round the ring the spear is out to the right, toward the centre: a cut every CUT_BEAT through what the vortex holds there, swept on round with the body. */
 const CUT_BEAT = 0.14
@@ -24,12 +24,12 @@ const circling: StrikeHit[] = DESCENT.cuts.flatMap(([t0, t1]) => {
 
 export const BAT_HITS: CombatHits = {
   moves: [
-    { strikes: [{ t: 0.36, kind: 'cut', blowSound: 'slash', reach: 5.6, arc: 70, damage: 55, knock: 9, lift: 0.8 }] },
-    { strikes: [{ t: 0.46, kind: 'cut', reach: 5.8, arc: 190, aim: 10, damage: 65, knock: 10, lift: 1.8 }] },
-    { strikes: [...flurry, { t: FLURRY_LAST, kind: 'cut', blowSound: 'heavy', reach: 7.4, arc: 90, damage: 30, knock: 11, lift: 1.4 }] },
+    { strikes: [{ t: BAT_MOVES.moves[0].strike!, kind: 'cut', blowSound: 'slash', reach: 9.4, arc: 40, damage: 55, knock: 9, lift: 0.8 }] },
+    { strikes: [{ t: BAT_MOVES.moves[1].strike!, kind: 'cut', reach: 9.2, arc: 190, aim: -10, damage: 65, knock: 10, lift: 1.8 }] },
+    { strikes: [...flurry, { t: FLURRY_LAST, kind: 'cut', blowSound: 'heavy', reach: 9.6, arc: 60, damage: 30, knock: 11, lift: 1.4 }] },
     {
       pulls: [{ t0: MAELSTROM.spin[0], t1: MAELSTROM.spin[1] + 0.3, ahead: VORTEX.ahead, radius: VORTEX.radius, speed: VORTEX.speed }],
-      strikes: [{ t: MAELSTROM.strike, kind: 'cut', blowSound: 'heavy', reach: 8.6, arc: 250, damage: 190, knock: 18, lift: 5.5, outward: true }],
+      strikes: [{ t: MAELSTROM.strike, kind: 'cut', blowSound: 'heavy', reach: 9.6, arc: 180, damage: 190, knock: 18, lift: 5.5, outward: true }],
     },
   ],
   special: {

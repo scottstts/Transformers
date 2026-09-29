@@ -29,6 +29,14 @@ export interface CombatBuild {
    * (weapon +x) faces the index finger. Default: a haft through the fist.
    */
   pistol?: boolean
+  /**
+   * The main hand's wrist follows its forearm: the weapon's roll about its
+   * haft is chosen so the knuckles run on along the forearm (the wrist
+   * straight, bent only as far as the haft's angle to the arm demands), and
+   * `w.roll` turns the knuckles from there. For a long haft held in one hand,
+   * whose butt must pass the forearm on the fist's far side at any angle.
+   */
+  wristFollows?: boolean
 }
 
 /**
@@ -74,8 +82,10 @@ export class CombatOverlay implements RigOverlay {
   readonly neutral = new Float32Array(CHANNELS)
   /** the weapon frame in the authoring frame, after the last pose */
   readonly weapon = new Matrix4()
-  /** weapon to main hand (its grip) */
+  /** weapon to main hand (its grip, slid along the haft by `w.slide`) */
   readonly grip = new Matrix4()
+  /** the grip at the weapon's origin */
+  private readonly gripBase = new Matrix4()
   readonly build: CombatBuild
   private readonly armLength: Record<Side, [number, number]>
   /** each shoulder's rest position relative to the pelvis joint (model frame): the weapon channels' origin */
@@ -132,7 +142,8 @@ export class CombatOverlay implements RigOverlay {
     this.offGrip = new Vector3(...build.offGrip)
     this.gripRot = (build.pistol ? PISTOL_ROT : GRIP_ROT).clone()
     this.gripRotInv = this.gripRot.clone().invert()
-    this.grip.compose(this.gripOffset[build.main], this.gripRot, _one)
+    this.gripBase.compose(this.gripOffset[build.main], this.gripRot, _one)
+    this.grip.copy(this.gripBase)
     this.measureNeutral(rig)
   }
 
@@ -191,6 +202,7 @@ export class CombatOverlay implements RigOverlay {
     const main = this.build.main
     this.solveArm(rig, main, w, v[WEAPON + 6])
     rig.forward(root)
+    this.grip.multiplyMatrices(this.gripBase, _m1.makeTranslation(0, 0, -v[CH['w.slide']]))
     this.weapon.multiplyMatrices(rig.world[this.idx.arm[main].hand], this.grip)
     const off: Side = main === 'R' ? 'L' : 'R'
     this.solveArm(rig, off, w, v[WEAPON + 7])
@@ -234,12 +246,30 @@ export class CombatOverlay implements RigOverlay {
         const x = v[WEAPON], y = v[WEAPON + 1], z = v[WEAPON + 2]
         const at = _vw.set(sgn * x, -y, z).multiplyScalar(L1 + L2).add(this.shoulderRest[side])
           .add(_v1.setFromMatrixPosition(rig.world[this.idx.pelvis]))
+        const follows = this.build.wristFollows
         const weaponQ = _qw.setFromAxisAngle(_z, sgn * deg(v[WEAPON + 3]))
           .multiply(_q3.setFromAxisAngle(_x, deg(v[WEAPON + 4])))
-          .multiply(_q2.setFromAxisAngle(_z, sgn * deg(v[WEAPON + 5])))
+          .multiply(_q2.setFromAxisAngle(_z, sgn * deg(follows ? 0 : v[WEAPON + 5])))
           .multiply(WEAPON_REST)
         handQ.copy(weaponQ).multiply(this.gripRotInv)
+        _grip.copy(at)
         at.sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
+        if (follows) {
+          // the forearm the arm will take to this wrist, and the roll that runs the knuckles (weapon +x) on along it
+          // (the pole as the solve below builds it, the elbow channel's roll included)
+          const toWrist = _vd.copy(at).sub(S).normalize().applyQuaternion(_q0.copy(chestQ).invert())
+          const pole = basePole(toWrist, sgn, _vp).applyAxisAngle(toWrist, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
+          const forearm = forearmTo(S, at, L1, L2, pole, _v3)
+          const haft = _v4.set(0, 0, 1).applyQuaternion(weaponQ)
+          forearm.addScaledVector(haft, -forearm.dot(haft))
+          if (forearm.lengthSq() > 1e-8) {
+            const knuckles = _v1.set(1, 0, 0).applyQuaternion(weaponQ)
+            const turn = Math.atan2(_v0.crossVectors(knuckles, forearm).dot(haft), knuckles.dot(forearm)) + sgn * deg(v[WEAPON + 5])
+            weaponQ.multiply(_q2.setFromAxisAngle(_z, turn))
+            handQ.copy(weaponQ).multiply(this.gripRotInv)
+            at.copy(_grip).sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
+          }
+        }
         // A two-handed weapon must fit both arms. Project its wrist target
         // into their shared reach before solving either arm; otherwise the
         // off hand silently clamps short and appears detached from the haft.
@@ -382,6 +412,20 @@ function basePole(d: Vector3, sgn: number, out: Vector3): Vector3 {
   return out.normalize()
 }
 
+/** The unit forearm direction of a two-bone arm from shoulder `S` to wrist `W`, its elbow toward `pole` (as solveArm places it). */
+function forearmTo(S: Vector3, W: Vector3, L1: number, L2: number, pole: Vector3, out: Vector3): Vector3 {
+  const toW = _a.subVectors(W, S)
+  const D = MathUtils.clamp(toW.length(), Math.abs(L1 - L2) + 1e-4, (L1 + L2) * 0.9995)
+  const dir = toW.normalize()
+  const a = Math.acos(MathUtils.clamp((L1 * L1 + D * D - L2 * L2) / (2 * L1 * D), -1, 1))
+  const p = _b.copy(pole).addScaledVector(dir, -pole.dot(dir))
+  if (p.lengthSq() < 1e-8) p.set(0, 0, -1).addScaledVector(dir, -dir.z)
+  p.normalize()
+  // the elbow, then the wrist from it
+  const elbow = _c.copy(S).addScaledVector(dir, L1 * Math.cos(a)).addScaledVector(p, L1 * Math.sin(a))
+  return out.copy(S).addScaledVector(dir, D).sub(elbow).normalize()
+}
+
 /** Keep a wrist inside an arm's reach, preserving a little elbow flexion. */
 function projectReach(target: Vector3, shoulder: Vector3, radius: number): void {
   _reach.subVectors(target, shoulder)
@@ -440,6 +484,7 @@ const _offDelta = new Vector3()
 const _offCenter = new Vector3()
 const _shared = new Vector3()
 const _reach = new Vector3()
+const _grip = new Vector3()
 const _a = new Vector3()
 const _b = new Vector3()
 const _c = new Vector3()

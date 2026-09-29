@@ -54,7 +54,8 @@ export class Weapon {
     this.edge = [new Vector3(...m.edge[0]), new Vector3(...m.edge[1])]
     this.object.name = `weapon:${m.name}`
     this.object.matrixAutoUpdate = false
-    this.object.matrix.copy(grip)
+    // the overlay's live grip: a hand sliding along the haft moves the weapon through it
+    this.object.matrix = grip
     const reach = Math.max(-m.extent[0], m.extent[1])
     const forged = new Map<Material, Material>()
     for (const { material, geometry } of asset.meshes) {

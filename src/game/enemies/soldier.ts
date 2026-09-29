@@ -58,6 +58,16 @@ export interface SoldierImpact {
 const PULL_ARRIVE = 1.6
 const PULL_GRIP = 7
 const PULL_GRIP_AIR = 2.5
+/**
+ * Held in a vacuum's draw it seizes, as a flurry's blows rock it: thrown
+ * between its two hit poses on this beat (s, jittered), each time jolted back
+ * away from the draw as hard as a flurry's blow (the springs' strength), head
+ * thrown up, straining against it; and it seizes on this long after the draw
+ * lets go (s).
+ */
+const SEIZE_BEAT = 0.1
+const SEIZE_JOLT = 0.19
+const SEIZE_HOLD = 0.25
 
 const TMP_TILT = new Quaternion()
 const X = new Vector3(1, 0, 0)
@@ -128,6 +138,12 @@ export class Soldier implements HordeInstance {
   /** the hit pose this blow shows (alternates blow by blow) and how long it holds */
   private flinchPose = 0
   private flinchTime = 0
+  /** seizing in a vacuum's draw: how long it goes on, the next jolt, the time since the last, and the way away from the draw */
+  private seize = 0
+  private seizeNext = 0
+  private seizeAge = 99
+  private seizeX = 0
+  private seizeZ = 0
   /** behaviour's bookkeeping (horde.ts): its post, where it is on the post's beat, when it may swing next,
    * whether it is still rolling out of its spawn door, and the district it stands in */
   post = 0
@@ -183,6 +199,9 @@ export class Soldier implements HordeInstance {
     this.chipHold = 0
     this.flinchPose = 0
     this.flinchTime = 0
+    this.seize = 0
+    this.seizeNext = 0
+    this.seizeAge = 99
     this.post = 0
     this.beat.k = -1
     this.nextSwing = 0
@@ -236,17 +255,8 @@ export class Soldier implements HordeInstance {
       if (!hold) return this.settle()
       this.doomed = true
     }
-    // the push in the body frame: forward (+) / left (+)
-    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw)
-    const along = hit.dirX * fx + hit.dirZ * fz
-    const across = hit.dirX * fz - hit.dirZ * fx
-    const s = this.spring
     const k = Math.min(1.6, (hit.knock + hit.lift) / 8)
-    // the body snaps away from the blow: lean with the push, twist and bend across it
-    s[1] += along * 260 * k
-    s[3] += across * 300 * k
-    s[5] += (Math.random() - 0.5) * 360 * k
-    s[7] += along * 320 * k
+    const [along, across] = this.jolt(hit.dirX, hit.dirZ, k)
     if (hit.lift > SOLDIER.launchLift || hit.knock > SOLDIER.launchKnock) {
       this.mode = 'air'
       this.t = 0
@@ -270,10 +280,30 @@ export class Soldier implements HordeInstance {
   }
 
   /**
+   * The body snaps away from a push (world direction, unit) of strength `k`:
+   * it leans with the push, twists and bends across it, the head thrown with
+   * it. Returns the push in the body frame: forward (+), left (+).
+   */
+  private jolt(dirX: number, dirZ: number, k: number): [number, number] {
+    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw)
+    const along = dirX * fx + dirZ * fz
+    const across = dirX * fz - dirZ * fx
+    const s = this.spring
+    s[1] += along * 260 * k
+    s[3] += across * 300 * k
+    s[5] += (Math.random() - 0.5) * 360 * k
+    s[7] += along * 320 * k
+    _push[0] = along
+    _push[1] = across
+    return _push
+  }
+
+  /**
    * A vacuum draws it toward (x, z) at up to `speed` m/s for `dt`: on the
    * ground it loses its footing and slides in on its wheels, staggering
-   * (it cannot drive against it), easing to a stop as it arrives rather than
-   * overshooting; in the air it drifts that way as it falls.
+   * (it cannot drive against it) and seizing (SEIZE_BEAT), easing to a stop
+   * as it arrives rather than overshooting; in the air it drifts that way as
+   * it falls.
    */
   pull(x: number, z: number, speed: number, dt: number): void {
     if (!this.alive) return
@@ -288,10 +318,9 @@ export class Soldier implements HordeInstance {
       this.mode = 'stagger'
       this.t = -0.3
     }
-    // the body leans away from the draw, fighting it
-    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw)
-    this.spring[1] += ((dx * fx + dz * fz) / d) * 90 * dt * want
-    this.spring[3] += ((dx * fz - dz * fx) / d) * 90 * dt * want
+    this.seize = SEIZE_HOLD
+    this.seizeX = -dx / d
+    this.seizeZ = -dz / d
   }
 
   /** Destroy it now if its health is gone (a doomed soldier, at a special's last blow); returns whether it was. */
@@ -378,7 +407,21 @@ export class Soldier implements HordeInstance {
     if (onGround) this.spin += ((dir * speed) / this.rig.dims.wheelRadius) * dt
 
     this.modes()
+    this.seizing(dt)
     this.animate(dt)
+  }
+
+  /** In a vacuum's draw: jolted back between its hit poses, beat by beat. */
+  private seizing(dt: number): void {
+    if (this.seize <= 0) return
+    this.seize -= dt
+    this.seizeAge += dt
+    this.seizeNext -= dt
+    if (this.seizeNext > 0 || (this.mode !== 'stagger' && this.mode !== 'hit')) return
+    this.seizeNext = SEIZE_BEAT * (0.8 + 0.4 * Math.random())
+    this.seizeAge = 0
+    this.flinchPose ^= 1
+    this.jolt(this.seizeX, this.seizeZ, SEIZE_JOLT)
   }
 
   /** The body comes down: on its wheels if it is still upright enough, otherwise flat. */
@@ -462,16 +505,24 @@ export class Soldier implements HordeInstance {
       case 'hit':
         // snapped into, held; recovery is the stance's own ease once it frees
         T.set(this.flinchPose ? POSES.hitLow : POSES.hitHigh)
-        rate = this.t < 0.14 ? SOLDIER.flinchSnap : 10
-        if (this.doomed) {
+        rate = Math.min(this.t, this.seize > 0 ? this.seizeAge : 99) < 0.14 ? SOLDIER.flinchSnap : 10
+        if (this.doomed || this.seize > 0) {
           // shaking in the hold
           T[SC.lean] += Math.sin(this.t * 31) * 2.5
           T[SC.headPitch] += Math.sin(this.t * 23 + 1) * 4
         }
         break
       case 'stagger':
-        T.set(POSES.ready)
-        rate = 5
+        if (this.seize > 0) {
+          // seizing in a vacuum's draw: thrown between the hit poses as a flurry's blows throw it, shaking
+          T.set(this.flinchPose ? POSES.hitLow : POSES.hitHigh)
+          rate = this.seizeAge < 0.14 ? SOLDIER.flinchSnap : 10
+          T[SC.lean] += Math.sin(this.t * 31) * 2.5
+          T[SC.headPitch] += Math.sin(this.t * 23 + 1) * 4
+        } else {
+          T.set(POSES.ready)
+          rate = 5
+        }
         break
       case 'air':
         T.set(POSES.flung)
@@ -549,3 +600,4 @@ function towardZero(v: number, d: number): number {
 const _v = new Vector3()
 const _q = new Quaternion()
 const _anim = new Float32Array(SOLDIER_CHANNEL_COUNT)
+const _push: [number, number] = [0, 0]

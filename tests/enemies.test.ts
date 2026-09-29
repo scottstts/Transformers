@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Quaternion, Scene, Vector3, PerspectiveCamera } from 'three/webgpu'
 import { readSoldier, NO_CONTACT } from './support/assets'
 import { SoldierRig, createSoldierPose } from '../src/content/soldier/rig'
-import { POSES, writePose } from '../src/content/soldier/poses'
+import { POSES, SC, writePose } from '../src/content/soldier/poses'
 import { Forts, FORT_SITES } from '../src/worlds/desert/fort'
 import { planFort, insideWalls, outsideSector, sectorAt, GATE_WIDTH } from '../src/worlds/desert/fort/plan'
 import { pushOut } from '../src/game/collide'
@@ -235,7 +235,7 @@ describe('horde', () => {
       shape: 'sector', kind: 'blunt', x: target.x, z: target.z, heading: Math.atan2(s.x - target.x, s.z - target.z), reach: Math.hypot(s.x - target.x, s.z - target.z) + 1,
       arc: 0.05, damage, knock: 4, lift: 0.3, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true, ...extra,
     })
-    return { horde, fort, plan, sector, target, at, run, blow }
+    return { horde, fort, plan, sector, target, at, run, blow, camera }
   }
 
   it('stands guard until the robot is inside a district, then that district closes in on it', () => {
@@ -327,6 +327,35 @@ describe('horde', () => {
     expect(a.alive || b.alive).toBe(false)
     expect(horde.destroyed).toBeGreaterThanOrEqual(before + 2)
     horde.special = false
+  })
+
+  it('seizes in a vacuum as under a flurry: thrown between its hit poses, beat by beat, drawn in, and recovers once it lets go', () => {
+    const { horde, sector, target, at, run, camera } = make()
+    const yard = sector('gate').yard.at
+    at(yard[0], yard[1])
+    run(6)
+    const [s] = horde.nearby(target.x, target.z, 12)
+    expect(s).toBeDefined()
+    const cx = target.x + 6, cz = target.z
+    const start = Math.hypot(s.x - cx, s.z - cz)
+    let low = Infinity, high = -Infinity, swings = 0, last = 0
+    for (let t = 0; t < 1.5; t += DT) {
+      horde.pull({ x: cx, z: cz, radius: 40, speed: 8, dt: DT })
+      horde.update(DT, target, camera)
+      const lean = s.anim[SC.lean]
+      low = Math.min(low, lean)
+      high = Math.max(high, lean)
+      const side = Math.sign(lean - (POSES.hitHigh[SC.lean] + POSES.hitLow[SC.lean]) / 2)
+      if (side !== last && side !== 0) { swings++; last = side }
+      expect(s.free).toBe(false)
+    }
+    // both hit poses, over and over: thrown back and doubled over as a flurry's blows throw it
+    expect(low).toBeLessThan(POSES.hitHigh[SC.lean] * 0.6)
+    expect(high).toBeGreaterThan(POSES.hitLow[SC.lean] * 0.6)
+    expect(swings).toBeGreaterThan(8)
+    expect(Math.hypot(s.x - cx, s.z - cz)).toBeLessThan(start * 0.6)
+    run(1.5)
+    expect(s.mode).not.toBe('stagger')
   })
 
   it('sends out a wave of reinforcements when a district is cut down', () => {

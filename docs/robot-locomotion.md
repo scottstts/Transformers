@@ -4,7 +4,7 @@ The procedural gait (`src/content/transformer/animation/gait.ts`) and jump timel
 
 ## Walking and running
 
-Shift switches walking to running. Walking contact occupies 58 % of the cycle; running contact occupies 36 % for the truck, 26 % for the Semi and 20 % for the F1, leaving a flight interval between steps. Step lengths (one full cycle covers two steps) are 2.45 / 4.6 m walking / running for the truck, 1.95 / 5.2 m for the F1, 3.3 / 5.6 m for the Semi and 2.18 / 4.1 m for the Bat, at 3.9 / 15, 3.2 / 15.6, 4.5 / 17 and 3.7 / 14.2 m/s. Every walk sits at Froude 0.5, so a bigger body walks faster at a slower cadence. Tune speed together with stride length: the pair sets the cadence (see Timing and scale).
+Shift switches walking to running. Walking contact occupies 58 % of the cycle; running contact occupies 36 % for the truck, 26 % for the Semi and the Bat and 20 % for the F1, leaving a flight interval between steps. Step lengths (one full cycle covers two steps) are 2.45 / 4.6 m walking / running for the truck, 1.95 / 5.2 m for the F1, 3.3 / 5.6 m for the Semi and 2.18 / 4.1 m for the Bat, at 3.9 / 15, 3.2 / 15.6, 4.5 / 17 and 3.7 / 14.2 m/s. Every walk sits at Froude 0.5, so a bigger body walks faster at a slower cadence. Tune speed together with stride length: the pair sets the cadence (see Timing and scale).
 
 ## Timing and scale
 
@@ -39,6 +39,8 @@ Lengths scale with the robot and times with its square root. Tuning a stride for
 ## Carriage per robot
 
 Each robot's `GaitStyle` may carry its own carriage for moving, when its stand does not suit locomotion (`track`, `armAbduct`, `runElbow`, `armCross`): the feet's track and the shoulders' abduction as shares of the rig's (blended in with the stride's amplitude, standing keeps the rig's own), the elbow bend at a full run, and the upper arms' inward rotation about their own axis (applied before the swing, so the bent forearms come forward and across the body). The rig reads them from the gait pose (`GaitPose.track`, `abduct`, `armTwist`), and the fight's overlay blends from the same track.
+
+The Bat's stand is wide too (feet 0.86 m out against 0.4 m hips). Scaled from the truck's heavy gait, it ran straddling and crouched: feet 0.43–0.49 m outside the hips, stance knees at 74–88°. It now runs as the Semi does, on short support (26 %) and straight support legs (`reach` 0.38, `kneeFloor` 8, no run crouch), its track drawn in to 0.72 / 0.6 of the stand's walking / running: the feet land within 0.15 m of the hips, stance knees 39–47°, and the legs' surfaces still pass 5 cm apart at a run.
 
 The F1's stand is built wide (feet 0.36 m out against 0.27 m hips, arms splayed 16°). During locomotion its feet use parallel tracks at 0.82 / 0.7 of that width walking / running. Shoulder splay falls to 0.45 / 0.4, with only 6° of inward arm rotation at a run. The running elbow channel adds 52° to the rig's resting 14°, with a modest extra bend on the forward pump; total flexion stays below 95°.
 

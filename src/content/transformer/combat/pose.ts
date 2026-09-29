@@ -23,8 +23,10 @@ import type { GaitLeg } from '../model/rig'
  *    `w.y` + forward, `w.z` + up), its
  *    orientation (deg: `w.yaw` + toward the outer side, `w.pitch` + tips the
  *    head forward, `w.roll` about the haft) from upright with the edge facing
- *    forward, `w.wield` (0..1 the main hand is driven by the weapon) and
- *    `w.two` (0..1 the other hand on the off grip);
+ *    forward, `w.wield` (0..1 the main hand is driven by the weapon),
+ *    `w.two` (0..1 the other hand on the off grip) and `w.slide` (m, where
+ *    along the haft the main hand holds it: + toward the head, so the weapon
+ *    runs back through the hand; the weapon channels place the hand);
  *  - `R.heel` / `L.heel` (deg): heel raised, pivoting on the toe;
  *  - root motion in the move's ground frame: `advance` (m, forward), `strafe`
  *    (m, + left), `turn` (deg, + left) and `air` (m, the lowest foot's height);
@@ -39,7 +41,7 @@ export const CHANNEL_NAMES = [
   'spineX', 'spineY', 'spineZ', 'chestX', 'chestY', 'chestZ', 'headX', 'headY', 'headZ',
   'R.az', 'R.el', 'R.reach', 'R.elbow', 'R.wx', 'R.wy', 'R.wz', 'R.grip',
   'L.az', 'L.el', 'L.reach', 'L.elbow', 'L.wx', 'L.wy', 'L.wz', 'L.grip',
-  'w.x', 'w.y', 'w.z', 'w.yaw', 'w.pitch', 'w.roll', 'w.wield', 'w.two',
+  'w.x', 'w.y', 'w.z', 'w.yaw', 'w.pitch', 'w.roll', 'w.wield', 'w.two', 'w.slide',
   'R.heel', 'L.heel', 'advance', 'strafe', 'turn', 'air',
   'R.free', 'R.lx', 'R.ly', 'R.lz', 'R.lp', 'L.free', 'L.lx', 'L.ly', 'L.lz', 'L.lp',
 ] as const

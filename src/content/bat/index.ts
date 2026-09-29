@@ -64,18 +64,22 @@ export const BAT_PROFILE: CharacterProfile = {
  * The Bat's walk and run: the pickup robot's heavy machine (a walk at Froude
  * 0.5, pelvis and chest carried nearly as one block), scaled to its 2.76 m
  * hips: strides by the legs, speeds by their square root, so the cadence is
- * the size's own.
+ * the size's own. Its stand is wide (feet 0.86 m out, hips 0.4 m), so moving
+ * it draws the feet in under the hips (`track`), and it runs as the Semi
+ * does, on short support and straight support legs: the pickup's long
+ * contact sweep and run crouch bent its knees to 88 degrees with its feet
+ * half a metre outside its hips (a crouching, straddling run).
  */
 export const BAT_GAIT: GaitStyle = {
   stride: [2.18, 4.1],
-  stance: [0.58, 0.36],
-  reach: [0.45, 0.5],
-  kneeFloor: [12, 20],
+  stance: [0.58, 0.26],
+  reach: [0.45, 0.38],
+  kneeFloor: [12, 8],
   vault: 0.5,
   lift: [0.3, 0.64],
   runFlight: 0.07,
   runCompression: 0.065,
-  runCrouch: 0.11,
+  runCrouch: 0,
   sway: [0.065, 0.03],
   bob: 0.032,
   hipYaw: [3, 5],
@@ -90,6 +94,7 @@ export const BAT_GAIT: GaitStyle = {
   belly: [0, 0.004],
   jumpCrouch: 0.36,
   jumpTuck: 0.4,
+  track: [0.72, 0.6],
 }
 
 export async function loadBatAsset(): Promise<PlayableTransformerAsset> {
