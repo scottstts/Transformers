@@ -347,8 +347,9 @@ export class GameSession {
       fight.airborne = (at, range, out) => this.horde.airborne(at, range, out)
       fight.onHit = (hit) => {
         const caught = this.horde.hit(hit)
-        if (caught > 0 && hit.shape === 'sector') this.cameraFx.hitStop(0.05, 0.18)
+        if (caught > 0 && hit.shape === 'sector' && hit.bite) this.cameraFx.hitStop(0.05, 0.18)
       }
+      fight.onPull = (pull) => this.horde.pull(pull)
       this.fights.set(character.id, fight)
     }
     return fight

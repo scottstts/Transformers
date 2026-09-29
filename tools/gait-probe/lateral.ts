@@ -5,10 +5,11 @@ import type { GaitStyle } from '../../src/content/transformer/animation/gait.ts'
 import { createF1 } from '../../src/content/ferrari-f1/index.ts'
 import { createCybertruck } from '../../src/content/cybertruck/index.ts'
 import { createSemi } from '../../src/content/semi/index.ts'
+import { createBat } from '../../src/content/bat/index.ts'
 import { NO_CONTACT, readAsset } from '../../tests/support/assets.ts'
 
 const dt = 1 / 240
-const create: Record<string, typeof createF1> = { 'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi }
+const create: Record<string, typeof createF1> = { 'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi, bat: createBat }
 
 /**
  * A settled cycle seen from behind: the side-to-side travel and the roll and yaw

@@ -16,6 +16,11 @@
  *   blast   a burst at a ground point at `t` (a slam, a crater, an ignition):
  *           everything within `radius` thrown out from it, harder nearer
  *
+ *   pull    a vacuum over a window: everything within `radius` of a ground
+ *           point is drawn in toward it at up to `speed` m/s, losing its
+ *           footing (no damage): the point `at` in the move's ground frame,
+ *           or `ahead` metres ahead of the standing point as the body moves
+ *
  * `damage` is in soldier health (SOLDIER.health, 300, is a whole soldier: a
  * combo's first three blows leave one standing, its fourth takes it down),
  * `knock` the speed
@@ -36,6 +41,8 @@ export interface StrikeHit {
   lift: number
   /** thrown straight out from the robot (along the sector's curve) rather than along its heading */
   outward?: boolean
+  /** false: a landed blow does not bite with a moment of hit-stop (one of a rapid flurry, which the stops would slow to a crawl) */
+  bite?: boolean
 }
 
 export interface SweepHit {
@@ -59,10 +66,20 @@ export interface BlastHit {
   lift: number
 }
 
+export interface PullHit {
+  t0: number
+  t1: number
+  at?: readonly [number, number]
+  ahead?: number
+  radius: number
+  speed: number
+}
+
 export interface MoveHits {
   strikes?: readonly StrikeHit[]
   sweeps?: readonly SweepHit[]
   blasts?: readonly BlastHit[]
+  pulls?: readonly PullHit[]
 }
 
 /** A character's hits: one set per combo move, in order, and the special's. */
@@ -101,6 +118,17 @@ export interface HitEvent {
   special: boolean
   /** the special's last blow: whatever its hits emptied breaks apart now */
   final: boolean
+  /** a landed strike bites with a moment of hit-stop */
+  bite: boolean
+}
+
+/** A vacuum at work this frame (world): draws whatever stands within `radius` m of (x, z) toward it at up to `speed` m/s over `dt`. */
+export interface PullEvent {
+  x: number
+  z: number
+  radius: number
+  speed: number
+  dt: number
 }
 
 /** When a move's last blow lands (s): its latest strike or blast, or the end of its latest sweep. */

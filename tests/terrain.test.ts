@@ -7,9 +7,10 @@ import { DesertTerrain } from '../src/worlds/desert/terrain'
 import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck'
 import { F1_PROFILE } from '../src/content/ferrari-f1'
 import { SEMI_PROFILE } from '../src/content/semi'
+import { BAT_PROFILE } from '../src/content/bat'
 import type { DriveProfile } from '../src/content/transformer/character'
 
-const CARS: Array<[string, DriveProfile]> = [['cybertruck', CYBERTRUCK_PROFILE.drive], ['ferrari-f1', F1_PROFILE.drive], ['semi', SEMI_PROFILE.drive]]
+const CARS: Array<[string, DriveProfile]> = [['cybertruck', CYBERTRUCK_PROFILE.drive], ['ferrari-f1', F1_PROFILE.drive], ['semi', SEMI_PROFILE.drive], ['bat', BAT_PROFILE.drive]]
 const PAD = { x: 0, z: 330, r0: 208, r1: 293 }
 const controls = (driveThrottle: number, driveSteering = 0): CarControls => ({ driveThrottle, driveSteering, driftHeld: false })
 

@@ -4,6 +4,7 @@ import { createF1, F1_PROFILE, RACER_GAIT } from '../src/content/ferrari-f1/inde
 import { AudioMix } from '../src/audio/mix.ts'
 import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck/index.ts'
 import { SEMI_GAIT, SEMI_PROFILE } from '../src/content/semi/index.ts'
+import { BAT_GAIT, BAT_PROFILE } from '../src/content/bat/index.ts'
 import { HEAVY_GAIT, RobotGait, type GaitStyle } from '../src/content/transformer/animation/gait.ts'
 import { RobotRig } from '../src/content/transformer/model/rig.ts'
 import { NO_CONTACT, readAsset } from './support/assets.ts'
@@ -13,6 +14,8 @@ const cases = [
   { name: 'cybertruck', style: HEAVY_GAIT, speeds: [CYBERTRUCK_PROFILE.robot.walkSpeed, CYBERTRUCK_PROFILE.robot.runSpeed], steps: [2.45, 4.6], cadence: [3.9 / 2.45, 15 / 4.6] },
   // the Semi steps at a slower cadence than the pickup: strides scale with the legs, speeds with their square root
   { name: 'semi', style: SEMI_GAIT, speeds: [SEMI_PROFILE.robot.walkSpeed, SEMI_PROFILE.robot.runSpeed], steps: [3.3, 5.6], cadence: [4.5 / 3.3, 17 / 5.6] },
+  // the Bat is the pickup's heavy machine scaled to its shorter legs
+  { name: 'bat', style: BAT_GAIT, speeds: [BAT_PROFILE.robot.walkSpeed, BAT_PROFILE.robot.runSpeed], steps: [2.18, 4.1], cadence: [3.7 / 2.18, 14.2 / 4.1] },
 ]
 const dt = 1 / 240
 const sides = ['L', 'R'] as const
@@ -296,6 +299,7 @@ describe('F1 carriage', () => {
 describe.each([
   { name: 'cybertruck', style: HEAVY_GAIT, walk: CYBERTRUCK_PROFILE.robot.walkSpeed },
   { name: 'semi', style: SEMI_GAIT, walk: SEMI_PROFILE.robot.walkSpeed },
+  { name: 'bat', style: BAT_GAIT, walk: BAT_PROFILE.robot.walkSpeed },
 ])('$name walk', ({ name, style, walk }) => {
   const { dims } = readAsset(name).manifest.rig
 

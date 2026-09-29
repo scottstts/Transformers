@@ -23,13 +23,21 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 - the trailer swinging within its stop through a turn and straightening after;
 - the rig's collision circles keeping the van out of a boulder.
 
+`tests/bat.test.ts` runs the same asset, playback, orientation, wheel-contact, handover and locomotion checks for the Bat. It also checks:
+- the nozzle at the car's tail and down the robot's back;
+- the wheel groups riding the shoulders and calves while the robot walks;
+- the afterburner lighting on the boost in car form only, and spooling down after;
+- the automatic shifting up through its four gears and back inside the rev range.
+
 `tests/desert-world.test.ts` checks tyre-track ribbon continuity and restarts.
 
 `tests/special.test.ts` checks, for every robot (each run as long as its tempo curve makes it in real time), that the special is well-formed (keys, cues, steps, shots and tempo inside it) and, played from the stance and cutting into a combo at 120 Hz, that it stays finite, keeps wrists, haft and edge out of the body cores, keeps the planted feet on the ground, flies and travels as far as it should, and hands back to the gait with the weapon gone. `tests/energy.test.ts` checks that three full combos fill the meter and two do not, and that it is spent whole. `tests/director.test.ts` checks the special frame's axes, hard cuts, the handback reaching the follow camera, the handback orbiting instead of passing through the robot, and the camera floor.
 
-`tests/light-slots.test.ts` checks that the scene's lights (their ids, on which three keys lit shaders) stay the same whichever car plays. `node tools/switch-probe.mjs [from] [to]` replays a car switch headlessly and counts the pipelines built afterwards in play (0 expected), and `node tools/dust-bench.mjs` times the dust's GPU cost at 1080p.
+`tests/light-slots.test.ts` checks that the scene's lights (their ids, on which three keys lit shaders) stay the same whichever car plays. `node tools/switch-probe.mjs [from] [to]` replays a car switch headlessly and counts the pipelines built afterwards in play (0 expected), and `node tools/dust-bench.mjs` times the dust's GPU cost at 1080p (`node tools/bat-fx-bench.mjs` the Bat's vortex and afterburner: about +0.4 and +0.3 ms close in).
 
-`node tools/gun-model.mjs <machine_gun.mp3> <cannon.mp3>` refits the Semi's gun sounds from the two recordings (`--compare` prints a take's band-envelope error against them: about 3 dB for the shot and 4 dB for the cannon).
+`node tools/gun-model.mjs <machine_gun.mp3> <cannon.mp3>` refits the Semi's gun sounds from the two recordings (`--compare` prints a take's band-envelope error against them: about 3 dB for the shot and 4 dB for the cannon). `node tools/spear-model.mjs ref_sounds/spear_poke.mp3 ref_sounds/spear_slash.mp3` refits the Bat's spear the same way (about 4 dB each).
+
+Run `node tools/switch-probe.mjs <from> <to>` for every switch direction a new car adds; the Bat's (to and from the truck, the F1 and the Semi) build nothing in play.
 
 `tests/combo.test.ts` checks the click combo (one click one move, chaining only inside the window, early clicks ignored, a late click restarting from move 1, nothing after move 4) and that keyed curves pass their keys without overshoot. `tests/combat.test.ts` checks, for every robot:
 - four well-formed moves;
@@ -37,7 +45,7 @@ Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` after co
 - normal/early/late chains and recovery after move 3 at 120 Hz: ground contact, wrists, full formed haft/pommel and cutting edge outside conservative body cores, off-hand grip contact, weapon cleanup and return to gait;
 - handle axes enclosed by curled fingers, with the thumbs nearby;
 - forward displacement on every move at 30/120 Hz (each robot's own least distances), without losing ground during recovery;
-- a single click playing move 1 only.
+- a single click playing move 1 only (armed or not as the robot's first move is: the Bat's thrust forms its spear).
 - truck finisher arm-joint speed bounds at 30/60/120 Hz and the two unarmed recovery exits; the standalone move-3 recovery continuity case is an expected failure pending its own authored exit.
 
 `tools/fight-probe.mjs` prints a combo's pose numbers and `tools/fight-sheet.mjs` renders contact sheets of it (combat.md). A click token `F<t>` plays the special; the sheet's `director` view films it through the special's own camera and `top` looks straight down; `PROBE_CORES=1` makes the probe report every frame a wrist or the weapon enters a body core. `tools/fx-sample.mjs <out> billows,crater-hot,crater-cold,furrows,sun` renders effect samples on their own. Contact sheets of 16 cells (1920x1080) can come back colour-banded when viewed through some image pipelines; check a suspicious sky in a cropped cell before chasing it in the renderer.

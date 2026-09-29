@@ -5,12 +5,13 @@ import type { Character } from '../../src/content/transformer/character.ts'
 import { createF1 } from '../../src/content/ferrari-f1/index.ts'
 import { createCybertruck } from '../../src/content/cybertruck/index.ts'
 import { createSemi } from '../../src/content/semi/index.ts'
+import { createBat } from '../../src/content/bat/index.ts'
 import { NO_CONTACT, readAsset } from '../../tests/support/assets.ts'
 
 const dt = 1 / 240
 const G = 9.81
-const create: Record<string, typeof createF1 | typeof createCybertruck | typeof createSemi> = {
-  'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi,
+const create: Record<string, typeof createF1 | typeof createCybertruck | typeof createSemi | typeof createBat> = {
+  'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi, bat: createBat,
 }
 
 /**

@@ -54,6 +54,11 @@ export interface SoldierImpact {
   special: boolean
 }
 
+/** A vacuum: the speed it draws at per metre from its centre (1/s, so a body arrives rather than overshoots), and how fast it takes hold (1/s) on the ground and in the air. */
+const PULL_ARRIVE = 1.6
+const PULL_GRIP = 7
+const PULL_GRIP_AIR = 2.5
+
 const TMP_TILT = new Quaternion()
 const X = new Vector3(1, 0, 0)
 const Y = new Vector3(0, 1, 0)
@@ -262,6 +267,31 @@ export class Soldier implements HordeInstance {
       this.flinchTime = Math.min(hi, lo + (hit.knock + hit.damage * 0.02) * 0.012)
     }
     return false
+  }
+
+  /**
+   * A vacuum draws it toward (x, z) at up to `speed` m/s for `dt`: on the
+   * ground it loses its footing and slides in on its wheels, staggering
+   * (it cannot drive against it), easing to a stop as it arrives rather than
+   * overshooting; in the air it drifts that way as it falls.
+   */
+  pull(x: number, z: number, speed: number, dt: number): void {
+    if (!this.alive) return
+    const dx = x - this.x, dz = z - this.z
+    const d = Math.hypot(dx, dz)
+    if (d < 1e-3) return
+    const want = Math.min(speed, d * PULL_ARRIVE)
+    const k = Math.min(1, dt * (this.mode === 'air' ? PULL_GRIP_AIR : PULL_GRIP))
+    this.vx += ((dx / d) * want - this.vx) * k
+    this.vz += ((dz / d) * want - this.vz) * k
+    if (this.mode === 'post' || this.mode === 'move' || this.mode === 'attack' || this.mode === 'stagger') {
+      this.mode = 'stagger'
+      this.t = -0.3
+    }
+    // the body leans away from the draw, fighting it
+    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw)
+    this.spring[1] += ((dx * fx + dz * fz) / d) * 90 * dt * want
+    this.spring[3] += ((dx * fz - dz * fx) / d) * 90 * dt * want
   }
 
   /** Destroy it now if its health is gone (a doomed soldier, at a special's last blow); returns whether it was. */

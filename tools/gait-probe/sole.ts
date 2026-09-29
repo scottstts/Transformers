@@ -5,6 +5,7 @@ import type { Character } from '../../src/content/transformer/character.ts'
 import { createF1 } from '../../src/content/ferrari-f1/index.ts'
 import { createCybertruck } from '../../src/content/cybertruck/index.ts'
 import { createSemi } from '../../src/content/semi/index.ts'
+import { createBat } from '../../src/content/bat/index.ts'
 import { supportPoints } from '../../src/content/transformer/asset/loader.ts'
 import { edgeDepth } from '../../src/content/transformer/animation/sole.ts'
 import { NO_CONTACT, readAsset, REST_GAIT } from '../../tests/support/assets.ts'
@@ -14,7 +15,7 @@ import { NO_CONTACT, readAsset, REST_GAIT } from '../../tests/support/assets.ts'
  * (the levelling tilt added), from the full mesh and from the 26-point support set
  * the ground projection uses, beside the heel/toe edge model the gait rolls on.
  */
-const create: Record<string, typeof createF1> = { 'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi }
+const create: Record<string, typeof createF1> = { 'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi, bat: createBat }
 
 export function sole(name: string): void {
   const asset = readAsset(name)

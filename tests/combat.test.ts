@@ -3,6 +3,7 @@ import { Box3, Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { createSemi } from '../src/content/semi/index.ts'
+import { createBat } from '../src/content/bat/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CH, CHANNEL_NAMES } from '../src/content/transformer/combat/pose.ts'
 import type { Character } from '../src/content/transformer/character.ts'
@@ -16,6 +17,8 @@ interface Fighter {
   clicks: number[]
   /** the least ground each move gains (m) */
   travel: [number, number, number, number]
+  /** the first move that forms the weapon (a single click of an unarmed first move never shows it) */
+  armedFrom?: number
 }
 
 const FIGHTERS: Fighter[] = [
@@ -38,9 +41,18 @@ const FIGHTERS: Fighter[] = [
     // the gun's moves stand and fire: the sweep steps in, the cannon lunges
     travel: [0.9, 0.7, 0.4, 1.1],
   },
+  {
+    name: 'bat',
+    make: () => createBat({ ...readAsset('bat'), weapon: readWeapon('bat-spear') }, NO_CONTACT, new AudioMix()),
+    clicks: [0, 0.6, 1.4, 3.3],
+    // the spear reaches: the thrust lunges, the sweep steps in, the flurry braces and lunges, the spin steps back and sweeps through
+    travel: [0.8, 0.8, 0.8, 1.1],
+    // the spear from the first thrust
+    armedFrom: 0,
+  },
 ]
 
-describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel }) => {
+describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2 }) => {
   const character = make()
   const { moveset } = character.combat
 
@@ -166,7 +178,8 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel }) => {
     let seenWeapon = false
     const weapon = c.model.node('bone:hand.R').children.find((o) => o.name.startsWith('weapon:'))!
     const combat = runFight(c, [0], 3, () => { seenWeapon ||= weapon.visible })
-    expect(seenWeapon).toBe(false)
+    expect(seenWeapon).toBe(armedFrom === 0)
+    expect(weapon.visible).toBe(false)
     expect(combat.active).toBe(false)
   })
 

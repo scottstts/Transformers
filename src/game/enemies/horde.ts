@@ -5,7 +5,7 @@ import { HealthBars } from '../../content/soldier/health-bars'
 import { SoldierAudio } from '../../content/soldier/audio'
 import { Sparks } from '../../content/transformer/combat/fx/sparks'
 import { Billows } from '../../content/transformer/combat/fx/billows'
-import type { HitEvent } from '../../content/transformer/combat/hits'
+import type { HitEvent, PullEvent } from '../../content/transformer/combat/hits'
 import type { AudioMix } from '../../audio/mix'
 import type { ContactEffects } from '../contact-effects'
 import type { Fort, Forts } from '../../worlds/desert/fort'
@@ -277,6 +277,17 @@ export class Horde {
     }
     if (e.final) this.settle(e.x, e.z)
     return n
+  }
+
+  /** A vacuum (hits.ts pulls): every soldier within its reach is drawn toward its centre. */
+  pull(e: PullEvent): void {
+    for (const g of this.garrisons) {
+      for (const s of g.soldiers) {
+        if (!s.alive) continue
+        if (Math.hypot(s.x - e.x, s.z - e.z) > e.radius + SOLDIER.radius) continue
+        s.pull(e.x, e.z, e.speed, e.dt)
+      }
+    }
   }
 
   /**

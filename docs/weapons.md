@@ -3,7 +3,8 @@
 The robots' combat weapons are authored procedurally in Blender (`blender/weapons_build/`, package `wpn`) into `blender/weapons.blend`. Each is exported as its own asset, loaded with its character:
 - `public/models/cybertruck-axe.{json,bin}`;
 - `public/models/ferrari-f1-sword.{json,bin}`;
-- `public/models/semi-gun.{json,bin}`.
+- `public/models/semi-gun.{json,bin}`;
+- `public/models/bat-spear.{json,bin}`.
 
 The large character assets are not touched. Build, save the `.blend` and export with:
 
@@ -23,7 +24,8 @@ The large character assets are not touched. Build, save the `.blend` and export 
 - **Materials:** slots are the character's own (`src/content/<character>/materials.ts`) plus the weapon's own:
   - `glow`: the axe's light-bar strip;
   - `blade`: the sword's polished steel;
-  - the gun's `glow`: its capacitor coils, driven by their charge.
+  - the gun's `glow`: its capacitor coils, driven by their charge;
+  - the spear's `lacquer` (the black shaft), `bronzeDark` (the flutes' patina) and `edge` (its honed edges); its bright flats are the car's `bronze`.
   Blender materials are named `<weapon>.<slot>`. A boolean hands its cut faces the cutter's material, so `wpn.kit.cut` reassigns them.
 - **Kit:** the kit reuses the F1 build's polygon kit (`f1b.kit`: sections, lofts, revolves, bevel prisms, manifold booleans, the angle-limited bevel finish).
 
@@ -39,4 +41,5 @@ The large character assets are not touched. Build, save the `.blend` and export 
   - **Guard:** a crossguard shaped like the front wing: a swept carbon main plane, a red flap and painted endplates.
   - **Grip and pommel:** a banded grip, and a centre-lock wheel nut for a pommel, with a yellow drive ring as the car's nuts are colour-coded.
 - **Gun (Semi robot, 7 m):** 3.8 m overall, modelled as integrated, machined forms rather than primitives glued together: a receiver with pocketed bands and inserts; a railed optic; a skeletal stock with a grooved butt pad; swell-profile grips; a coil core with glowing coils inside a vented, hollow shroud round a radiator; a rotary machine gun under the coil cannon, whose bore opens through a ported muzzle brake; a D-shaped drum with ribbed, recessed covers. The truck's pearl white and graphite, with orange accents.
+- **Spear (Bat robot, 5.4 m):** 4.32 m overall (80 % of the robot's height): a slim black-lacquered shaft with brushed bronze fittings (a ringed socket collar, a knurled grip bulb and neck, a ribbed butt ferrule) and a long fluted leaf blade. The main hand is at the origin, 1.3 m from the butt; the off hand a metre up the shaft toward the head, so a two-handed hold keeps the left hand forward (combat.md, the Bat's hold). Its edge for the trail is the blade's axis (2.4 to 3.02 m).
 - **Joins:** every penetration is declared and structural: hafts through eyes, roots sunk into their sockets, strips 1 mm into their grooves. Plates and wraps are proud.

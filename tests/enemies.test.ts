@@ -233,7 +233,7 @@ describe('horde', () => {
     const run = (seconds: number): void => { for (let t = 0; t < seconds; t += DT) horde.update(DT, target, camera) }
     const blow = (s: Soldier, damage: number, extra: Partial<HitEvent> = {}): HitEvent => ({
       shape: 'sector', kind: 'blunt', x: target.x, z: target.z, heading: Math.atan2(s.x - target.x, s.z - target.z), reach: Math.hypot(s.x - target.x, s.z - target.z) + 1,
-      arc: 0.05, damage, knock: 4, lift: 0.3, motion: 0, sweep: -1, radial: false, special: false, final: false, ...extra,
+      arc: 0.05, damage, knock: 4, lift: 0.3, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true, ...extra,
     })
     return { horde, fort, plan, sector, target, at, run, blow }
   }
@@ -334,7 +334,7 @@ describe('horde', () => {
     const g = sector('gate')
     at(g.yard.at[0], g.yard.at[1])
     run(4)
-    const blast: HitEvent = { shape: 'circle', kind: 'blast', x: target.x, z: target.z, heading: 0, reach: 80, arc: Math.PI * 2, damage: 5000, knock: 10, lift: 6, motion: 0, sweep: -1, radial: true, special: false, final: false }
+    const blast: HitEvent = { shape: 'circle', kind: 'blast', x: target.x, z: target.z, heading: 0, reach: 80, arc: Math.PI * 2, damage: 5000, knock: 10, lift: 6, motion: 0, sweep: -1, radial: true, special: false, final: false, bite: true }
     horde.hit(blast)
     expect(horde.status(target.x, target.z)!.alive).toBeLessThan(g.garrison * 0.55)
     run(g.garrison * 0.7 + 8)

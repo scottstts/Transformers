@@ -5,6 +5,7 @@ import type { Character } from './transformer/character'
 import { CYBERTRUCK_LABEL, CYBERTRUCK_WEAPON, createCybertruck, loadCybertruckAsset } from './cybertruck'
 import { F1_LABEL, F1_WEAPON, createF1, loadF1Asset } from './ferrari-f1'
 import { SEMI_LABEL, SEMI_WEAPON, createSemi, loadSemiAsset } from './semi'
+import { BAT_LABEL, BAT_WEAPON, createBat, loadBatAsset } from './bat'
 
 /** A playable car: how to fetch its asset and build it, and how the vehicle menu presents it. */
 export interface RosterEntry {
@@ -47,6 +48,15 @@ export const ROSTER: readonly RosterEntry[] = [
     weapon: SEMI_WEAPON,
     load: loadSemiAsset,
     create: createSemi,
+  },
+  {
+    id: 'bat',
+    label: BAT_LABEL,
+    accent: '#8a6a45',
+    special: '#ffc861',
+    weapon: BAT_WEAPON,
+    load: loadBatAsset,
+    create: createBat,
   },
 ]
 

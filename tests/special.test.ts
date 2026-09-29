@@ -3,6 +3,7 @@ import { Matrix4, Vector3 } from 'three/webgpu'
 import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { createSemi } from '../src/content/semi/index.ts'
+import { createBat } from '../src/content/bat/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CH, CHANNEL_NAMES, LEG } from '../src/content/transformer/combat/pose.ts'
 import { MAX_KEYS } from '../src/content/transformer/combat/moves.ts'
@@ -44,6 +45,14 @@ const FIGHTERS: Fighter[] = [
     apex: 0,
     // it walks five metres in and stamps
     travel: 4,
+  },
+  {
+    name: 'bat',
+    make: () => createBat({ ...readAsset('bat'), weapon: readWeapon('bat-spear') }, NO_CONTACT, new AudioMix()),
+    midCombo: [0, 0.6],
+    apex: 20,
+    // round the ring and onto its centre
+    travel: 6,
   },
 ]
 

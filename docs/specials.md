@@ -12,7 +12,7 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 
 - Top left, a strip of 12 skewed cells in a small glass plate (the entry button's chamfer), lit from the left like shift lights. There is no text. The cells read one registered custom property (`--level`), so a change is one style write and CSS animates it.
 - A gain flashes the strip. Full lights the diamond core, glows and runs a shine along the strip. Spending discharges it.
-- It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange, the Semi's coil violet). It dims when the robot is not standing, and hides during the cutscene and the menu.
+- It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange, the Semi's coil violet, the Bat's afterburner gold). It dims when the robot is not standing, and hides during the cutscene and the menu.
 - The hint pill adds "F special" only while the meter is full.
 - Letterbox bars (`CinemaBars`) slide in on `body.cinematic`, sized toward 2.39:1 and capped at 12 % of the height. The garage pill hides under the same class.
 
@@ -61,6 +61,8 @@ A special's hits are far bigger than the combo's (`hits.ts`, enemies.md). They a
 - **Red Line**: each cut marks what it passes through (70 damage) and the hairpins throw what they skid into. At the flick, the blast at the ring's centre (13.5 m) takes the rest, and whatever the cuts emptied beyond it breaks with it.
 - **Juggernaut**: nothing is hit on the walk in. The stamp throws everything within 26 m of the robot straight up (lift 15). The barrage's strikes (every 0.45 s, all round, 30 m) re-launch whoever they catch (lift 5.5): a falling body's upward speed is reset (`Soldier.impact`), so they are juggled; spaced closer, the resets made them climb instead of hang. The finale's burst (32 m) is the last blow and breaks everything at once.
 
+- **Descent**: the ring's cuts (16 damage every 0.14 s, aimed at its centre) mark whatever the vortex draws in (a pull on the centre, 24 m, from the first lap to just before the plunge). The plunge at the centre (20 m) is the last blow and breaks it all.
+
 Soldiers cannot reach the robot during the cutscene (the target is absent).
 
 ## Skyfall (Cybertruck)
@@ -78,6 +80,16 @@ Soldiers cannot reach the robot during the cutscene (the target is absent).
 - **The barrage turns a full circle** on the spot (the `turn` channel, eased), pivoting in short steps that keep the feet under the hips, because the stamp throws soldiers up all round it. While it fires the gun seeks (`seek` cue, `Gunnery.seek`): each round aims at a body in the air within 35° of the barrels (`CombatFrame.airborne`, `Horde.airborne`), and each cannon shot at the body nearest their line, bursting on it. So every body in the air is seen being hit as the turn sweeps the gun past it.
 - The finale adds its own light, lens flash and an explosion heard from the wide shot's distance on top of the burst. Embers and burning fragments rain out of it for 5 s.
 - Real length: about 13 s for 8.8 s of special time. `tests/special.test.ts` measures each special's real length from its tempo curve instead of assuming one.
+
+## Descent (Bat)
+
+- The afterburner taken to the sky, round a vortex. Beats: the eyes blaze as the spear forms, the colour draining; it springs up and throws a backflip, coming out face down and level as the jet lights; two laps of a ring 13 m across, low over the sand, the spear out to its right toward the centre, the air going round with it and drawing the crowd in (`vortex`, a pull on the centre); the jet bursts to full and it pulls up onto the flame and climbs over the centre; at the top, in slow motion, a forward somersault; it drops feet first with the spear point down in both hands and drives it into the ground at the centre (the crater of glass, the surge, lances of light out along the ground); it kneels in the glass, rises, pulls the spear out.
+- **The ring is geometry** (`special.ts`): its centre and radius place the robot at angle phi on it and head it along the tangent (`90 - phi`); the keys are sampled from a constant-acceleration build-up, so the path's speed is the jet taking hold, then steady. The ring's hits are strikes every 0.14 s aimed at the centre (`aim` -90, the spear's side), throwing what they catch on round with the body.
+- **The body's pitch only runs one way**: -280° through the backflip (face down is -280, not +80), back to -360 as it pulls up (upright on the flame), and forward through a whole somersault to 0 at the apex. The channel ends where it began, so nothing unwinds in the recovery; a flip authored the short way would have spun back through the body at the hand-back.
+- **Flying face down:** the legs trail as free legs (`lz` above the pelvis's ground level, feet extended to about 150°), and `air` is the lowest foot's height, so it is set from the pelvis's intended arc and the legs' height at each key; otherwise the body would rise and fall with every change of the legs.
+- **The spear rides the body through the flips** (`carried`): the weapon channels are in the heading's frame, which the body's pitch does not turn, so a grip held still there had the torso turn through it. The grip is held in the torso's frame and turned with the pitch into the channels at each key, and the shaft's pitch channel is kept unwrapped (it runs from -130 to -232 to -180 to 180) so no key swings the shaft the long way round.
+- The jet is the fighter's `burn` override; in flight the jet points back along the body and drives it. The vortex is drawn about the ring's centre, fixed on the sand (`mark`) before it leaves the ground.
+- Real length: about 14 s for 10.1 s of special time.
 
 ## Red Line (Ferrari F1)
 

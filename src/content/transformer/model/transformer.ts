@@ -72,6 +72,8 @@ export interface TransformerOptions {
   carried?: Record<string, string>
   /** the node that swings about its hitch (authoring frame, m) by `articulation` in car form */
   trailer?: { node: string; hitch: [number, number, number] }
+  /** the front tyres' radius where it differs from the rear's (`dims.wheelRadius`, m): they touch down on it and spin faster to roll at the same speed */
+  frontWheelRadius?: number
 }
 
 export class TransformerModel {
@@ -118,12 +120,17 @@ export class TransformerModel {
   private readonly hitch = new Vector3()
   private readonly morphTrack?: Float32Array
   private readonly morphWeight = uniform(0)
+  /** the front tyres' radius, and their spin per radian of the rear's */
+  private readonly frontRadius: number
+  private readonly frontSpin: number
 
   constructor(asset: TransformerAsset, materials: Record<string, Material>, options: TransformerOptions) {
     const { manifest } = asset
     this.label = options.label
     this.gaitBlendFrom = options.gaitBlendFrom ?? GAIT_BLEND_FROM
     this.dims = manifest.rig.dims
+    this.frontRadius = options.frontWheelRadius ?? manifest.rig.dims.wheelRadius
+    this.frontSpin = manifest.rig.dims.wheelRadius / this.frontRadius
     this.duration = manifest.rig.dims.duration
     this.tracks = asset.tracks
     this.scaleTracks = asset.scales
@@ -291,7 +298,7 @@ export class TransformerModel {
       const local = _m.compose(_t, _q, _s)
       if (this.kind[i] === 'wheel') {
         if (this.frontWheel[i] && carW > 0) local.multiply(_m1.makeRotationZ(this.steer * carW))
-        local.multiply(_m1.makeRotationX(this.spin))
+        local.multiply(_m1.makeRotationX(this.frontWheel[i] ? this.spin * this.frontSpin : this.spin))
       }
       const p = this.parent[i]
       if (p >= 0) this.world[i].multiplyMatrices(this.world[p], local)
@@ -397,7 +404,7 @@ export class TransformerModel {
     const out = this.contactPoints
     for (let k = 0; k < this.wheels.length; k++) {
       out.wheels[k].p.setFromMatrixPosition(this.nodes[this.wheels[k].node].matrixWorld)
-      out.wheels[k].p.y -= this.dims.wheelRadius
+      out.wheels[k].p.y -= this.wheels[k].front ? this.frontRadius : this.dims.wheelRadius
     }
     for (const side of FEET) {
       out.feet[side].set(0, 0, -this.dims.ankleZ).applyMatrix4(this.nodes[this.footNode[side]].matrixWorld)

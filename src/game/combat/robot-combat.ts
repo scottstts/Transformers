@@ -3,7 +3,7 @@ import type { TransformerModel } from '../../content/transformer/model/transform
 import type { CharacterCombat, CombatCamera, CombatFrame } from '../../content/transformer/combat/effects'
 import type { CombatMove, MoveCue } from '../../content/transformer/combat/moves'
 import type { SpecialMove } from '../../content/transformer/combat/special'
-import { lastHitTime, type HitEvent, type MoveHits } from '../../content/transformer/combat/hits'
+import { lastHitTime, type HitEvent, type MoveHits, type PullEvent } from '../../content/transformer/combat/hits'
 import { MovePlayer } from '../../content/transformer/combat/player'
 import { FootPlanner } from '../../content/transformer/combat/feet'
 import { Curve } from '../../content/transformer/combat/curves'
@@ -80,6 +80,8 @@ export class RobotCombat {
   aimAssist: ((x: number, z: number, heading: number, range: number, cone: number) => number) | null = null
   /** a blow, sweep or blast of the current move reaches the world (hits.ts) */
   onHit: ((hit: HitEvent) => void) | null = null
+  /** a vacuum of the current move draws the world in this frame (hits.ts pulls) */
+  onPull: ((pull: PullEvent) => void) | null = null
   /** how far along a ray the first enemy's body stands (a gun's rounds stop there), if anything can be hit */
   set probe(probe: CombatFrame['probe']) {
     this.frame.probe = probe
@@ -101,7 +103,8 @@ export class RobotCombat {
   private steering = false
   /** released to movement: the pose is handing back to the gait, the fight no longer owns the robot */
   private loose = false
-  private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false, final: false }
+  private readonly pull: PullEvent = { x: 0, z: 0, radius: 0, speed: 0, dt: 0 }
+  private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true }
   /** when the special's last blow lands (its time), so that blow can be marked final */
   private finalAt = -1
   /** the guard is held (the input), and the guard pose is up */
@@ -454,6 +457,7 @@ export class RobotCombat {
       e.heading = state.yaw + ((s.aim ?? 0) * Math.PI) / 180
       e.reach = s.reach; e.arc = (s.arc * Math.PI) / 180
       e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.sweep = -1; e.radial = s.outward ?? false
+      e.bite = s.bite ?? true
       e.final = e.special && s.t === this.finalAt
       sink(e)
     }
@@ -469,6 +473,23 @@ export class RobotCombat {
       e.damage = b.damage; e.knock = b.knock; e.lift = b.lift; e.motion = 0; e.sweep = -1; e.radial = true
       e.final = e.special && b.t === this.finalAt
       sink(e)
+    }
+    const pulls = hits.pulls
+    if (pulls && this.onPull && dt > 0) {
+      const u = this.pull
+      for (let i = 0; i < pulls.length; i++) {
+        const w = pulls[i]
+        if (t < w.t0 || t > w.t1) continue
+        if (w.at) {
+          u.x = this.origin.x + Math.sin(h) * w.at[1] + Math.cos(h) * w.at[0]
+          u.z = this.origin.z + Math.cos(h) * w.at[1] - Math.sin(h) * w.at[0]
+        } else {
+          u.x = d.x + Math.sin(state.yaw) * (w.ahead ?? 0)
+          u.z = d.z + Math.cos(state.yaw) * (w.ahead ?? 0)
+        }
+        u.radius = w.radius; u.speed = w.speed; u.dt = dt
+        this.onPull(u)
+      }
     }
     const sweeps = hits.sweeps
     if (sweeps) {
