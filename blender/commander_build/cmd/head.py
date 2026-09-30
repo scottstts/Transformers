@@ -11,10 +11,13 @@ from . import kit as K
 class HeadPart(K.Part):
     def build(self,coll,bones):
         ob=super().build(coll,bones)
-        # Weighted face-area normals pinch the curved sheet panels. Their
-        # densely sampled quads already provide the intended smooth normals.
-        for mod in list(ob.modifiers):
-            if mod.type=='WEIGHTED_NORMAL': ob.modifiers.remove(mod)
+        # Corner-angle weighting preserves the curved panels' authored smooth
+        # normals; face-area weighting pinches their densely sampled quads.
+        mod=ob.modifiers['wnormal']
+        mod.mode='CORNER_ANGLE'
+        mod.keep_sharp=True
+        mod.weight=50
+        mod.thresh=0.0
         return ob
 
 

@@ -49,7 +49,7 @@ class Blob:
         return b''.join(self.parts)
 
 
-def _evaluated(o, ratio):
+def _evaluated(o, ratio, prefix=PREFIX):
     """Triangles of o (bone frame) by slot: {slot: (positions, normals)}."""
     added = None
     if ratio < 1.0:
@@ -83,9 +83,9 @@ def _evaluated(o, ratio):
         me.loop_triangles.foreach_get('material_index', tm)
         slots = []
         for s in o.material_slots:
-            if not (s.material and s.material.name.startswith(PREFIX)):
-                raise ValueError('%s: material %r is not a soldier slot' % (o.name, s.material.name if s.material else None))
-            slots.append(s.material.name[len(PREFIX):])
+            if not (s.material and s.material.name.startswith(prefix)):
+                raise ValueError('%s: material %r is not a %s slot' % (o.name, s.material.name if s.material else None, prefix.rstrip('.')))
+            slots.append(s.material.name[len(prefix):])
         ev.to_mesh_clear()
     finally:
         if added is not None:
@@ -133,7 +133,14 @@ def _record(blob, material, p, n, b):
     return rec
 
 
-def export(coll, out_dir=OUT_DIR, name='soldier'):
+def export(coll, out_dir=OUT_DIR, name='soldier', *, material_prefix=PREFIX,
+           rig_module=rig, shadow_skip=SHADOW_SKIP, dims=None, validate=None):
+    """Shared rigid-part exporter; omitted options preserve the soldier output.
+
+    Other models supply their rig and dimensions. An optional validator runs
+    on the completed manifest before either output file is written.
+    """
+    rig = rig_module
     bone_index = {b: i for i, b in enumerate(rig.NAMES)}
     parts = [o for o in coll.all_objects if o.type == 'MESH' and len(o.data.polygons)]
     blob = Blob()
@@ -144,7 +151,7 @@ def export(coll, out_dir=OUT_DIR, name='soldier'):
         by_slot = {}
         for o in parts:
             b = bone_index[o['bone']]
-            for slot, (p, n) in _evaluated(o, ratio).items():
+            for slot, (p, n) in _evaluated(o, ratio, material_prefix).items():
                 by_slot.setdefault(slot, []).append((p, n, np.full(len(p), b, np.uint8)))
                 if li == 0 and slot not in ('blade',):
                     pieces.setdefault(o['bone'], []).append(p)
@@ -159,7 +166,7 @@ def export(coll, out_dir=OUT_DIR, name='soldier'):
             tris += rec['triangles']
         lods.append(dict(meshes=meshes, triangles=tris))
         if li == len(LOD_RATIOS) - 1:
-            keep = [s for s in by_slot if s not in SHADOW_SKIP]
+            keep = [s for s in by_slot if s not in shadow_skip]
             p = np.concatenate([a for s in keep for a, _, _ in by_slot[s]])
             bb = np.concatenate([c for s in keep for _, _, c in by_slot[s]])
             # positions only: the proxy is welded on position and bone
@@ -184,8 +191,10 @@ def export(coll, out_dir=OUT_DIR, name='soldier'):
     manifest = dict(
         version=1, name=name, bones=bones, lods=lods, shadow=shadow, pieces=piece_list,
         dims=dict(height=3.0, wheelRadius=rig.WHEEL_R, wheelX=rig.WHEEL_X, ankleUp=rig.ANKLE_UP, thigh=rig.THIGH, shin=rig.SHIN,
-                  upper=rig.UPPER, fore=rig.FORE, hipZ=rig.HIP_Z, stanceX=rig.STANCE_X, bladeLength=saber.BLADE_LEN, bladeRadius=saber.CORE_R),
+                  upper=rig.UPPER, fore=rig.FORE, hipZ=rig.HIP_Z, stanceX=rig.STANCE_X, bladeLength=saber.BLADE_LEN, bladeRadius=saber.CORE_R) if dims is None else dict(dims),
     )
+    if validate is not None:
+        validate(manifest)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, name + '.bin'), 'wb') as f:
         f.write(blob.bytes())
