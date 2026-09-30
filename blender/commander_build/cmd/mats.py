@@ -19,6 +19,11 @@ SLOTS = {
     'visor': (0x07090D, .2, .08, .8),
     'glow': (0xFF0A22, .0, .3, .0),
     'blade': (0xFF1A30, .0, .2, .0),
+    'optic': (0xFF0803, .0, .26, .0),
+    'head_alloy': (0xAEB1B7, .72, .31, .18),
+    'face_alloy': (0xCDD0D4, .62, .30, .18),
+    'optic_core': (0xFFD8C5, .0, .3, .0),
+    'casque': (0x44464C, .82, .28, .15),
 }
 
 
@@ -41,7 +46,7 @@ def get(slot):
     n.inputs['Roughness'].default_value = rough
     n.inputs['Coat Weight'].default_value = coat
     n.inputs['Coat Roughness'].default_value = .08
-    glow = slot in ('glow', 'blade')
+    glow = slot in ('glow', 'blade', 'optic', 'optic_core')
     n.inputs['Emission Color'].default_value = rgba(col) if glow else (0, 0, 0, 1)
-    n.inputs['Emission Strength'].default_value = (6 if slot == 'glow' else 9) if glow else 0
+    n.inputs['Emission Strength'].default_value = {'glow': 6, 'blade': 9, 'optic': 2.5, 'optic_core': 4}.get(slot, 0)
     return m

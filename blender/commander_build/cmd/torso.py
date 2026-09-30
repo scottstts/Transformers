@@ -106,18 +106,7 @@ def chest():
     for m in (False, True):
         p.add(sock, 'structure', m, True)
         p.add(K.ring((SX - .14, 0, SZ), .21, .1, .025, 'X', 28), 'steel', m)
-    # collar: ring round the neck base, pointed side flaps (black over a pearl rim)
-    ring = [(1.1, K.squircle(.62, .5, 3, 24)), (1.22, K.squircle(.56, .46, 3, 24)), (1.3, K.squircle(.48, .4, 3, 24))]
-    p.add(K.loft(ring, .02), 'obsidian', False, True)
-    guide = K.bvh_of(K.loft([(1.0, K.squircle(.8, .66, 2.2, 32)), (1.7, K.squircle(.62, .52, 2.2, 32))], 0))
-    side = K.tangent_frame((.4, .02, 1.3), (1, -.15, 0))
-    flap = [(-.2, -.12), (.2, -.14), (.22, .06), (.08, .34), (-.16, .12)]
-    rim = K.conform_plate(guide, side, K.offset_poly(K.ccw(flap), .028), .03, rings=1)
-    top = K.conform_plate(guide, side, flap, .07, rings=2)
-    for m in (False, True):
-        p.add(rim, 'ceramic', m)
-        p.add(top, 'obsidian', m)
-        p.add(K.conform_plate(K.bvh_of(top), side, [(-.1, -.04), (-.02, -.05), (-.02, -.02), (-.1, -.01)], .014, bevel=.004, rings=1), 'glow', m)
+    # The open gorget is a separate rigid part, authored in collar.py.
     return p
 
 
@@ -181,14 +170,10 @@ def pelvis():
 
 
 def neck():
-    p = K.Part('neck', 'neck', bevel=0)
-    p.add(K.cyl((0, 0, .06), .12, .34, 'Z', 20), 'steel')
-    for z in (-.02, .06, .14):
-        p.add(K.ring((0, 0, z), .19, .1, .05, 'Z', 24), 'structure')
-    for m in (False, True):
-        p.add(K.rod((.1, .08, -.1), (.08, .06, .2), .025, 8), 'silver', m)
-    return p
+    from .collar import neck as cervical
+    return cervical()
 
 
 def parts():
-    return [chest(), waist(), pelvis(), neck()]
+    from .collar import collar
+    return [chest(), waist(), pelvis(), neck(), collar()]

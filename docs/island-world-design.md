@@ -7,14 +7,14 @@ This is a build spec: numbers, coordinates and names are design targets. The pla
 ## Scope: only the place changes
 
 **Unchanged** in both worlds:
-- **Robots and cars**: models, handling, grip, gait, transformations, jumps, combos, guard, specials, profiles, energy, camera, and the fact that the robot takes no damage.
+- **Robots and cars**: models, handling, grip, gait, transformations, jumps, combos, guard, specials, profiles, energy, camera, and the fact that the robot takes no damage. The one addition is the knock-back reaction to the commander's fourth blow (§6.3).
 - **Soldiers**: model, health, behaviour, alert and stand-down, beats, the ring, attacks, reinforcements that keep coming, reactions, debris.
 - **Fortress rules**: the car barrier at the perimeter, the car form refused inside, the fort hint.
 - **The combat effects of combos and specials**: weapons, trails, sparks, shock rings, the Bat's vortex, special billows, craters, furrows, glass, surges and ejecta. These look and sound as they do in the desert, even on island ground.
 
 **New or changed:**
 - the island and its stronghold (terrain, sea, sky, vegetation, architecture), and the world data the existing systems read (ground, colliders, districts, gates, posts, spawn doors);
-- the **commander**, a new enemy built in Blender that respawns 30 s after it is destroyed (§6);
+- the **commander**, a new enemy with a four-move spear combo that respawns 30 s after it is destroyed (§6.2), and the robots' **knock-back** reaction to its fourth blow (§6.3);
 - **Environment-coupled contact effects** (§7): step and tyre sounds, dust, footprints and tyre marks. These follow the ground's surface. The desert's surface is always sand, so the desert is identical;
 - the title-screen world selector and the pause menu's Main menu (§8).
 
@@ -24,14 +24,14 @@ This is a build spec: numbers, coordinates and names are design targets. The pla
 |---|---|
 | Setting (user) | A volcanic island of ~3.6 × 2.3 km, bounded by the sea |
 | Mood (user) | Golden afternoon with a fixed sun (elevation 14°, azimuth 240°) and clear maritime air |
-| Combat (user) | The desert fortress's rules, unchanged, in a new stronghold, plus a respawning commander |
+| Combat (user) | The desert fortress's rules, unchanged, in a new stronghold, plus a respawning commander whose combo finisher knocks the robot back |
 | Terrain (delegated to me) | An offline baked heightfield (a 2 m global field with a 0.5 m inset over the stronghold and harbour), texture-backed near ground with a baked macro map far away, and cliff shell meshes for vertical rock. §3 has the reasoning |
 | Stronghold ground | One exactly level plateau at 64.0 m, since soldiers stand on a level floor (`soldier.ts`). The relief lives outside its walls |
 
 ## 1. Frame, scale and budgets
 
 - World frame: x east, y up, **+z south**, metres, sea level y = 0. The island's centre is near the origin.
-- Actor sizes that set every clearance: soldier 3.0 m, F1 robot ~3.8 m, truck robot ~5.5 m, Semi robot ~7 m, commander 6.2 m. Cars reach 58 m/s (F1).
+- Actor sizes that set every clearance: soldier 3.0 m, F1 robot ~3.8 m, truck robot ~5.5 m, Semi robot ~7 m, commander ~6 m (`dims.height`). Cars reach 58 m/s (F1).
 - Stronghold clearances:
   - streets the soldiers patrol are ≥ 14 m wide;
   - arches between districts are ≥ 12 m wide and ≥ 11 m clear;
@@ -398,26 +398,35 @@ The same soldier, garrisons, alert and stand-down, ring, attacks, reinforcements
 
 What the soldiers themselves emit goes through the environment rules (§7). Their wheel sound follows the surface under them. Their breakup and debris sounds are the parts' own metal and stay as they are.
 
-### 6.2 The commander (Blender)
+### 6.2 The commander
 
-**Model**: `docs/commander-model-spec.md` is the Blender build's integration spec. The user's reference images set its look.
+**Asset**: `public/models/commander.{json,bin}`, in the soldier's asset format (`content/soldier/asset.ts`): rigid parts by bone, three LOD tiers, a shadow proxy, pieces and `dims`. It loads through `content/commander/asset.ts` (the soldier's decoder, name `commander`).
+- **Skeleton**: the soldier's 20 bone names and hierarchy, plus a `weapon` bone under `hand.R`.
+- **Spear**: part of the model, riding the `weapon` bone in the right hand, always present. Its energy parts (if any) are the `blade` slot on the `blade` bone.
+- **Wheels**: the `wheel.*` bones, with the axle along local X. It rolls like the soldiers.
+- **Material slots**: `commander.<slot>`. `glow` and `blade` are unlit and driven by the game, and `visor` is glass. The other slots are ported from the preview materials in `blender/commander.blend`.
+- **`dims`**: the soldier's fields plus `reach` (right shoulder to spear tip, arm straight) and `bodyRadius` (its footprint).
 
 **In the game** (`src/content/commander/`, `src/game/enemies/commander.ts`):
 - **Rendering**: its own instance of the horde renderer's skinning path, with capacity 2 (the living one, plus the last one's debris while it lies), every tier and a shadow proxy. Its health bar is the soldiers' health-bar draw, larger, tinted with the commander's light colour.
 - **Fighting**: it uses the soldiers' rules at its own size:
-  - it joins the ring at its body radius (1.8 m);
+  - it joins the ring at `bodyRadius`;
   - it strikes only while the robot is `present`, and its blows stop at the raised shield;
-  - its blows land through the same `onStruck` path, so the robot shows it with its existing `struck` effects and takes no damage.
-- **Moves**: authored in the game on its rig (as the soldiers' poses are), for the weapon the model carries. *R* is the weapon's reach from the shoulder (`dims.reach`).
+  - moves 1–3 land through the same `onStruck` path, so the robot shows them with its existing `struck` effects and takes no damage. Move 4 also knocks the robot back (§6.3).
+- **The combo**: four spear moves, authored in the game on its rig channels (`content/commander/moves.ts`, as the soldiers' poses are). Each is a hit volume in the ground frame where the move starts. *R* is `dims.reach`.
 
-  | Move | Volume |
-  |---|---|
-  | Wide sweep | 220° at *R* |
-  | Overhead strike | a line *R* + 1.5 m long, 2 m wide |
-  | Lunge | a line *R* + 4 m long |
-  | Spin | 360° at *R* − 1 m |
+  | # | Move | Strike at (s) | Length (s) | Volume | Travel | Struck strength |
+  |---|---|---|---|---|---|---|
+  | 1 | Thrust: the spear drawn back at the hip and driven straight out | 0.50 | 0.85 | a line *R* + 1.5 m long, 1.6 m wide | 1.2 m forward | 0.6 |
+  | 2 | Backhand sweep: the spear swung flat across the front, right to left | 0.35 | 0.80 | a 200° sector at *R* | 0.5 m | 0.7 |
+  | 3 | Overhead slam: raised above the head in both hands and brought down; a dust burst at the tip (`ContactEffects.burst`) | 0.65 | 1.10 | a line *R* + 0.5 m long, 2.4 m wide | 1.0 m | 0.8 |
+  | 4 | Spinning strike: a long coiled wind-up, then a full turn with the spear level at arm's length | 0.95 | 1.60 | 360° at *R* − 0.5 m | 0 | 1.0, knock-back |
 
-  It chooses by distance and angle, with a 1.0–1.4 s recovery after each.
+  - Each move starts as the previous one ends.
+  - **Combo length** is rolled with `Math.random()` as a combo starts: 40 % move 1 alone, 40 % moves 1–2, 20 % moves 1–2–3–4.
+  - It starts a combo when the robot is within *R* + 1 m and ±60° of its heading. Each move turns it toward the robot as it starts (at most 45°). After the combo's last move it recovers for 1.0–1.4 s before the next.
+  - The spear's `blade` glow brightens through each wind-up and flashes at the strike. Move 4's wind-up is the longest and brightest, so the knock-back reads before it lands.
+  - A blow that would launch a soldier (finisher, blast) snaps it into a hit pose and ends its combo. Lighter blows don't interrupt it.
 - **Taking blows**: health 2400 (eight soldiers' worth), so it lasts 5–6 combos. Blows jolt its springs but snap it into a hit pose only if they would launch a soldier (finishers, blasts). It is thrown only past a soldier's launch thresholds, and then at 40 % of the distance (six times the mass).
 - **Specials**: the same hold as soldiers (doomed until the last blow, settled after the cutscene).
 - **Energy**: blows on it charge the special's energy as blows on soldiers do.
@@ -428,9 +437,24 @@ What the soldiers themselves emit goes through the environment rules (§7). Thei
   - It stands down with the garrisons (1 s after the robot leaves the stronghold) and returns to the citadel.
 - **Respawn**: one lives at a time. The first stands on the parade ground from boot. **30 s** (`COMMANDER_RESPAWN`) after it is destroyed, a new one rolls out of the spawn door nearest the robot that is out of the camera's view (else the nearest), or the keep's vehicle bay while the stronghold is at peace.
 - **Breakup**: the soldiers' debris physics on its pieces, with the can-bank strikes played at its parts' larger shells.
-- **Sound**: heavy wheels on the surface under it (§7), servos, and its weapon's sounds, modelled from recordings as the soldiers' sounds are. The robots' blows landing on it use the existing hit bank.
+- **Sound**: heavy wheels on the surface under it (§7) and servos, modelled from recordings as the soldiers' sounds are. The spear's thrusts and sweeps are fitted from `ref_sounds/spear_poke.mp3` and `spear_slash.mp3` (`tools/spear-model.mjs`) as heavier, slower takes. The robots' blows landing on it use the existing hit bank.
 
 The commander is on the island only (`Stronghold.commander`).
+
+### 6.3 Knock-back on the robot
+
+The commander's fourth blow knocks the robot back. This is the one change to robot combat, and it is scoped to this reaction.
+
+- **When it lands**: the robot is inside move 4's volume, `present` (not airborne, not in a special) and not guarding. A guarded robot takes it on the shield like any enemy blow (the shield's full-strength flare) and is not knocked back.
+- **What it does** (`RobotCombat.knockback(from, strength)`, called by the session from the commander's hit event):
+  - It ends whatever the robot is doing on its feet. A combo move ends as `cancel()` ends it, and the continuation memory clears. A walk or a run stops. A formed weapon dissolves over its usual 0.18 s.
+  - It plays the **knock-back reaction**, a `CombatMove` on the fight's channels: the body thrown back from the blow (torso bent back ~20°, the head following), the arms flung up and out, then a stumble of two backward steps (the far foot first) through the feet planner, and a settle into the stance. 0.9 s in all.
+  - Root travel: 3.0 m straight away from the commander, fast then easing (a monotone curve), resolved against colliders like any movement.
+  - Camera: a kick along the view and a short shake (`CameraFx`, strength 1).
+  - Sound: the robot's own `struck` at full strength, and its planted footfalls (surface-keyed, §7).
+- **Control**: for the reaction's first 0.6 s no attack, guard, jump, transform or movement input is taken. From 0.6 s, movement takes the robot back (the reaction hands back as a combo's recovery does, over 0.24 s), and a click starts combo move 1.
+- **Authoring**: one shared set of keys (`transformer/combat/knockback.ts`) in the channels' own terms (they're mirrored and measured from each rig at rest). Each robot's combat data carries its amplitude and step lengths (`<character>/combat/knockback.ts`).
+- **Render**: no new render path. It plays existing channels, cues, footfalls and camera reactions.
 
 ## 7. Environment-coupled effects
 
@@ -580,7 +604,8 @@ interface Stronghold {
 ```
 src/game/app.ts
 src/game/enemies/stronghold.ts, commander.ts
-src/content/commander/                 asset, rig, poses, materials, renderer, audio
+src/content/commander/                 asset, rig, moves, materials, renderer, audio
+src/content/transformer/combat/knockback.ts, src/content/<character>/combat/knockback.ts
 src/worlds/world.ts, registry.ts, kit/
 src/worlds/island/
   plan/        coast.ts relief.ts roads.ts regions.ts rocca.ts marina.ts
@@ -692,14 +717,31 @@ Each step ends lint-, type- and test-clean. **⏸ review** marks a stop for the 
 
 ### Phase D: the commander
 
-**D1 Model.**
-- Build: done separately by the user's Blender agent to `docs/commander-model-spec.md`.
-- Accept: a new `tests/commander.test.ts` checks the exported asset against the spec's acceptance list.
+**D1 Asset.**
+- Build: the loader, the rig from its bones, and the materials for its slots.
+- Accept: a new `tests/commander.test.ts` checks the asset: version, the required bones, the `weapon` bone, the slots, the `dims` fields, three LOD tiers and the shadow proxy.
 
 **D2 In game.**
-- Build: renderer and health bar; moves as hit volumes and poses; the soldiers' rules at its size; stronghold-wide alert and nav at its radius; the 30 s respawn; breakup; sound.
-- Accept: `tests/commander.test.ts` (respawn timing, one alive at a time, the special hold, no damage path to the robot); `rocca-probe` 0 pipelines.
+- Build: renderer and health bar; the four-move combo as poses and hit volumes; the 40/40/20 combo roll; the soldiers' rules at its size; stronghold-wide alert and nav at its radius; the 30 s respawn; breakup; sound.
+- Accept: `tests/commander.test.ts`:
+  - the combo lengths over 10k seeded rolls come out 40/40/20 ± 1.5 %, and only lengths 1, 2 and 4 occur;
+  - respawn timing, and one alive at a time;
+  - the special hold;
+  - moves 1–3 reach the robot only through `onStruck`.
+- Accept: `rocca-probe` 0 pipelines.
 - ⏸ review: fight it.
+
+**D3 Knock-back.**
+- Build: the shared reaction keys, each robot's amplitude and steps, `RobotCombat.knockback`, the session wiring from the commander's move 4.
+- Accept: `tests/combat.test.ts`, for every robot at 30 and 120 Hz, knocked back from the stance, from inside each combo move and from a run:
+  - finite throughout;
+  - wrists, weapon and edge outside the body cores;
+  - planted feet on the ground, with no skating;
+  - root travel 3.0 ± 0.2 m;
+  - a formed weapon gone by the end;
+  - the hand-back to the gait with no joint-speed spike.
+  - Also: nothing happens when the robot is guarding or airborne; input is refused for 0.6 s, then movement and a click are taken.
+- ⏸ review: the reaction on each robot.
 
 ### Phase E: docs
 
@@ -708,7 +750,7 @@ Each step ends lint-, type- and test-clean. **⏸ review** marks a stop for the 
 
 ## 12. Inputs needed from the user
 
-- **Commander model**: built by the user's Blender agent from their reference images and `docs/commander-model-spec.md`, before D2.
+- **Commander model**: `public/models/commander.{json,bin}` and `blender/commander.blend`, before D1.
 - **Recordings** for `ref_sounds/` (never shipped):
   - footsteps on stone flags, cobble, gravel and soil (a heavy boot is fine as a base for the fit);
   - tyres on asphalt (rolling and a drift squeal), cobble and gravel;
