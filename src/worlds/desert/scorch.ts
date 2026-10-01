@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { abs, atan, attribute, cameraViewMatrix, exp, float, floor, fract, length, max, min, mix, positionLocal, positionWorld, select, smoothstep, uniform, vec2, vec3 } from 'three/tsl';
+import { abs, atan, attribute, cameraViewMatrix, exp, float, floor, fract, length, max, min, mix, positionLocal, positionWorld, select, smoothstep, uniform, varying, vec2, vec3 } from 'three/tsl';
 import { N } from '../../rendering/noise.ts';
 import { blackbody } from '../../rendering/blackbody.ts';
 import { groundSurface } from './materials.ts';
-import { NEAR, type PavedGround } from './paved-ground.ts';
+import type { CitadelFloor } from './citadel/floor.ts';
 import type { DesertTerrain, GroundDecal } from './terrain.ts';
 import { decalRange } from './sand-imprint.ts';
 
@@ -26,13 +26,21 @@ import { decalRange } from './sand-imprint.ts';
  *
  * Heat is gone in seconds; the marks themselves fade over LIFE.
  *
- * Marks answer the surface they land on (`PavedGround`): where the floor is
- * paved the sand's mark is cut away under the slabs and a concrete one is
- * drawn on the paving's top instead. Concrete doesn't fuse: a blast spalls
- * its skin off to the aggregate in a shallow scar, splits it in radial and
- * ring cracks and chars it with soot; a dragged edge scores a gouge with
- * chipped lips. Both glow a moment where the heat landed. Before, the sand
- * crater's depth bias drew it over the slabs, sand and all.
+ * Marks answer the surface they land on (the citadel's floor map,
+ * citadel/floor.ts): where the floor is sand the glass marks are drawn; on
+ * its ceramic paving and metal deck the sand's mark is cut away and the
+ * floor's own mark is drawn over it, at the floor's height (the mark's
+ * vertices take it, so a mark runs up a ramp), and only on the level the
+ * mark landed on: a fragment over a floor more than 0.25 m off the mark's
+ * own (a terrace edge, the yard below) is dropped.
+ *
+ * Ceramic doesn't fuse: a blast spalls its skin off to the grey substrate in
+ * a shallow scar, splits it in radial and ring cracks and chars it with
+ * soot; a dragged edge scores a gouge with chipped lips. Deck doesn't spall:
+ * a blast leaves a shallow dished dent tinted by the heat (temper rings of
+ * straw, blue and grey round a blackened heart), a dragged edge scores a
+ * bright gouge with a raised burr and temper colour along it. Both glow a
+ * moment where the heat landed.
  */
 const CRATERS = 6;
 const FURROWS = 40;
@@ -52,6 +60,9 @@ const COOL = { glass: 2.6, cracks: 7, fissures: 5, furrow: 1.8, front: 2.2 };
 /** HDR level of the glow at unit blackbody level */
 const GLOW = 1.7;
 const AMBIENT = 300;
+/** a mark's vertices follow the floor within this of its centre's level (a ramp), else they stay on that level (m); fragments over another level are dropped */
+const FOLLOW = 2;
+const SAME_LEVEL = 0.25;
 /** a reheat time that never comes */
 const NEVER = 1e9;
 /** cells of a mark's grid (its two axes): a mark bends over the landform, a flat quad would cut into a dune */
@@ -129,50 +140,40 @@ export class ScorchMarks {
 
 	readonly craters: THREE.Mesh;
 	readonly furrows: THREE.Mesh;
-	/** the concrete marks, one crater and one furrow mesh per paving level */
+	/** the floor's marks (ceramic and deck): a crater mesh and a furrow mesh, drawn over whichever floor they land on */
 	readonly paved: THREE.Mesh[] = [];
 	private readonly time = uniform( 0 );
 	private readonly crater: MarkRing;
 	private readonly furrow: MarkRing;
-	private readonly paving: PavedGround | null;
-	private readonly near = new Float32Array( NEAR );
+	private readonly floor: CitadelFloor | null;
 
-	constructor( scene: THREE.Scene, paving: PavedGround | null, terrain: DesertTerrain ) {
+	constructor( scene: THREE.Scene, floor: CitadelFloor | null, terrain: DesertTerrain ) {
 
-		this.paving = paving;
-		this.crater = markRing( CRATERS, { position: 3, mark: 4, heat: 2, near0: 4, near1: 4 }, CRATER_GRID );
-		this.furrow = markRing( FURROWS, { position: 3, mark: 4, line: 4, reheat: 4, near0: 4, near1: 4 }, FURROW_GRID );
+		this.floor = floor;
+		this.crater = markRing( CRATERS, { position: 3, mark: 4, heat: 2, level: 1 }, CRATER_GRID );
+		this.furrow = markRing( FURROWS, { position: 3, mark: 4, line: 4, reheat: 4, level: 1 }, FURROW_GRID );
 		( this.furrow.attributes.reheat.array as Float32Array ).fill( NEVER );
-		for ( const ring of [ this.crater, this.furrow ] ) {
-
-			( ring.attributes.near0.array as Float32Array ).fill( - 1 );
-			( ring.attributes.near1.array as Float32Array ).fill( - 1 );
-
-		}
-		// the paving's top under the fragment (-1 bare ground), from the shapes the mark listed when it was laid
-		const top = paving ? paving.topNode( positionWorld.xz, attribute( 'near0', 'vec4' ), attribute( 'near1', 'vec4' ) ) : float( - 1 );
-		const bare = select( top.lessThan( 0 ), float( 1 ), float( 0 ) );
+		// the floor under the fragment: sand (or no floor) takes the glass marks
+		const under = floor ? floor.node( positionWorld.xz ) : null;
+		const bare = under ? select( under.code.lessThan( 0.5 ), float( 1 ), float( 0 ) ) : float( 1 );
 		this.craters = this.decal( this.crater.geometry, this.craterMaterial( bare, terrain.decal() ) );
 		this.furrows = this.decal( this.furrow.geometry, this.furrowMaterial( bare, terrain.decal() ) );
 		scene.add( this.craters, this.furrows );
-		for ( const level of paving?.levels ?? [] ) {
+		if ( floor ) {
 
-			const on = select( abs( top.sub( level ) ).lessThan( 1e-3 ), float( 1 ), float( 0 ) );
-			this.paved.push( this.decal( this.crater.geometry, this.concreteCrater( level, on ) ), this.decal( this.furrow.geometry, this.concreteFurrow( level, on ) ) );
+			this.paved.push( this.decal( this.crater.geometry, this.floorCrater( floor ) ), this.decal( this.furrow.geometry, this.floorFurrow( floor ) ) );
+			scene.add( ...this.paved );
 
 		}
-		if ( this.paved.length ) scene.add( ...this.paved );
 
 	}
 
-	/** The paved shapes near a mark's bounding circle, as its corners' index attributes. */
-	private nearValues( x: number, z: number, radius: number ): { near0: number[][]; near1: number[][] } {
+	/** The floor's height under a mark's centre (m; 0 off the floor), for all four corners. */
+	private levelValues( x: number, z: number ): { level: number[][] } {
 
-		const n = this.near;
-		if ( this.paving ) this.paving.near( x, z, radius, n );
-		else n.fill( - 1 );
-		const a = [ n[ 0 ], n[ 1 ], n[ 2 ], n[ 3 ] ], b = [ n[ 4 ], n[ 5 ], n[ 6 ], n[ 7 ] ];
-		return { near0: [ a, a, a, a ], near1: [ b, b, b, b ] };
+		const h = this.floor ? this.floor.height( x, z ) : 0;
+		const v = [ Number.isNaN( h ) ? 0 : h ];
+		return { level: [ v, v, v, v ] };
 
 	}
 
@@ -187,7 +188,7 @@ export class ScorchMarks {
 			position: corners.map( ( [ x, z ] ) => [ center.x + x, LIFT, center.z + z ] ),
 			mark: corners.map( ( [ x, z ] ) => [ x, z, radius, this.time.value ] ),
 			heat: corners.map( () => [ heat, seed ] ),
-			...this.nearValues( center.x, center.z, r * Math.SQRT2 ),
+			...this.levelValues( center.x, center.z ),
 		} );
 
 	}
@@ -209,7 +210,7 @@ export class ScorchMarks {
 			mark: corners.map( ( [ u, v ] ) => [ u, v, hw, this.time.value ] ),
 			line: corners.map( () => [ length, heat, ax, az ] ),
 			reheat: corners.map( () => [ NEVER, 1, 0, 0 ] ),
-			...this.nearValues( ( from.x + to.x ) / 2, ( from.z + to.z ) / 2, Math.hypot( length / 2 + margin, across ) ),
+			...this.levelValues( ( from.x + to.x ) / 2, ( from.z + to.z ) / 2 ),
 		} );
 		return handle;
 
@@ -358,12 +359,15 @@ export class ScorchMarks {
 	}
 
 	/**
-	 * A blast on concrete at paving height `level`: the skin spalled off to
-	 * the aggregate in a shallow ragged scar at the heart, radial cracks
-	 * running out through the slab with a broken ring or two, soot charred
-	 * over it all and thrown out in rays; the scar and cracks glow a moment.
+	 * A blast on the floor. On ceramic: the skin spalled off to the grey
+	 * substrate in a shallow ragged scar at the heart, radial cracks running
+	 * out through the slab with a broken ring or two, soot charred over it all
+	 * and thrown out in rays; the scar and cracks glow a moment. On deck: a
+	 * shallow dished dent, blackened at the heart and ringed with temper
+	 * colours (straw, then blue, then grey) where the heat spread through the
+	 * plate, glowing a moment; soot, no cracks.
 	 */
-	private concreteCrater( level: number, on ): THREE.MeshStandardNodeMaterial {
+	private floorCrater( map: CitadelFloor ): THREE.MeshStandardNodeMaterial {
 
 		const mark = attribute( 'mark', 'vec4' );
 		const heatAttr = attribute( 'heat', 'vec2' );
@@ -372,7 +376,7 @@ export class ScorchMarks {
 		const TAU = 2 * Math.PI;
 		const polar = ( x, y ) => ( { r: length( vec2( x, y ) ).div( R ), a: atan( y, x ).div( TAU ).add( 0.5 ) } );
 		const ridge = ( v, w ) => float( 1 ).sub( smoothstep( 0, w, abs( v.sub( 0.5 ) ) ) );
-		// the scar's ragged edge (it follows the slab's weak aggregate), and its floor of broken pits
+		// the scar's ragged edge (it follows the slab's weak substrate), and its floor of broken pits
 		const scar = ( x, y ) => {
 
 			const { r, a } = polar( x, y );
@@ -380,11 +384,19 @@ export class ScorchMarks {
 			return float( 1 ).sub( smoothstep( 0.3, 0.36, ragged ) );
 
 		};
-		const height = ( x, y ) => {
+		const ceramicHeight = ( x, y ) => {
 
 			// broken, not patterned: two broad octaves of pitting (a fine one aliased into a grid)
 			const pits = N( vec2( x, y ).mul( 0.45 ).add( seed ) ).g.sub( 0.5 ).mul( 0.03 ).add( N( vec2( y, x ).mul( 1.1 ).add( seed.mul( 1.7 ) ) ).r.sub( 0.5 ).mul( 0.012 ) );
 			return scar( x, y ).mul( float( - 0.035 ).add( pits ) );
+
+		};
+		// the plate gives as a smooth dish under the heart of the blast
+		const deckHeight = ( x, y ) => {
+
+			const { r } = polar( x, y );
+			const t = float( 1 ).sub( min( r.div( 0.75 ), 1 ).pow( 2 ) );
+			return t.mul( t ).mul( - 0.04 ).mul( R );
 
 		};
 		const x = mark.x, y = mark.y;
@@ -406,20 +418,30 @@ export class ScorchMarks {
 		const tScar = float( 1500 ).mul( heat ).mul( core ).mul( exp( age.div( 1.4 ).negate() ) ).add( AMBIENT );
 		const tCrack = float( 1300 ).mul( heat ).mul( exp( r.div( 0.7 ).pow( 2 ).negate() ) ).mul( exp( age.div( 3.5 ).negate() ) ).add( AMBIENT );
 		const glow = blackbody( tScar ).mul( spall ).add( blackbody( tCrack ).mul( cracks ) ).mul( GLOW );
-		return concreteMaterial( {
-			level, height, x, y, axisX: vec3( 1, 0, 0 ), axisY: vec3( 0, 0, 1 ), spall, cracks, soot, glow,
-			opacity: max( max( spall, cracks ), soot ).mul( float( 1 ).sub( smoothstep( REACH * 0.8, REACH * 0.98, r ) ) ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ).mul( on ),
+		// deck: the dent's glow at its heart; the temper rings where the plate reached a few hundred degrees
+		const dent = float( 1 ).sub( smoothstep( 0.55, 0.8, edge ) );
+		const tDent = float( 1700 ).mul( heat ).mul( exp( r.div( 0.45 ).pow( 2 ).negate() ) ).mul( exp( age.div( 2.2 ).negate() ) ).add( AMBIENT );
+		const temper = smoothstep( 0.3, 0.45, edge ).mul( float( 1 ).sub( smoothstep( 1.1, 1.45, edge ) ) ).mul( smoothstep( 0.05, 0.3, heat ) );
+		return floorMaterial( {
+			floor: map, height: ceramicHeight, deckHeight, x, y, axisX: vec3( 1, 0, 0 ), axisY: vec3( 0, 0, 1 ), spall, cracks, soot, glow,
+			opacity: max( max( spall, cracks ), soot ).mul( float( 1 ).sub( smoothstep( REACH * 0.8, REACH * 0.98, r ) ) ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ),
+			deck: {
+				gouge: float( 0 ), burr: float( 0 ), soot: soot.mul( dent.mul( 0.4 ).add( 0.6 ) ), temper, temperAt: edge.sub( 0.3 ).div( 1.15 ),
+				glow: blackbody( tDent ).mul( dent ).mul( GLOW ),
+				opacity: max( max( dent, temper ), soot ).mul( float( 1 ).sub( smoothstep( REACH * 0.8, REACH * 0.98, r ) ) ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ),
+			},
 		} );
 
 	}
 
 	/**
-	 * An edge dragged over concrete at paving height `level`: a scored gouge
-	 * down to the aggregate, striated along the drag, with chipped lips and,
-	 * for a hot edge, a halo of soot; the gouge glows where the edge was hot
-	 * (and again when a front reignites it).
+	 * An edge dragged over the floor. On ceramic: a scored gouge down to the
+	 * substrate, striated along the drag, with chipped lips and, for a hot
+	 * edge, a halo of soot. On deck: a bright scored gouge with a raised burr
+	 * along its lips and temper colour beside it. Both glow where the edge was
+	 * hot (and again when a front reignites it).
 	 */
-	private concreteFurrow( level: number, on ): THREE.MeshStandardNodeMaterial {
+	private floorFurrow( map: CitadelFloor ): THREE.MeshStandardNodeMaterial {
 
 		const mark = attribute( 'mark', 'vec4' );
 		const line = attribute( 'line', 'vec4' );
@@ -429,15 +451,25 @@ export class ScorchMarks {
 		const u = mark.x, v = mark.y;
 		const end = min( v, length_.sub( v ) );
 		const taper = smoothstep( hw.mul( - 1 ), hw.mul( 3 ), end );
-		// the gouge is narrower than the sand's trench: concrete gives way only where the edge bites
+		// the gouge is narrower than the sand's trench: the floor gives way only where the edge bites
 		const gougeW = ( uu, vv ) => abs( uu ).div( hw.mul( 0.55 ) ).add( N( vec2( vv.mul( 1.1 ), uu.mul( 0.5 ) ) ).r.sub( 0.5 ).mul( 0.35 ) );
-		const height = ( uu, vv ) => {
+		const ceramicHeight = ( uu, vv ) => {
 
 			const e = min( vv, length_.sub( vv ) );
 			const t = smoothstep( hw.mul( - 1 ), hw.mul( 3 ), e );
 			const w = gougeW( uu, vv );
 			const striae = N( vec2( uu.mul( 9 ), vv.mul( 0.4 ) ) ).g.sub( 0.5 ).mul( 0.2 );
 			return float( 1 ).sub( w.mul( w ) ).max( 0 ).mul( float( - 0.05 ).add( striae.mul( 0.02 ) ) ).mul( t );
+
+		};
+		// deck: a shallower score, the metal it ploughed out standing as a burr along both lips
+		const deckHeight = ( uu, vv ) => {
+
+			const e = min( vv, length_.sub( vv ) );
+			const t = smoothstep( hw.mul( - 1 ), hw.mul( 3 ), e );
+			const w = gougeW( uu, vv );
+			const lip = w.sub( 1.1 ).div( 0.25 );
+			return float( 1 ).sub( w.mul( w ) ).max( 0 ).mul( - 0.018 ).add( exp( lip.mul( lip ).negate() ).mul( 0.006 ) ).mul( t );
 
 		};
 		const w = gougeW( u, v );
@@ -454,61 +486,100 @@ export class ScorchMarks {
 		const tBurn = float( 2000 ).mul( burn );
 		const temperature = max( tFirst, tBurn ).mul( exp( w.mul( w ).mul( - 1.5 ) ) ).mul( taper ).add( AMBIENT );
 		const glow = blackbody( temperature ).mul( gouge ).mul( GLOW );
-		return concreteMaterial( {
-			level, height, x: u, y: v, axisX: vec3( line.w.negate(), 0, line.z ), axisY: vec3( line.z, 0, line.w ),
+		const fade = smoothstep( hw.mul( - 2.4 ), hw.mul( - 0.5 ), end ).mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) );
+		const burr = smoothstep( 0.9, 1.1, w ).mul( float( 1 ).sub( smoothstep( 1.25, 1.5, w ) ) ).mul( taper );
+		const temperBand = smoothstep( 1.2, 1.6, w ).mul( float( 1 ).sub( smoothstep( 2.2, 3.2, w ) ) ).mul( taper ).mul( fused );
+		return floorMaterial( {
+			floor: map, height: ceramicHeight, deckHeight, x: u, y: v, axisX: vec3( line.w.negate(), 0, line.z ), axisY: vec3( line.z, 0, line.w ),
 			spall: gouge, cracks: lips.mul( 0.5 ), soot, glow,
-			opacity: max( max( gouge, lips.mul( 0.8 ) ), soot )
-				.mul( smoothstep( hw.mul( - 2.4 ), hw.mul( - 0.5 ), end ) )
-				.mul( float( 1 ).sub( smoothstep( LIFE * 0.6, LIFE, age ) ) ).mul( on ),
+			opacity: max( max( gouge, lips.mul( 0.8 ) ), soot ).mul( fade ),
+			deck: {
+				gouge, burr, soot: soot.mul( 0.6 ), temper: temperBand, temperAt: w.sub( 1.2 ).div( 2 ), glow,
+				opacity: max( max( gouge, burr ), max( temperBand, soot.mul( 0.6 ) ) ).mul( fade ),
+			},
 		} );
 
 	}
 
 }
 
-interface ConcreteMark {
-	/** the paving's top the mark is drawn on (m) */
-	level: number;
+interface FloorMark {
+	floor: CitadelFloor;
+	/** relief (m) at local coordinates on ceramic and on deck */
 	height: ( x, y ) => any;
+	deckHeight: ( x, y ) => any;
 	x: any;
 	y: any;
 	axisX: any;
 	axisY: any;
-	/** 0..1 skin gone to the aggregate; 0..1 a crack; 0..1 soot */
+	/** ceramic: 0..1 skin gone to the substrate; 0..1 a crack; 0..1 soot */
 	spall: any;
 	cracks: any;
 	soot: any;
 	glow: any;
 	opacity: any;
+	/** deck: 0..1 bright scored metal, burr, soot, temper tint and where across it the tint is (0 hottest .. 1 coolest) */
+	deck: { gouge: any; burr: any; soot: any; temper: any; temperAt: any; glow: any; opacity: any };
+}
+
+/** Temper colours of steel by how hot it got, from the hottest band out: straw, bronze, purple-blue, then the plate's grey. */
+function temperColor( t ) {
+
+	const straw = vec3( 0.62, 0.48, 0.22 ), bronze = vec3( 0.42, 0.26, 0.12 ), blue = vec3( 0.14, 0.17, 0.36 ), grey = vec3( 0.2, 0.21, 0.22 );
+	const k = t.clamp( 0, 1 );
+	return mix( mix( straw, bronze, smoothstep( 0, 0.35, k ) ), mix( blue, grey, smoothstep( 0.7, 1, k ) ), smoothstep( 0.3, 0.6, k ) );
+
 }
 
 /**
- * Concrete's marks, drawn over the paving it lands on (lifted to its top):
- * soot is a dark translucent film over the slab; spalled scars show the
- * aggregate (grey-brown stones in a darker matrix) and cracks show dark,
- * both opaque; relief through the normal.
+ * The floor's marks, drawn over whichever floor they land on: each vertex at
+ * the floor's height there (a ramp's included; a vertex over another level
+ * stays on the mark's own), each fragment only over the floor of the level
+ * the vertex stage put it on, and not on sand (the glass marks take that).
+ * Ceramic: soot a dark translucent film, spalled scars showing the grey
+ * substrate and dark cracks, both opaque. Deck: soot, temper tints, and the
+ * bright metal of a gouge and its burr. Relief through the normal.
  */
-function concreteMaterial( m: ConcreteMark ): THREE.MeshStandardNodeMaterial {
+function floorMaterial( m: FloorMark ): THREE.MeshStandardNodeMaterial {
 
 	const material = new THREE.MeshStandardNodeMaterial( { transparent: true, depthWrite: false } );
 	material.polygonOffset = true;
 	material.polygonOffsetFactor = - 2;
 	material.polygonOffsetUnits = - 2;
-	material.positionNode = positionLocal.add( vec3( 0, m.level + 0.004 - LIFT, 0 ) );
+	const level = attribute( 'level', 'float' );
+	const under = m.floor.node( positionLocal.xz ).height;
+	const y = select( abs( under.sub( level ) ).lessThan( FOLLOW ), under, level );
+	const vFloor = varying( y );
+	material.positionNode = vec3( positionLocal.x, y.add( 0.004 ), positionLocal.z );
+	const here = m.floor.node( positionWorld.xz );
+	const deck = select( here.code.greaterThan( 1.5 ), float( 1 ), float( 0 ) );
+	const on = select( here.code.greaterThan( 0.5 ).and( abs( here.height.sub( vFloor ) ).lessThan( SAME_LEVEL ) ), float( 1 ), float( 0 ) );
 	const e = 0.03;
-	const h0 = m.height( m.x, m.y );
-	const gx = m.height( m.x.add( e ), m.y ).sub( h0 ).div( e );
-	const gy = m.height( m.x, m.y.add( e ) ).sub( h0 ).div( e );
-	material.normalNode = vec3( 0, 1, 0 ).sub( m.axisX.mul( gx ) ).sub( m.axisY.mul( gy ) ).normalize().transformDirection( cameraViewMatrix );
-	const stones = N( positionWorld.xz.mul( 1.3 ).add( N( positionWorld.xz.mul( 0.21 ) ).rg.mul( 2 ) ) );
-	const aggregate = mix( vec3( 0.2, 0.19, 0.17 ), vec3( 0.4, 0.37, 0.33 ), smoothstep( 0.35, 0.7, stones.r ) ).mul( stones.g.mul( 0.2 ).add( 0.82 ) );
-	const soot = mix( vec3( 0.025, 0.024, 0.022 ), vec3( 0.06, 0.055, 0.05 ), stones.b );
-	const scarred = mix( aggregate.mul( float( 1 ).sub( m.soot.mul( 0.6 ) ) ), vec3( 0.03, 0.028, 0.026 ), m.cracks );
-	material.colorNode = mix( soot, scarred, max( m.spall, m.cracks ) );
-	material.roughnessNode = mix( float( 0.96 ), float( 0.9 ), m.spall );
-	material.metalnessNode = float( 0 );
-	material.emissiveNode = m.glow;
-	material.opacityNode = m.opacity;
+	const relief = ( height ) => {
+
+		const h0 = height( m.x, m.y );
+		const gx = height( m.x.add( e ), m.y ).sub( h0 ).div( e );
+		const gy = height( m.x, m.y.add( e ) ).sub( h0 ).div( e );
+		return vec3( 0, 1, 0 ).sub( m.axisX.mul( gx ) ).sub( m.axisY.mul( gy ) );
+
+	};
+	material.normalNode = mix( relief( m.height ), relief( m.deckHeight ), deck ).normalize().transformDirection( cameraViewMatrix );
+	// ceramic: the substrate under the satin skin, a little pitted
+	const grain = N( positionWorld.xz.mul( 1.3 ).add( N( positionWorld.xz.mul( 0.21 ) ).rg.mul( 2 ) ) );
+	const substrate = mix( vec3( 0.2, 0.195, 0.185 ), vec3( 0.29, 0.28, 0.265 ), smoothstep( 0.35, 0.7, grain.r ) ).mul( grain.g.mul( 0.15 ).add( 0.88 ) );
+	const soot = mix( vec3( 0.025, 0.024, 0.022 ), vec3( 0.06, 0.055, 0.05 ), grain.b );
+	const scarred = mix( substrate.mul( float( 1 ).sub( m.soot.mul( 0.6 ) ) ), vec3( 0.03, 0.028, 0.026 ), m.cracks );
+	const ceramicColor = mix( soot, scarred, max( m.spall, m.cracks ) );
+	// deck: soot and temper over the plate, the gouge and burr bright where the edge cut fresh metal
+	const d = m.deck;
+	const plate = mix( soot, temperColor( d.temperAt ), d.temper.mul( float( 1 ).sub( d.soot.mul( 0.7 ) ) ) );
+	const bright = max( d.gouge, d.burr.mul( 0.7 ) );
+	const deckColor = mix( plate, vec3( 0.55, 0.55, 0.56 ), bright );
+	material.colorNode = mix( ceramicColor, deckColor, deck );
+	material.roughnessNode = mix( mix( float( 0.96 ), float( 0.9 ), m.spall ), mix( float( 0.6 ), float( 0.22 ), bright ), deck );
+	material.metalnessNode = mix( float( 0 ), mix( float( 0.4 ), float( 1 ), max( bright, d.temper ) ), deck );
+	material.emissiveNode = mix( m.glow, d.glow, deck );
+	material.opacityNode = mix( m.opacity, d.opacity, deck ).mul( on );
 	return material;
 
 }

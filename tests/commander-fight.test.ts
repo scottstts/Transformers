@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three/webgpu'
 import { readSoldier, NO_CONTACT } from './support/assets'
 import { crossings, triangles } from './support/commander-clash'
-import { Forts } from '../src/worlds/desert/fort'
+import { Citadel } from '../src/worlds/desert/citadel'
+import { mirrorCitadel } from '../tools/mirror.ts'
 import { Horde, type EnemyTarget } from '../src/game/enemies/horde'
 import { Commander, COMMANDER } from '../src/game/enemies/commander'
 import { COMMANDER_RESPAWN, FULL_COMBO_CHANCE, comboLength } from '../src/game/enemies/commander-post'
@@ -15,6 +16,8 @@ import { writePose } from '../src/content/soldier/poses'
 import { AudioMix } from '../src/audio/mix'
 import { Soldier, type SoldierImpact } from '../src/game/enemies/soldier'
 import { wrap } from '../src/game/math'
+
+const citadel = new Citadel(new Scene(), await mirrorCitadel())
 
 const asset = readSoldier('commander')
 const soldiers = readSoldier()
@@ -200,11 +203,10 @@ describe('commander', () => {
   })
 })
 
-describe('commander in the fortress', () => {
+describe('commander in the citadel', () => {
   const make = () => {
-    const forts = new Forts(new Scene())
-    const horde = new Horde(soldiers, forts, NO_CONTACT, new AudioMix(), asset)
-    const fort = forts.list[0]
+    const horde = new Horde(soldiers, citadel, NO_CONTACT, new AudioMix(), asset)
+    const fort = citadel
     const post = horde.commanderPosts[0]
     const camera = new PerspectiveCamera(42, 16 / 9, 0.1, 2000)
     const target: EnemyTarget = { x: 0, z: 0, radius: 1.5, vx: 0, vz: 0, height: 5.6, heading: 0, guard: 0, present: true }
@@ -213,8 +215,9 @@ describe('commander in the fortress', () => {
       const p = fort.toWorld(s.yard.at[0], s.yard.at[1])
       target.x = p.x
       target.z = p.z
-      camera.position.set(p.x, 8, p.z + 14)
-      camera.lookAt(p.x, 2, p.z)
+      const y = fort.floorAt(p.x, p.z)
+      camera.position.set(p.x, y + 8, p.z + 14)
+      camera.lookAt(p.x, y + 2, p.z)
       camera.updateMatrixWorld()
     }
     const run = (seconds: number, each?: () => void): void => {
@@ -293,7 +296,7 @@ describe('commander in the fortress', () => {
 
   it('takes its lance\'s trail with it when it is destroyed', () => {
     const { horde, post, at, run } = make()
-    at('gate')
+    at('forecourt')
     run(30)
     const c = post.unit
     horde.hit({ shape: 'circle', kind: 'blast', x: c.x, z: c.z, heading: 0, reach: 6, arc: Math.PI * 2, damage: 1e5, knock: 10, lift: 4, motion: 0, sweep: -1, radial: true, special: false, final: false, bite: true })
@@ -303,7 +306,7 @@ describe('commander in the fortress', () => {
 
   it('comes for the robot from the citadel, holds its stand-off, and lands its blows: the pair and, about one time in three, the whole combo', () => {
     const { horde, post, target, at, run } = make()
-    at('gate')
+    at('forecourt')
     let struck = 0, knocks = 0
     horde.onStruck = () => { struck++ }
     horde.onKnockback = () => { knocks++ }

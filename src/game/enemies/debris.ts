@@ -1,6 +1,7 @@
 import { Matrix3, Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import type { SoldierPiece } from '../../content/soldier/asset'
 import type { SoldierRig } from '../../content/soldier/rig'
+import { FLAT_GROUND, type Ground } from '../ground'
 
 /** Gravity, restitution and friction against the sand, and the sand's ploughing drag on a part lying in it (1/s). */
 const G = 9.8
@@ -44,7 +45,7 @@ export interface Landing {
  * (its own bone's part: the box and mass the export measured) starting where
  * it was, with the soldier's own motion, the blow's push, a scatter out from
  * the torso (the joints giving way) and a tumble. Pieces fall under gravity
- * and meet the sand at the deepest corner of their box: an impulse with a
+ * and meet the ground (the floor under them, `ground`) at the deepest corner of their box: an impulse with a
  * little restitution and Coulomb friction (bounded by the weight a resting
  * part bears), through the full inertia, so they bounce, skid, tip over onto a
  * face and settle; lying in the sand they plough it, which soon stops them. They do not collide with
@@ -59,7 +60,10 @@ export class Debris {
   readonly landings: Landing[] = Array.from({ length: LANDINGS }, () => ({ piece: 0, speed: 0 }))
   landingCount = 0
 
-  constructor(rig: SoldierRig, pieces: readonly SoldierPiece[]) {
+  private readonly ground: Ground
+
+  constructor(rig: SoldierRig, pieces: readonly SoldierPiece[], ground: Ground = FLAT_GROUND) {
+    this.ground = ground
     this.rig = rig
     for (const pc of pieces) {
       const h = new Vector3(...pc.half).max(new Vector3(0.03, 0.03, 0.03))
@@ -126,7 +130,7 @@ export class Debris {
       _r.set(i & 1 ? b.h.x : -b.h.x, i & 2 ? b.h.y : -b.h.y, i & 4 ? b.h.z : -b.h.z).applyMatrix4(_R)
       if (_r.y < low) { low = _r.y; _contact.copy(_r) }
     }
-    const depth = -(b.p.y + low)
+    const depth = this.ground.height(b.p.x, b.p.z) - (b.p.y + low)
     if (depth <= 0) return
     b.p.y += depth
     // world inverse inertia: R diag(invI) R^T

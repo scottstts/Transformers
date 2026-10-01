@@ -6,11 +6,25 @@ import { Footprints } from '../src/worlds/desert/footprints.ts'
 import { DesertTerrain } from '../src/worlds/desert/terrain.ts'
 import { DesertSurface } from '../src/worlds/desert/surface.ts'
 import { Dust } from '../src/worlds/desert/dust.ts'
+import { mirrorCitadel } from '../tools/mirror.ts'
+
+const citadel = await mirrorCitadel()
+
+/** A point on the citadel's ceramic paving (the forecourt's yard) and one on the open sand far off. */
+function grounds(world: DesertWorld): { paved: Vector3; sand: Vector3 } {
+  const yard = world.citadel.plan.sectors.find((s) => s.role === 'forecourt')!.yard.at
+  const w = world.citadel.toWorld(yard[0], yard[1])
+  const paved = new Vector3(w.x, world.citadel.floorAt(w.x, w.z), w.z)
+  expect(world.citadel.floor.surface(paved.x, paved.z)).toBe('ceramic')
+  const sand = new Vector3(paved.x + 900, 0, paved.z + 900)
+  expect(world.citadel.floor.surface(sand.x, sand.z)).toBeNull()
+  return { paved, sand }
+}
 
 describe('desert collision field', () => {
   it('recenters existing collider objects with their rock instances', () => {
     const scene = new Scene()
-    const world = new DesertWorld(scene)
+    const world = new DesertWorld(scene, citadel)
     const camera = new PerspectiveCamera()
     const focus = new Vector3()
     world.update(camera, focus)
@@ -78,20 +92,16 @@ describe('footprints', () => {
   })
 })
 
-describe('contact on the fortress paving', () => {
+describe("contact on the citadel's floor", () => {
+  const scene = new Scene()
+  const world = new DesertWorld(scene, citadel)
   const make = () => {
-    const scene = new Scene()
-    const world = new DesertWorld(scene)
-    const surface = new DesertSurface(scene, world.forts.paving, world.terrain)
-    const shape = world.forts.paving.shapes[0]
-    const paved = new Vector3(shape.x, shape.top, shape.z)
-    const sand = new Vector3(paved.x + 400, 0, paved.z + 400)
-    expect(world.forts.paving.top(sand.x, sand.z)).toBe(-1)
-    return { surface, paved, sand }
+    const surface = new DesertSurface(scene, world.citadel.floor, world.terrain, world.ground)
+    return { surface, ...grounds(world) }
   }
   const live = (surface: DesertSurface): number => surface.dust.age.filter((a) => a < 1e8).length
 
-  it('leaves footprints in the sand but none on the concrete', () => {
+  it('leaves footprints in the sand but none on the ceramic', () => {
     const { surface, paved, sand } = make()
     const forward = new Vector3(0, 0, 1)
     surface.footprint(paved, forward, 1, 0.5, 1)
@@ -100,7 +110,7 @@ describe('contact on the fortress paving', () => {
     expect(surface.footprints.stamped).toBe(1)
   })
 
-  it('raises only a scuff of dust off the concrete, and a crowd fight\'s bursts are budgeted', () => {
+  it('raises only a scuff of dust off the ceramic, and a crowd fight\'s bursts are budgeted', () => {
     const { surface, paved, sand } = make()
     surface.burst(sand, 1, 28)
     const onSand = live(surface)
@@ -166,14 +176,12 @@ describe('fight dust', () => {
 })
 
 describe('a fight\'s dust on the ground', () => {
-  it('raises a quarter of a walk\'s burst on the sand, and 30 % of that on the concrete; a special\'s surge keeps its strength', () => {
+  it('raises a quarter of a walk\'s burst on the sand, and 30 % of that on the ceramic; a special\'s surge keeps its strength', () => {
     const scene = new Scene()
-    const world = new DesertWorld(scene)
-    const shape = world.forts.paving.shapes[0]
-    const paved = new Vector3(shape.x, shape.top, shape.z)
-    const sand = new Vector3(paved.x + 400, 0, paved.z + 400)
+    const world = new DesertWorld(scene, citadel)
+    const { paved, sand } = grounds(world)
     const raised = (fight: 'none' | 'combo' | 'special', at: Vector3, what: (s: DesertSurface) => void): number => {
-      const surface = new DesertSurface(new Scene(), world.forts.paving, world.terrain)
+      const surface = new DesertSurface(new Scene(), world.citadel.floor, world.terrain, world.ground)
       surface.fight = fight
       what(surface)
       return surface.dust.age.filter((a) => a < 1e8).length

@@ -3,14 +3,15 @@ import { Quaternion, Scene, Vector3, PerspectiveCamera } from 'three/webgpu'
 import { readSoldier, NO_CONTACT } from './support/assets'
 import { SoldierRig, createSoldierPose } from '../src/content/soldier/rig'
 import { POSES, SC, writePose } from '../src/content/soldier/poses'
-import { Forts, FORT_SITES } from '../src/worlds/desert/fort'
-import { planFort, insideWalls, outsideSector, sectorAt, GATE_WIDTH } from '../src/worlds/desert/fort/plan'
+import { Citadel, outsideSector } from '../src/worlds/desert/citadel'
+import { CitadelDistricts } from '../src/worlds/desert/citadel/districts'
+import { mirrorCitadel } from '../tools/mirror.ts'
 import { pushOut } from '../src/game/collide'
 import { goldberg } from '../src/content/transformer/combat/fx/shield'
 import { CarBarrier } from '../src/game/enemies/barrier'
 import { Horde, type EnemyTarget } from '../src/game/enemies/horde'
 import { SOLDIER, type Soldier } from '../src/game/enemies/soldier'
-import { FortNav } from '../src/game/enemies/navigation'
+import { CitadelNav } from '../src/game/enemies/navigation'
 import { Debris, DEBRIS_FADE, DEBRIS_LIE } from '../src/game/enemies/debris'
 import { createMotionState } from '../src/game/types'
 import { updateCar } from '../src/game/car-dynamics'
@@ -20,6 +21,7 @@ import type { HitEvent } from '../src/content/transformer/combat/hits'
 
 const asset = readSoldier()
 const DT = 1 / 60
+const citadel = new Citadel(new Scene(), await mirrorCitadel())
 
 // the horde and the debris draw on Math.random: seed it so every run is the same
 beforeEach(() => {
@@ -71,73 +73,78 @@ describe('soldier rig', () => {
   })
 })
 
-describe('fortress plan', () => {
-  const plan = planFort(FORT_SITES[0])
+describe('citadel plan', () => {
+  const plan = citadel.plan
+  const districts = new CitadelDistricts(plan)
   const contact = { nx: 0, nz: 0, depth: 0 }
 
-  it('rings the districts with a perimeter, keeps the barrier outside it and the citadel within', () => {
-    expect(FORT_SITES.length).toBe(1)
+  it('holds twelve districts on four tiers behind a car ring outside its walls', () => {
     expect(plan.barrier).toBeGreaterThan(plan.outer + 10)
-    expect(plan.sectors.map((s) => s.role).sort()).toEqual(['airfield', 'barracks', 'citadel', 'comms', 'fuel', 'gate', 'motorPool'])
-    for (const c of plan.citadel) expect(insideWalls(plan, c[0], c[1])).toBe(true)
-    expect(sectorAt(plan, plan.centre[0], plan.centre[1])).toBe(plan.sectors.length - 1)
+    expect(plan.sectors.map((s) => s.role).sort()).toEqual(['armoury', 'array', 'barracks', 'citadel', 'condensers', 'forecourt', 'foundry', 'hangars', 'hydroponics', 'innerWard', 'postern', 'processional'])
+    expect(new Set(plan.sectors.map((s) => s.tier))).toEqual(new Set([0, 1, 2, 3]))
   })
 
-  it('opens every gate wide enough for the truck robot, joining the districts either side of it', () => {
+  it('joins its districts by gates whose waypoints stand on their own sides, and routes every district to every other', () => {
     const outside = outsideSector(plan)
     expect(plan.gates.filter((g) => g.kind === 'outer').length).toBe(4)
-    expect(plan.gates.filter((g) => g.kind === 'citadel').length).toBe(2)
-    expect(plan.gates.filter((g) => g.kind === 'inner').length).toBe(6)
     for (const g of plan.gates) {
-      expect(g.width).toBeGreaterThanOrEqual(GATE_WIDTH - 1)
-      expect(g.sectors[0]).not.toBe(g.sectors[1])
-      expect(sectorAt(plan, g.inside[0], g.inside[1])).toBe(g.sectors[0])
-      expect(sectorAt(plan, g.outside[0], g.outside[1])).toBe(g.sectors[1])
-      if (g.kind === 'outer') expect(g.sectors[1]).toBe(outside)
+      expect(districts.at(g.inside[0], g.inside[1]), `${g.id} inside`).toBe(g.sectors[0])
+      expect(districts.at(g.outside[0], g.outside[1]), `${g.id} outside`).toBe(g.sectors[1])
     }
-    // every district reaches every other (and the outside) through the gates
     for (let a = 0; a <= outside; a++) for (let b = 0; b <= outside; b++) if (a !== b) expect(plan.nav[a][b], `${a} -> ${b}`).toBeGreaterThanOrEqual(0)
   })
 
-  it('lays every building out in one district and gives each district its yard, posts and spawn doors', () => {
-    for (const m of plan.modules) {
-      // (the barriers outside, the pillars and gate thresholds on the wall lines)
-      if (m.kind === 'jersey' || m.kind === 'pillar' || m.kind === 'gatehouse' || m.kind === 'apron') continue
-      expect(insideWalls(plan, m.at[0], m.at[1]), m.kind).toBe(true)
-    }
-    const kinds = new Set(plan.modules.map((m) => m.kind))
-    for (const k of ['keep', 'gatehouse', 'garage', 'radar', 'chu', 'canopy', 'container', 'bund', 'tank', 'helipad', 'radioMast', 'waterTower', 'tower', 'booth', 'apron', 'stair'] as const) expect(kinds.has(k), `has ${k}`).toBe(true)
-    expect(plan.hangars.length).toBe(2)
+  it('gives every district its posts, a spawn door and a clear yard; every beat point stands clear in its own district', () => {
     for (const s of plan.sectors) {
       expect(plan.posts.filter((p) => p.sector === s.index).length, s.role).toBeGreaterThanOrEqual(s.garrison)
       expect(plan.spawns.filter((p) => p.sector === s.index).length, s.role).toBeGreaterThanOrEqual(1)
-      expect(sectorAt(plan, s.yard.at[0], s.yard.at[1])).toBe(s.index)
-      // nothing stands in the yard
+      expect(districts.at(s.yard.at[0], s.yard.at[1])).toBe(s.index)
       for (const c of plan.circles) expect(Math.hypot(c.x - s.yard.at[0], c.z - s.yard.at[1]) - c.r, s.role).toBeGreaterThan(s.yard.r - 1)
     }
-  })
-
-  it('leaves every beat point standing free, in its own district', () => {
     for (const p of plan.posts) {
       for (const at of p.beat) {
         expect(pushOut({ x: at[0], z: at[1] }, SOLDIER.radius, plan.segments, plan.circles, contact), `beat ${at.map((v) => v.toFixed(1))}`).toBeNull()
-        expect(sectorAt(plan, at[0], at[1])).toBe(p.sector)
+        expect(districts.at(at[0], at[1])).toBe(p.sector)
       }
     }
     for (const d of plan.spawns) expect(pushOut({ x: d.exit[0], z: d.exit[1] }, SOLDIER.radius, plan.segments, plan.circles, contact)).toBeNull()
   })
+
+  it('has one floor height per point: the tiers, and ramps between them', () => {
+    const floor = citadel.floor
+    for (const s of plan.sectors) {
+      const p = citadel.toWorld(s.yard.at[0], s.yard.at[1])
+      // T0's yards are paved (0.03) or the sand itself (0)
+      expect(Math.abs(floor.height(p.x, p.z) - [0, 8, 16, 24][s.tier]), s.role).toBeLessThan(0.05)
+      expect(floor.surface(p.x, p.z), s.role).not.toBeNull()
+    }
+    // up a ramp, the floor rises steadily between its tiers
+    const r5 = plan.floor.find((f) => f.kind === 'ramp' && f.y[0] === 8 && f.y[1] === 16)!
+    if (r5.kind !== 'ramp') throw new Error('not a ramp')
+    const [a, b] = r5.axis
+    let last = -Infinity
+    for (let t = 0.02; t <= 0.98; t += 0.08) {
+      const p = citadel.toWorld(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+      const h = floor.height(p.x, p.z)
+      expect(h).toBeGreaterThan(last)
+      last = h
+    }
+    // off the floor (the open desert): no floor, so the world's ground is the terrain
+    expect(Number.isNaN(floor.height(0, 0))).toBe(true)
+  })
 })
 
-describe('fortress access', () => {
-  const plan = planFort(FORT_SITES[0])
+describe('citadel access', () => {
+  const plan = citadel.plan
+  const districts = new CitadelDistricts(plan)
   const contact = { nx: 0, nz: 0, depth: 0 }
-  // walk a body of `radius` from (x, z) to district `to`'s yard the way FortNav leads it
-  const walk = (nav: FortNav, radius: number, x: number, z: number, to: number): boolean => {
+  // walk a body of `radius` from (x, z) to district `to`'s yard the way CitadelNav leads it
+  const walk = (nav: CitadelNav, radius: number, x: number, z: number, to: number): boolean => {
     const p = { x, z }
     const next = { x: 0, z: 0 }
     const yard = plan.sectors[to].yard.at
-    for (let step = 0; step < 8000; step++) {
-      const here = sectorAt(plan, p.x, p.z)
+    for (let step = 0; step < 24000; step++) {
+      const here = districts.at(p.x, p.z)
       if (!nav.next(p.x, p.z, here, to, next)) nav.approach(p.x, p.z, yard[0], yard[1], here, next)
       const d = Math.hypot(next.x - p.x, next.z - p.z)
       if (here === to && Math.hypot(yard[0] - p.x, yard[1] - p.z) < 1) return true
@@ -149,13 +156,13 @@ describe('fortress access', () => {
   }
 
   it('lets the truck robot walk in from outside the main gate to every district, through the gates it is routed by', () => {
-    const nav = new FortNav(plan, CYBERTRUCK_PROFILE.robotRadius)
+    const nav = new CitadelNav(plan, CYBERTRUCK_PROFILE.robotRadius)
     const main = plan.gates[0]
     for (const s of plan.sectors) expect(walk(nav, CYBERTRUCK_PROFILE.robotRadius, main.at[0] + main.out[0] * 30, main.at[1] + main.out[1] * 30, s.index), `${s.role} yard`).toBe(true)
   })
 
   it('leads a soldier from every district to every other round whatever stands in the way', () => {
-    const nav = new FortNav(plan, SOLDIER.radius)
+    const nav = new CitadelNav(plan, SOLDIER.radius)
     for (const a of plan.sectors) {
       for (const b of plan.sectors) {
         if (a === b) continue
@@ -166,19 +173,17 @@ describe('fortress access', () => {
 })
 
 describe('car barrier', () => {
-  const forts = new Forts(new Scene())
-  const fort = forts.list[0]
-  const s = fort.plan.site
+  const s = citadel.plan.site
 
-  it('exposes distance-hidden fort detail for entry warmup and restores visibility afterward', () => {
+  it('exposes distance-hidden citadel detail for entry warmup and restores visibility afterward', () => {
     const camera = new PerspectiveCamera()
     camera.position.set(s.x + 10_000, 10, s.z)
-    forts.update(camera)
-    const detail = fort.group.children.filter((child) => child.name.endsWith('d'))
+    citadel.update(camera)
+    const detail = citadel.group.children.filter((child) => !child.name.endsWith(':mass'))
     expect(detail.length).toBeGreaterThan(0)
     expect(detail.some((mesh) => !mesh.visible)).toBe(true)
     const before = detail.map((mesh) => mesh.visible)
-    const restore = forts.showAllDetail()
+    const restore = citadel.showAllDetail()
     expect(detail.every((mesh) => mesh.visible)).toBe(true)
     restore()
     expect(detail.map((mesh) => mesh.visible)).toEqual(before)
@@ -186,7 +191,7 @@ describe('car barrier', () => {
 
   const driveAt = (carForm: boolean, frames: number): { state: ReturnType<typeof createMotionState>; closest: number } => {
     const state = createMotionState()
-    const start = fort.plan.barrier + 80
+    const start = citadel.plan.barrier + 80
     state.pos.set(s.x + start, 0, s.z)
     state.yaw = -Math.PI / 2
     const barrier = new CarBarrier()
@@ -194,40 +199,39 @@ describe('car barrier', () => {
     let closest = Infinity
     for (let i = 0; i < frames; i++) {
       updateCar(state, input, DT, false, CYBERTRUCK_PROFILE.drive)
-      barrier.apply(state, forts, CYBERTRUCK_PROFILE.drive.maxSpeed, carForm)
+      barrier.apply(state, citadel, CYBERTRUCK_PROFILE.drive.maxSpeed, carForm)
       closest = Math.min(closest, Math.hypot(state.pos.x - s.x, state.pos.z - s.z))
     }
     return { state, closest }
   }
 
-  it('slows a car driving straight at a fort to a stop at the perimeter', () => {
+  it('slows a car driving straight at the citadel to a stop at its ring', () => {
     const { state, closest } = driveAt(true, 60 * 20)
-    expect(closest).toBeGreaterThanOrEqual(fort.plan.barrier - 1e-6)
-    expect(closest).toBeLessThan(fort.plan.barrier + 3)
+    expect(closest).toBeGreaterThanOrEqual(citadel.plan.barrier - 1e-6)
+    expect(closest).toBeLessThan(citadel.plan.barrier + 3)
     expect(Math.abs(state.speed)).toBeLessThan(1)
   })
 
   it('lets anything but the car through', () => {
     const { closest } = driveAt(false, 60 * 20)
-    expect(closest).toBeLessThan(fort.plan.barrier - 10)
+    expect(closest).toBeLessThan(citadel.plan.barrier - 10)
   })
 })
 
 describe('horde', () => {
   const make = () => {
-    const forts = new Forts(new Scene())
-    const horde = new Horde(asset, forts, NO_CONTACT, new AudioMix())
+    const horde = new Horde(asset, citadel, NO_CONTACT, new AudioMix())
     const camera = new PerspectiveCamera(42, 16 / 9, 0.1, 2000)
-    const fort = forts.list[0]
-    const plan = fort.plan
+    const plan = citadel.plan
     const sector = (role: string) => plan.sectors.find((s) => s.role === role)!
     const target: EnemyTarget = { x: 0, z: 0, radius: 1.5, vx: 0, vz: 0, height: 5.6, heading: 0, guard: 0, present: true }
     const at = (x: number, z: number): void => {
-      const p = fort.toWorld(x, z)
+      const p = citadel.toWorld(x, z)
       target.x = p.x
       target.z = p.z
-      camera.position.set(p.x, 8, p.z + 14)
-      camera.lookAt(p.x, 2, p.z)
+      const y = citadel.floorAt(p.x, p.z)
+      camera.position.set(p.x, y + 8, p.z + 14)
+      camera.lookAt(p.x, y + 2, p.z)
       camera.updateMatrixWorld()
     }
     const run = (seconds: number): void => { for (let t = 0; t < seconds; t += DT) horde.update(DT, target, camera) }
@@ -235,7 +239,7 @@ describe('horde', () => {
       shape: 'sector', kind: 'blunt', x: target.x, z: target.z, heading: Math.atan2(s.x - target.x, s.z - target.z), reach: Math.hypot(s.x - target.x, s.z - target.z) + 1,
       arc: 0.05, damage, knock: 4, lift: 0.3, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true, ...extra,
     })
-    return { horde, fort, plan, sector, target, at, run, blow, camera }
+    return { horde, fort: citadel, plan, sector, target, at, run, blow, camera }
   }
 
   it('stands guard until the robot is inside a district, then that district closes in on it', () => {
@@ -244,21 +248,21 @@ describe('horde', () => {
     at(main.at[0] + main.out[0] * 20, main.at[1] + main.out[1] * 20)
     run(2)
     expect(horde.status(target.x, target.z)).toBeNull()
-    const yard = sector('gate').yard.at
+    const yard = sector('forecourt').yard.at
     at(yard[0], yard[1])
     run(6)
     expect(horde.status(target.x, target.z)?.alert).toBe(true)
     expect(horde.nearby(target.x, target.z, 1.5 + SOLDIER.radius + 3).length).toBeGreaterThanOrEqual(4)
     // a district two gates away stays at peace
-    const far = sector('fuel').yard.at
+    const far = sector('postern').yard.at
     const w = fort.toWorld(far[0], far[1])
     expect(horde.status(w.x, w.z)?.alert).toBe(false)
   })
 
-  it('stands down once the robot leaves the fortress, and the soldiers walk back to their beats instead of pressing at the gate', () => {
+  it('stands down once the robot leaves the citadel, and the soldiers walk back to their beats instead of pressing at the gate', () => {
     const { horde, fort, plan, sector, at, run } = make()
     const main = plan.gates[0]
-    const yard = sector('gate').yard.at
+    const yard = sector('forecourt').yard.at
     at(yard[0], yard[1])
     run(5)
     const inside = fort.toWorld(yard[0], yard[1])
@@ -271,13 +275,32 @@ describe('horde', () => {
     const gate = fort.toWorld(main.at[0], main.at[1])
     const atGate = horde.nearby(gate.x, gate.z, 12).filter((s) => s.goal.ready)
     expect(atGate.length).toBe(0)
-    const standing = horde.nearby(inside.x, inside.z, 200).filter((s) => fort.sector(s.x, s.z) === sector('gate').index)
+    const standing = horde.nearby(inside.x, inside.z, 200).filter((s) => fort.sector(s.x, s.z) === sector('forecourt').index)
     expect(standing.every((s) => !s.goal.ready)).toBe(true)
+  })
+
+  it('fights only on its own level: a blow from the terrace above passes over the soldiers below', () => {
+    const { horde, sector, target, at, run, blow } = make()
+    const yard = sector('forecourt').yard.at
+    at(yard[0], yard[1])
+    run(6)
+    const s = horde.nearby(target.x, target.z, 6)[0]
+    expect(s).toBeDefined()
+    expect(s.floor).toBeCloseTo(0.03, 2)
+    // the robot on the processional terrace (8 m up): the same blow reaches nobody below
+    const up = sector('processional').yard.at
+    const p = citadel.toWorld(up[0], up[1])
+    const hit = blow(s, SOLDIER.health * 0.3)
+    target.x = p.x
+    target.z = p.z
+    run(DT)
+    expect(horde.hit(hit)).toBe(0)
+    expect(s.vitality).toBe(1)
   })
 
   it('takes health off a soldier blow by blow: it flinches and recovers, and breaks apart only when its health is gone', () => {
     const { horde, sector, fort, target, at, run, blow } = make()
-    const yard = sector('gate').yard.at
+    const yard = sector('forecourt').yard.at
     at(yard[0], yard[1])
     run(6)
     const s = horde.nearby(target.x, target.z, 6)[0]
@@ -306,7 +329,7 @@ describe('horde', () => {
 
   it("holds a special's emptied soldiers in their flinch until its last blow, which breaks them all", () => {
     const { horde, sector, target, at, run, blow } = make()
-    const yard = sector('gate').yard.at
+    const yard = sector('forecourt').yard.at
     at(yard[0], yard[1])
     run(6)
     const [a, b] = horde.nearby(target.x, target.z, 8)
@@ -331,12 +354,14 @@ describe('horde', () => {
 
   it('seizes in a vacuum as under a flurry: thrown between its hit poses, beat by beat, drawn in, and recovers once it lets go', () => {
     const { horde, sector, target, at, run, camera } = make()
-    const yard = sector('gate').yard.at
+    const yard = sector('forecourt').yard.at
     at(yard[0], yard[1])
     run(6)
     const [s] = horde.nearby(target.x, target.z, 12)
     expect(s).toBeDefined()
-    const cx = target.x + 6, cz = target.z
+    // the draw's centre 6 m out from the robot on the soldier's side (the robot's body is not in its way)
+    const toward = Math.atan2(s.x - target.x, s.z - target.z)
+    const cx = target.x + Math.sin(toward) * 6, cz = target.z + Math.cos(toward) * 6
     const start = Math.hypot(s.x - cx, s.z - cz)
     let low = Infinity, high = -Infinity, swings = 0, last = 0
     for (let t = 0; t < 1.5; t += DT) {
@@ -360,7 +385,7 @@ describe('horde', () => {
 
   it('sends out a wave of reinforcements when a district is cut down', () => {
     const { horde, sector, target, at, run } = make()
-    const g = sector('gate')
+    const g = sector('forecourt')
     at(g.yard.at[0], g.yard.at[1])
     run(4)
     const blast: HitEvent = { shape: 'circle', kind: 'blast', x: target.x, z: target.z, heading: 0, reach: 80, arc: Math.PI * 2, damage: 5000, knock: 10, lift: 6, motion: 0, sweep: -1, radial: true, special: false, final: false, bite: true }

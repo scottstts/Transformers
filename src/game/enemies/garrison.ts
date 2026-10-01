@@ -1,7 +1,6 @@
-import type { Fort, Sector } from '../../worlds/desert/fort'
-import type { Post, Spawn } from '../../worlds/desert/fort/plan'
+import type { Citadel, Post, Sector, Spawn } from '../../worlds/desert/citadel'
 import { Soldier, SOLDIER } from './soldier'
-import { adjacent, approach, waypoint, type FortNav } from './navigation'
+import { adjacent, approach, waypoint, type CitadelNav } from './navigation'
 import type { EnemyTarget } from './horde'
 
 /** A garrison below this share of its size sends out a wave of reinforcements during a fight. */
@@ -13,7 +12,7 @@ const REFILL_EVERY = 3
 const OVERSHOOT = 4
 /**
  * How long the target may stay out of a garrison's reach before it stands
- * down (s): out of the fortress, or more than one district from its own. A
+ * down (s): out of the citadel, or more than one district from its own. A
  * body stepping through a gate's opening should not flicker it.
  */
 export const CALL_OFF = 1
@@ -28,12 +27,12 @@ const RANK = 1.8
 /**
  * One district's garrison: its soldiers, the posts and spawn doors of its
  * district (plan.ts), whether it is fighting, and its clocks. Every district
- * of the fortress keeps its own.
+ * of the citadel keeps its own.
  */
 export interface Garrison {
-  fort: Fort
-  /** the fortress's way-finding for a soldier's radius (shared by its garrisons) */
-  nav: FortNav
+  citadel: Citadel
+  /** the citadel's way-finding for a soldier's radius (shared by its garrisons) */
+  nav: CitadelNav
   sector: Sector
   posts: Post[]
   spawns: Spawn[]
@@ -50,12 +49,12 @@ export interface Garrison {
   radius: number
 }
 
-export function createGarrison(fort: Fort, nav: FortNav, sector: Sector): Garrison {
-  const c = fort.toWorld(sector.bounds.at[0], sector.bounds.at[1])
+export function createGarrison(citadel: Citadel, nav: CitadelNav, sector: Sector): Garrison {
+  const c = citadel.toWorld(sector.bounds.at[0], sector.bounds.at[1])
   return {
-    fort, nav, sector,
-    posts: fort.plan.posts.filter((p) => p.sector === sector.index),
-    spawns: fort.plan.spawns.filter((p) => p.sector === sector.index),
+    citadel, nav, sector,
+    posts: citadel.plan.posts.filter((p) => p.sector === sector.index),
+    spawns: citadel.plan.spawns.filter((p) => p.sector === sector.index),
     soldiers: [], alert: false, calm: 0, wave: false, spawnClock: 0,
     cx: c.x, cz: c.z, radius: sector.bounds.r,
   }
@@ -71,8 +70,8 @@ export function aliveIn(g: Garrison): number {
 export function station(g: Garrison, s: Soldier, i: number, serial: number, clock: number): void {
   const post = g.posts[i % g.posts.length]
   const rank = Math.floor(i / g.posts.length)
-  const p = g.fort.toWorld(post.at[0] + rank * RANK, post.at[1] - rank * RANK, _p)
-  s.reset(p.x, p.z, post.yaw + g.fort.plan.site.yaw, serial)
+  const p = g.citadel.toWorld(post.at[0] + rank * RANK, post.at[1] - rank * RANK, _p)
+  s.reset(p.x, p.z, post.yaw + g.citadel.plan.site.yaw, serial, g.citadel.floorAt(p.x, p.z))
   s.post = i
   s.sector = g.sector.index
   s.nextSwing = clock + 1 + Math.random() * 2
@@ -83,19 +82,19 @@ export function station(g: Garrison, s: Soldier, i: number, serial: number, cloc
  * Alerted while the target stands in the district; it stays alerted while
  * the target is in the district or the next one over (it follows through
  * the gate), and stands down once the target has been beyond that, or out
- * of the fortress, for CALL_OFF seconds: back to its beats from wherever
+ * of the citadel, for CALL_OFF seconds: back to its beats from wherever
  * the fight left it. Returns true on the moment it is alerted.
  */
 export function updateAlert(g: Garrison, t: EnemyTarget, targetSector: number, dt: number): boolean {
   const own = g.sector.index
-  const inside = targetSector < g.fort.plan.sectors.length
+  const inside = targetSector < g.citadel.plan.sectors.length
   if (!g.alert) {
     if (!t.present || targetSector !== own) return false
     g.alert = true
     g.calm = 0
     return true
   }
-  const reach = inside && adjacent(g.fort, own, targetSector)
+  const reach = inside && adjacent(g.citadel, own, targetSector)
   g.calm = reach ? 0 : g.calm + dt
   if (g.calm >= CALL_OFF) {
     g.alert = false
@@ -123,10 +122,10 @@ export function reinforce(g: Garrison, dt: number, make: () => Soldier, serial: 
   if (!want || !g.spawns.length || alive >= size + OVERSHOOT || g.spawnClock < every || g.soldiers.length >= size + OVERSHOOT + 12) return null
   g.spawnClock = 0
   const door = g.spawns[serial % g.spawns.length]
-  const p = g.fort.toWorld(door.at[0], door.at[1])
-  const e = g.fort.toWorld(door.exit[0], door.exit[1])
+  const p = g.citadel.toWorld(door.at[0], door.at[1])
+  const e = g.citadel.toWorld(door.exit[0], door.exit[1])
   const s = make()
-  s.reset(p.x, p.z, Math.atan2(e.x - p.x, e.z - p.z), serial)
+  s.reset(p.x, p.z, Math.atan2(e.x - p.x, e.z - p.z), serial, g.citadel.floorAt(p.x, p.z))
   s.goal.x = e.x
   s.goal.z = e.z
   s.goal.drive = true
@@ -152,14 +151,14 @@ export function reinforce(g: Garrison, dt: number, make: () => Soldier, serial: 
  * gates.
  */
 export function patrol(g: Garrison, s: Soldier, clock: number): void {
-  const fort = g.fort
-  const plan = fort.plan
+  const citadel = g.citadel
+  const plan = citadel.plan
   if (!g.posts.length) return
   const post = g.posts[s.post % g.posts.length]
   const shift = Math.floor(s.post / g.posts.length) * RANK
   s.goal.drive = true
   s.goal.ready = false
-  if (waypoint(fort, g.nav, s.x, s.z, s.sector, g.sector.index, _q)) {
+  if (waypoint(citadel, g.nav, s.x, s.z, s.sector, g.sector.index, _q)) {
     s.goal.x = _q.x
     s.goal.z = _q.z
     s.goal.face = Math.atan2(_q.x - s.x, _q.z - s.z)
@@ -172,17 +171,17 @@ export function patrol(g: Garrison, s: Soldier, clock: number): void {
     // join the beat at its nearest point
     let k = 0, best = Infinity
     for (let j = 0; j < beat.length; j++) {
-      const p = fort.toWorld(beat[j][0] + shift, beat[j][1] - shift, _q)
+      const p = citadel.toWorld(beat[j][0] + shift, beat[j][1] - shift, _q)
       const d = Math.hypot(p.x - s.x, p.z - s.z)
       if (d < best) { best = d; k = j }
     }
     b.k = k
     b.wait = 0
   }
-  const p = fort.toWorld(beat[b.k][0] + shift, beat[b.k][1] - shift, _q)
+  const p = citadel.toWorld(beat[b.k][0] + shift, beat[b.k][1] - shift, _q)
   const d = Math.hypot(p.x - s.x, p.z - s.z)
   if (d > PATROL_ARRIVE) {
-    approach(fort, g.nav, s.x, s.z, p.x, p.z, s.sector, _r)
+    approach(citadel, g.nav, s.x, s.z, p.x, p.z, s.sector, _r)
     s.goal.x = _r.x
     s.goal.z = _r.z
     s.goal.face = Math.atan2(_r.x - s.x, _r.z - s.z)

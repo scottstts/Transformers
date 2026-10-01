@@ -2,7 +2,7 @@
 
 The approved commander is built by `blender/commander_build/` into
 `blender/commander.blend` (collection `COMMANDER`) and exported to
-`public/models/commander.json` and `public/models/commander.bin`.
+`assets/commander.json` and `assets/commander.bin`.
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b blender/commander.blend --python-exit-code 1 --python blender/commander_build/export_game.py
@@ -79,4 +79,4 @@ coverage, debris bounds/mass, dimensions, energy placement and ground contact.
 Validation: all 27 tests in `tests/commander.test.ts` and
 `tests/enemies.test.ts` passed. Exporting the unchanged soldier scene with the
 original and parameterized exporter produced byte-identical JSON and binary;
-the existing `public/models/soldier.*` files were left unchanged.
+the existing `assets/soldier.*` files were left unchanged.

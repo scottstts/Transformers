@@ -11,7 +11,7 @@ import { BatEffects } from './effects'
 import { createBatCombat } from './combat'
 
 export const BAT_LABEL = 'Bat'
-/** The robot's spear (public/models/bat-spear.*). */
+/** The robot's spear (bat-spear.* on the asset CDN). */
 export const BAT_WEAPON = 'bat-spear'
 
 /**

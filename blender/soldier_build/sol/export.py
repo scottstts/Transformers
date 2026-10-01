@@ -1,4 +1,4 @@
-"""Game export of the soldier: `public/models/soldier.{json,bin}`.
+"""Game export of the soldier: `assets/soldier.{json,bin}`.
 
 The soldier is drawn as a horde: every material slot is one merged geometry
 for all parts, each vertex carrying the index of the bone it rides, positions
@@ -23,7 +23,7 @@ import numpy as np
 import bpy
 from . import rig, saber
 
-OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'public', 'models'))
+OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets'))
 LOD_RATIOS = (1.0, 0.24, 0.07)
 SHADOW_SKIP = {'glow', 'blade', 'visor'}
 PREFIX = 'soldier.'

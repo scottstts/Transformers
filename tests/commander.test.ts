@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readMirror } from '../tools/mirror.ts'
 import { describe, expect, it } from 'vitest'
 import { Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import { decodeSoldierAsset, type SoldierManifest, type SoldierSlotGeometry } from '../src/content/soldier/asset'
@@ -6,8 +6,8 @@ import { decodeSoldierAsset, type SoldierManifest, type SoldierSlotGeometry } fr
 type CommanderManifest = Omit<SoldierManifest, 'dims'> & {
   dims: SoldierManifest['dims'] & { reach: number; bodyRadius: number }
 }
-const manifest = JSON.parse(readFileSync('public/models/commander.json', 'utf8')) as CommanderManifest
-const binary = readFileSync('public/models/commander.bin')
+const manifest = JSON.parse(readMirror('commander.json', 'utf8')) as CommanderManifest
+const binary = readMirror('commander.bin')
 const buffer = binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength)
 const asset = decodeSoldierAsset(manifest, buffer)
 const index = new Map(manifest.bones.map((bone, i) => [bone.name, i]))

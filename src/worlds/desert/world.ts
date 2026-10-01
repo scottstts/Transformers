@@ -5,8 +5,8 @@ import { SAND_RADIANCE, SUN_COLOR, SUN_DIRECTION, SUN_LUX, aerialFog } from './a
 import { buildLandforms } from './landforms.ts';
 import { DesertWind } from './wind.ts';
 import type { CircleCollider, SegmentCollider } from '../../game/types';
-import { groundNormal } from '../../game/ground.ts';
-import { Forts } from './fort/index.ts';
+import { groundNormal, type Ground } from '../../game/ground.ts';
+import { Citadel, type CitadelAsset } from './citadel/index.ts';
 import { DesertTerrain } from './terrain.ts';
 import { TerrainMesh } from './terrain-mesh.ts';
 import { SHADOW_ONLY_LAYER } from '../../rendering/layers.ts';
@@ -112,7 +112,7 @@ function footprint( shape: ArrayLike<number>, s: THREE.Vector3, sink: number ): 
 	return reach * 0.92;
 
 }
-/** The level pad round a fortress: exactly flat to its car ring + [0], the land fully in by + [1] (m). */
+/** The level pad round the citadel: exactly flat to its car ring + [0], the land fully in by + [1] (m). */
 const PAD_MARGIN = [ 10, 95 ];
 const _normal = new THREE.Vector3();
 
@@ -124,44 +124,52 @@ const _normal = new THREE.Vector3();
  */
 const SHADOW_CASCADES = 3;
 /**
- * The fortress's cached shadow levels (half-width across the sun, texels):
+ * The citadel's cached shadow levels (half-width across the sun, texels):
  * as fine near the camera as the cascades were; 5 cm texels to ~90 m, so a
- * watchtower's 11 cm bracing still shadows a wall across a yard (at 12 cm it
- * dropped out beyond ~60 m); the last covering the whole fortress from a few
- * hundred metres off. At 3 bytes a texel (sun-shadow.ts) they take ~90 MB.
+ * bracket or a bollard still shadows the paving across a yard; the last
+ * covering the whole citadel (about 1.1 km across) from outside its walls.
+ * At 3 bytes a texel (sun-shadow.ts) they take ~90 MB.
  */
 const STATIC_SHADOW_LEVELS = [
 	{ halfWidth: 24, mapSize: 2048 },
 	{ halfWidth: 110, mapSize: 4096 },
 	{ halfWidth: 190, mapSize: 4096 },
-	{ halfWidth: 720, mapSize: 2048 },
+	{ halfWidth: 900, mapSize: 2048 },
 ];
+/** The tallest static caster: the spire (140 m), with room for its finial. */
+const CASTER_HEIGHT = 150;
 
 export class DesertWorld {
 	scene: THREE.Scene;
 	colliders: CircleCollider[] = [];
-	/** walls and building sides (the forts) */
+	/** walls and building sides (the citadel's) */
 	segments: SegmentCollider[] = [];
-	forts: Forts;
+	citadel: Citadel;
 	instanceMatrix: THREE.Matrix4;
 	instancePosition: THREE.Vector3;
 	sky: THREE.Mesh;
-	/** the landform: flat under the fortress, swells, dune fields and whoops beyond */
+	/** the landform: flat under the citadel, swells, dune fields and whoops beyond */
 	terrain: DesertTerrain;
-	ground: TerrainMesh;
+	terrainMesh: TerrainMesh;
+	/**
+	 * What everything stands on: the citadel's floor inside it (its tiers and
+	 * ramps), the terrain everywhere else (the car, the robot, the camera and
+	 * every effect that meets the ground ask it).
+	 */
+	ground: Ground;
 	/** sand streamers and dust devils */
 	wind: DesertWind;
 	sun: THREE.DirectionalLight;
 	/** the sun's cascaded shadows of moving things; their splits follow the view camera's lens */
 	csm: CSMShadowNode;
-	/** the cascades with the fortress's cached shadow levels */
+	/** the cascades with the citadel's cached shadow levels */
 	shadows: SunShadowNode;
 	private lens = { fov: 0, aspect: 0 };
 	far: THREE.Group;
 	tiles: RockTile[] = [];
 	readonly cameraObstacles: THREE.Object3D[] = [];
 
-	constructor( scene: THREE.Scene ) {
+	constructor( scene: THREE.Scene, citadel: CitadelAsset ) {
 
 		this.scene = scene;
 		this.colliders = [];
@@ -177,19 +185,29 @@ export class DesertWorld {
 		this.sky.renderOrder = - 1;
 		scene.add( this.sky );
 
-		// the fortress first: its grounds (and car ring) are where the land is levelled
-		this.forts = new Forts( scene );
-		this.terrain = new DesertTerrain( this.forts.list.map( ( f ) => ( { x: f.plan.site.x, z: f.plan.site.z, r0: f.plan.barrier + PAD_MARGIN[ 0 ], r1: f.plan.barrier + PAD_MARGIN[ 1 ] } ) ) );
-		const sky = this.forts.skyVisibility;
+		// the citadel first: its grounds (and car ring) are where the land is levelled
+		this.citadel = new Citadel( scene, citadel );
+		const site = this.citadel.plan.site, barrier = this.citadel.plan.barrier;
+		this.terrain = new DesertTerrain( [ { x: site.x, z: site.z, r0: barrier + PAD_MARGIN[ 0 ], r1: barrier + PAD_MARGIN[ 1 ] } ] );
+		const sky = this.citadel.skyVisibility;
 		this.terrain.occlusion = ( position, normal ) => sky.node( position, normal );
-		this.ground = new TerrainMesh( scene, this.terrain, groundMaterial );
+		this.terrainMesh = new TerrainMesh( scene, this.terrain, groundMaterial );
+		const floor = this.citadel.floor, terrain = this.terrain;
+		this.ground = {
+			height: ( x, z ) => {
+
+				const h = floor.height( x, z );
+				return Number.isNaN( h ) ? terrain.height( x, z ) : h;
+
+			},
+		};
 		this.wind = new DesertWind( scene, this.terrain );
 
 		this.buildMountains();
 		this.buildRocks();
-		this.cameraObstacles.push( ...this.forts.cameraMeshes, ...this.tiles.filter( ( tile ) => tile.collide ).map( ( tile ) => tile.mesh ) );
-		this.colliders.push( ...this.forts.circles );
-		this.segments.push( ...this.forts.segments );
+		this.cameraObstacles.push( ...this.citadel.cameraMeshes, ...this.tiles.filter( ( tile ) => tile.collide ).map( ( tile ) => tile.mesh ) );
+		this.colliders.push( ...this.citadel.circles );
+		this.segments.push( ...this.citadel.segments );
 
 		// lights
 		this.sun = new THREE.DirectionalLight( SUN_COLOR, SUN_LUX );
@@ -206,7 +224,7 @@ export class DesertWorld {
 		this.sun.target.position.set( 0, 0, 0 );
 		this.csm = new CSMShadowNode( this.sun, { cascades: SHADOW_CASCADES, maxFar: SHADOW_FAR, mode: 'practical', lightMargin: 120 } );
 		this.csm.fade = true;
-		this.shadows = new SunShadowNode( this.sun, this.csm, this.forts.staticCasters, { levels: STATIC_SHADOW_LEVELS, margin: 160, casterHeight: 45 } );
+		this.shadows = new SunShadowNode( this.sun, this.csm, this.citadel.staticCasters, { levels: STATIC_SHADOW_LEVELS, margin: 160, casterHeight: CASTER_HEIGHT } );
 		sc.shadowNode = this.shadows;
 		scene.add( this.sun, this.sun.target );
 		// the fill is the environment alone (the sky and the sunlit sand, baked): a separate hemisphere light counted it twice
@@ -271,7 +289,7 @@ export class DesertWorld {
 
 	private cleared( x: number, z: number, r: number ): boolean {
 
-		for ( const e of this.forts.exclusions ) {
+		for ( const e of this.citadel.exclusions ) {
 
 			const dx = x - e.x, dz = z - e.z;
 			if ( dx * dx + dz * dz < ( e.r + r ) * ( e.r + r ) ) return true;
@@ -284,13 +302,13 @@ export class DesertWorld {
 
 	/**
 	 * For the start's shader warm-up: everything the world can show drawn at
-	 * once (the fortress's distance-hidden detail, both terrain patch draws).
+	 * once (the citadel's distance-hidden classes, both terrain patch draws).
 	 * Returns the restore.
 	 */
 	reveal(): () => void {
 
-		const detail = this.forts.showAllDetail();
-		const terrain = this.ground.reveal();
+		const detail = this.citadel.showAllDetail();
+		const terrain = this.terrainMesh.reveal();
 		return () => {
 
 			detail();
@@ -302,10 +320,10 @@ export class DesertWorld {
 
 	}
 
-	/** GPU work done once at start, after the renderer is up (the fortress's ambient occlusion). */
+	/** GPU work done once at start, after the renderer is up (the citadel's ambient occlusion). */
 	prepare( renderer: THREE.WebGPURenderer ) {
 
-		this.forts.bake( renderer );
+		this.citadel.bake( renderer );
 
 	}
 
@@ -313,10 +331,10 @@ export class DesertWorld {
 	update( camera, focus, dt = 1 / 60 ) {
 
 		this.sky.position.copy( camera.position );
-		this.ground.update( camera );
+		this.terrainMesh.update( camera );
 		this.wind.update( camera, dt );
-		this.forts.update( camera );
-		for ( const mesh of this.forts.toggled ) this.shadows.invalidate( mesh );
+		this.citadel.update( camera );
+		for ( const mesh of this.citadel.toggled ) this.shadows.invalidate( mesh );
 		this.far.position.set( camera.position.x, 0, camera.position.z );
 
 		const m = this.instanceMatrix;
@@ -337,7 +355,7 @@ export class DesertWorld {
 					if ( first < 0 ) first = i;
 					last = i;
 					it.wx = x; it.wz = z;
-					// nothing of the scatter lies inside a fort's grounds (its boulders would stand in the walls)
+					// nothing of the scatter lies inside the citadel's grounds (its boulders would stand in the walls)
 					const cleared = this.cleared( x, z, it.r );
 					// bedded a quarter of its height, deeper on a slope so its downhill side does not stand proud
 					const h = cleared ? - 50 : this.terrain.height( x, z );

@@ -1,14 +1,16 @@
 import { DataTexture, FloatType, HalfFloatType, LinearFilter, Matrix4, NearestFilter, RedFormat, StorageTexture, Vector3, type Mesh, type Node, type WebGPURenderer } from 'three/webgpu'
 import { Fn, Loop, atan, clamp, cos, float, instanceIndex, int, ivec2, max, min, mix, sin, smoothstep, texture, textureLoad, textureStore, uniform, uvec2, vec2, vec3, vec4 } from 'three/tsl'
+import type { CitadelFloor } from './floor'
 
 /**
- * How much of the sky each point round the fortress sees: the ambient
- * occlusion of its walls, containers, canopies and alleys, baked once.
+ * How much of the sky each point round the citadel sees: the ambient
+ * occlusion of its walls, towers, halls and terraces, baked once.
  *
- * 1. The fortress's heights, top-down (the highest surface over every
- *    0.42 m cell), rasterized on the CPU from its meshes at start.
+ * 1. The citadel's heights, top-down (the highest surface over every
+ *    0.73 m cell), rasterized on the CPU from its meshes at start.
  * 2. One GPU compute pass: from every cell, at three heights over the
- *    ground (0.3, 2.5 and 7 m), the horizon in 16 directions out to ~36 m.
+ *    floor under it (0.3, 2.5 and 7 m: the slices follow the tiers, read
+ *    from the floor map), the horizon in 16 directions out to ~36 m.
  *    From the horizons: the sky a level surface sees (cosine-weighted), and
  *    the sky a wall facing each of the four quarters sees (so a wall is not
  *    darkened by itself, only by what stands in front of it).
@@ -21,7 +23,7 @@ import { Fn, Loop, atan, clamp, cos, float, instanceIndex, int, ivec2, max, min,
  * comes in from the open sides.
  */
 
-const CELLS = 1024
+const CELLS = 1536
 /** heights of the slices over the ground (m); above the last the air is taken as open by 14 m */
 const SLICES = [0.3, 2.5, 7]
 const DIRECTIONS = 16
@@ -47,8 +49,10 @@ export class SkyVisibility {
   private readonly level: StorageTexture
   /** 0 until baked: an unbaked map reads as open sky */
   private readonly baked = uniform(0)
+  private readonly floor: CitadelFloor
 
-  constructor(meshes: readonly Mesh[], centreX: number, centreZ: number, half: number) {
+  constructor(meshes: readonly Mesh[], floor: CitadelFloor, centreX: number, centreZ: number, half: number) {
+    this.floor = floor
     this.x0 = centreX - half
     this.z0 = centreZ - half
     this.size = half * 2
@@ -68,7 +72,7 @@ export class SkyVisibility {
     this.level = target()
   }
 
-  /** The fortress's highest surface over a world point (m; 0 open ground, or outside the map). */
+  /** The citadel's highest surface over a world point (m; 0 open ground, or outside the map). */
   topAt(x: number, z: number): number {
     const i = Math.floor(((x - this.x0) / this.size) * CELLS), j = Math.floor(((z - this.z0) / this.size) * CELLS)
     return i < 0 || j < 0 || i >= CELLS || j >= CELLS ? 0 : this.top[j * CELLS + i]
@@ -129,8 +133,11 @@ export class SkyVisibility {
       const j = int(instanceIndex.div(CELLS))
       const at = vec2(float(i).add(0.5), float(j).add(0.5)).mul(cell)
       const out = ivec2(i, j)
+      // the slices stand over the floor under the cell
+      const base = this.floor.node(at.add(vec2(this.x0, this.z0))).height
       const levels: Node<'float'>[] = []
-      SLICES.forEach((y, s) => {
+      SLICES.forEach((slice, s) => {
+        const y = base.add(slice)
         const quarter = vec4(0).toVar()
         const up = float(0).toVar()
         Loop(DIRECTIONS, ({ i: k }) => {
@@ -155,7 +162,8 @@ export class SkyVisibility {
         textureStore(this.quarters[s], uvec2(out), quarter.mul(Math.PI / DIRECTIONS))
         levels.push(up.div(DIRECTIONS))
       })
-      const top = textureLoad(this.heights, out).r
+      // the cell's top over its floor (a roof over a floor, or a solid mass)
+      const top = textureLoad(this.heights, out).r.sub(base)
       textureStore(this.level, uvec2(out), vec4(levels[0], levels[1], levels[2], top))
     })().compute(CELLS * CELLS, [64])
     renderer.compute(kernel)
@@ -164,15 +172,15 @@ export class SkyVisibility {
 
   /**
    * The sky a surface at world `position` with unit `normal` sees (0..1): its
-   * ambient occlusion. 1 outside the fortress's rectangle, and before the bake.
+   * ambient occlusion. 1 outside the citadel's rectangle, and before the bake.
    */
   node(position: Node<'vec3'>, normal: Node<'vec3'>): Node<'float'> {
     const p = position.add(normal.mul(vec3(...OFFSET)))
     const uv = p.xz.sub(vec2(this.x0, this.z0)).div(this.size)
     const inside = smoothstep(0, 0.02, min(min(uv.x, uv.y), min(float(1).sub(uv.x), float(1).sub(uv.y))))
     const level = texture(this.level, uv)
-    // the slice pair the height falls between
-    const y = p.y
+    // the slice pair the height over the floor falls between
+    const y = p.y.sub(this.floor.node(p.xz).height)
     const t01 = clamp(y.sub(SLICES[0]).div(SLICES[1] - SLICES[0]), 0, 1)
     const t12 = clamp(y.sub(SLICES[1]).div(SLICES[2] - SLICES[1]), 0, 1)
     const low = mix(texture(this.quarters[0], uv), texture(this.quarters[1], uv), t01)

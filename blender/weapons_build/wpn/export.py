@@ -1,4 +1,4 @@
-"""Game export of a weapon: `public/models/<asset>.{json,bin}`.
+"""Game export of a weapon: `assets/<asset>.{json,bin}`.
 
 One rigid body in the weapon frame (see kit.py), stored per material slot with
 the characters' mesh encoding (quantized positions, octahedral normals; see
@@ -10,7 +10,7 @@ import os
 import numpy as np
 import bpy
 
-OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'public', 'models'))
+OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets'))
 
 
 def _mesh_arrays(o, weapon):

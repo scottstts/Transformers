@@ -2,12 +2,11 @@ import type { SoldierManifest } from '../../content/soldier/asset'
 import type { CommanderCue } from '../../content/commander/moves'
 import { CommanderAudio } from '../../content/commander/audio'
 import type { AudioMix } from '../../audio/mix'
-import type { Fort, Sector } from '../../worlds/desert/fort'
-import type { Spawn } from '../../worlds/desert/fort/plan'
+import type { Citadel, Sector, Spawn } from '../../worlds/desert/citadel'
 import { wrap } from '../math'
 import { Commander, COMMANDER } from './commander'
 import { DEBRIS_FADE, DEBRIS_LIE } from './debris'
-import { FortNav, approach, waypoint } from './navigation'
+import { CitadelNav, approach, waypoint } from './navigation'
 import { ATTACK_WINDOW, ENGAGE_GAP, SLASH_REACH } from './engage'
 import { SwingTrail } from '../../content/transformer/combat/fx/trail'
 import { Vector3 } from 'three/webgpu'
@@ -48,20 +47,20 @@ export function comboLength(u: number): number {
 }
 
 /**
- * The fortress's commander and its post, the citadel. One lives at a time.
+ * The citadel's commander and its post, the crown. One lives at a time.
  *
  * At peace it walks the parade ground, the lance at the slope. When any of
- * the fortress's garrisons is alerted it lights the lance, levels it and
+ * the citadel's garrisons is alerted it lights the lance, levels it and
  * makes for the robot through the gates (its own way-finding, built for its
- * radius), wherever in the fortress the fight is; it stands down with the
- * garrisons and goes back to the citadel. In the fight it makes for a
+ * radius), wherever in the citadel the fight is; it stands down with the
+ * garrisons and goes back to the crown. In the fight it makes for a
  * stand-off toward the robot's front and holds its side once in reach,
  * strafing to keep the distance with its lance on the robot; in reach and
  * facing it rolls a combo: moves 1-2, or the whole combo (its fourth move
  * knocks the robot back) one time in three. After a combo it waits COOLDOWN.
  *
  * Destroyed, it breaks apart like a soldier; COMMANDER_RESPAWN seconds later
- * the next rolls out of the citadel's vehicle bay.
+ * the next rolls out of the crown's vehicle bay.
  */
 export class CommanderPost {
   readonly unit: Commander
@@ -73,10 +72,11 @@ export class CommanderPost {
   readonly stand: number
   readonly attackGap: number
   readonly reachGap: number
-  readonly fort: Fort
+  readonly citadel: Citadel
   readonly audio: CommanderAudio
-  private readonly nav: FortNav
-  private readonly citadel: Sector
+  private readonly nav: CitadelNav
+  /** its home district, the crown */
+  private readonly home: Sector
   private readonly door: Spawn | null
   private alert = false
   /** seconds until the next one rolls out, while none lives */
@@ -88,27 +88,27 @@ export class CommanderPost {
   private serial = 0
 
   /** `scale`: its height over a soldier's */
-  constructor(fort: Fort, manifest: SoldierManifest, mix: AudioMix, scale: number) {
-    this.fort = fort
+  constructor(citadel: Citadel, manifest: SoldierManifest, mix: AudioMix, scale: number) {
+    this.citadel = citadel
     this.stand = ENGAGE_GAP * scale * RANGE
     this.attackGap = (ENGAGE_GAP + ATTACK_WINDOW) * scale * RANGE
     this.reachGap = SLASH_REACH * scale * RANGE
-    this.nav = new FortNav(fort.plan, COMMANDER.radius)
-    const citadel = fort.plan.sectors.find((s) => s.role === 'citadel')
-    if (!citadel) throw new Error('The fortress has no citadel for its commander')
-    this.citadel = citadel
-    this.door = fort.plan.spawns.find((s) => s.sector === citadel.index) ?? null
+    this.nav = new CitadelNav(citadel.plan, COMMANDER.radius)
+    const home = citadel.plan.sectors.find((s) => s.role === 'citadel')
+    if (!home) throw new Error('The citadel has no crown district for its commander')
+    this.home = home
+    this.door = citadel.plan.spawns.find((s) => s.sector === home.index) ?? null
     this.unit = new Commander(manifest)
     this.unit.onCue = (cue) => this.cue(cue)
     this.audio = new CommanderAudio(mix)
-    // the first stands on the parade ground facing the main gate
-    const p = fort.toWorld(citadel.yard.at[0], citadel.yard.at[1])
-    this.unit.reset(p.x, p.z, fort.plan.site.yaw, this.serial++)
-    this.unit.sector = citadel.index
+    // the first stands on the crown's parade ground facing the main gate
+    const p = citadel.toWorld(home.yard.at[0], home.yard.at[1])
+    this.unit.reset(p.x, p.z, citadel.plan.site.yaw, this.serial++, citadel.floorAt(p.x, p.z))
+    this.unit.sector = home.index
   }
 
   /**
-   * Per step: `alert` while any of the fortress's garrisons fights, `clock`
+   * Per step: `alert` while any of the citadel's garrisons fights, `clock`
    * the horde's; `listener` the camera (for its sound).
    */
   update(dt: number, clock: number, t: EnemyTarget, targetSector: number, alert: boolean, listener: { x: number; y: number; z: number }): void {
@@ -121,7 +121,7 @@ export class CommanderPost {
       this.audio.update(0, this.distance())
       return
     }
-    u.sector = this.fort.sector(u.x, u.z)
+    u.sector = this.citadel.sector(u.x, u.z)
     if (alert && !this.alert) this.nextCombo = Math.max(this.nextCombo, clock + FIRST_COMBO)
     if (!alert && this.alert) this.beat.k = -1
     this.alert = alert
@@ -150,7 +150,7 @@ export class CommanderPost {
     const gap = d - t.radius - COMMANDER.radius
     u.gap = gap
     u.goal.face = bearing
-    if (waypoint(this.fort, this.nav, u.x, u.z, u.sector, targetSector, _w)) {
+    if (waypoint(this.citadel, this.nav, u.x, u.z, u.sector, targetSector, _w)) {
       u.goal.x = _w.x
       u.goal.z = _w.z
       u.goal.face = Math.atan2(_w.x - u.x, _w.z - u.z)
@@ -162,7 +162,7 @@ export class CommanderPost {
     // in reach it holds its side of the robot and only keeps the distance (circling for a better one kept it from fighting); out of it, it comes round toward the robot's front
     const inReach = gap <= this.attackGap && gap >= this.stand * 0.5
     const a = inReach ? around : around + wrap(t.heading - around) * FRONT_BIAS
-    approach(this.fort, this.nav, u.x, u.z, t.x + Math.sin(a) * stand, t.z + Math.cos(a) * stand, u.sector, _w)
+    approach(this.citadel, this.nav, u.x, u.z, t.x + Math.sin(a) * stand, t.z + Math.cos(a) * stand, u.sector, _w)
     u.goal.x = _w.x
     u.goal.z = _w.z
     u.goal.speed = d > stand + 6 ? COMMANDER.chargeSpeed : COMMANDER.engageSpeed
@@ -174,21 +174,21 @@ export class CommanderPost {
   /** At peace: round the parade ground, stopping to look about; back through the gates first if the fight carried it off. */
   private patrol(clock: number): void {
     const u = this.unit
-    const fort = this.fort
+    const citadel = this.citadel
     u.goal.ready = false
     u.goal.drive = true
-    if (waypoint(fort, this.nav, u.x, u.z, u.sector, this.citadel.index, _w)) {
+    if (waypoint(citadel, this.nav, u.x, u.z, u.sector, this.home.index, _w)) {
       u.goal.x = _w.x
       u.goal.z = _w.z
       u.goal.face = Math.atan2(_w.x - u.x, _w.z - u.z)
       u.goal.speed = COMMANDER.engageSpeed
       return
     }
-    const yard = this.citadel.yard
+    const yard = this.home.yard
     const b = this.beat
     const point = (k: number): { x: number; z: number } => {
       const a = (k / BEAT_POINTS) * Math.PI * 2
-      return fort.toWorld(yard.at[0] + Math.sin(a) * yard.r * BEAT_RING, yard.at[1] + Math.cos(a) * yard.r * BEAT_RING, _p)
+      return citadel.toWorld(yard.at[0] + Math.sin(a) * yard.r * BEAT_RING, yard.at[1] + Math.cos(a) * yard.r * BEAT_RING, _p)
     }
     if (b.k < 0) {
       let best = Infinity
@@ -202,7 +202,7 @@ export class CommanderPost {
     const p = point(b.k)
     const d = Math.hypot(p.x - u.x, p.z - u.z)
     if (d > 1.2) {
-      approach(fort, this.nav, u.x, u.z, p.x, p.z, u.sector, _w)
+      approach(citadel, this.nav, u.x, u.z, p.x, p.z, u.sector, _w)
       u.goal.x = _w.x
       u.goal.z = _w.z
       u.goal.face = Math.atan2(_w.x - u.x, _w.z - u.z)
@@ -215,7 +215,7 @@ export class CommanderPost {
     if (b.wait === 0) {
       b.wait = clock + PATROL_PAUSE[0] + Math.random() * (PATROL_PAUSE[1] - PATROL_PAUSE[0])
       // it looks out from the parade ground's middle, over the ground it holds
-      const c = fort.toWorld(yard.at[0], yard.at[1], _c)
+      const c = citadel.toWorld(yard.at[0], yard.at[1], _c)
       b.look = Math.atan2(p.x - c.x, p.z - c.z) + (Math.random() - 0.5) * 1.2
     }
     u.goal.face = b.look
@@ -225,7 +225,7 @@ export class CommanderPost {
     }
   }
 
-  /** Its parts lie and burn away; COMMANDER_RESPAWN after it fell, the next rolls out of the citadel's bay. */
+  /** Its parts lie and burn away; COMMANDER_RESPAWN after it fell, the next rolls out of the crown's bay. */
   private decay(dt: number): void {
     const u = this.unit
     const debris = u.debris
@@ -239,10 +239,10 @@ export class CommanderPost {
     this.respawn -= dt
     if (this.respawn > 0 || (debris && debris.age < DEBRIS_LIE + DEBRIS_FADE)) return
     const door = this.door
-    const at = door ? this.fort.toWorld(door.at[0], door.at[1]) : this.fort.toWorld(this.citadel.yard.at[0], this.citadel.yard.at[1])
-    const exit = door ? this.fort.toWorld(door.exit[0], door.exit[1]) : at
-    u.reset(at.x, at.z, Math.atan2(exit.x - at.x, exit.z - at.z) || this.fort.plan.site.yaw, this.serial++)
-    u.sector = this.citadel.index
+    const at = door ? this.citadel.toWorld(door.at[0], door.at[1]) : this.citadel.toWorld(this.home.yard.at[0], this.home.yard.at[1])
+    const exit = door ? this.citadel.toWorld(door.exit[0], door.exit[1]) : at
+    u.reset(at.x, at.z, Math.atan2(exit.x - at.x, exit.z - at.z) || this.citadel.plan.site.yaw, this.serial++, this.citadel.floorAt(at.x, at.z))
+    u.sector = this.home.index
     if (door) {
       u.goal.x = exit.x
       u.goal.z = exit.z
@@ -300,7 +300,7 @@ export class CommanderPost {
 
   private distance(): number {
     const u = this.unit, l = this.listener
-    return Math.hypot(u.x - l.x, 3 - l.y, u.z - l.z)
+    return Math.hypot(u.x - l.x, u.floor + 3 - l.y, u.z - l.z)
   }
 }
 

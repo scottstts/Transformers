@@ -6,7 +6,7 @@ import type { Ground } from '../../game/ground.ts';
 
 /**
  * Crust thrown out by a blast: slabs of hardpan and stones (or, off the
- * fortress's paving, broken concrete), flung
+ * citadel's ceramic, its chips), flung
  * ballistically, tumbling until they land, then lying where they fell until
  * they settle into the sand. One instanced draw of real (shadow-casting)
  * rock geometry; each chunk is stored once at birth and its flight, spin and
@@ -28,7 +28,7 @@ export class Debris {
 	private readonly a0: THREE.InstancedBufferAttribute;
 	private readonly a1: THREE.InstancedBufferAttribute;
 	private readonly a2: THREE.InstancedBufferAttribute;
-	/** per chunk: 1 broken concrete (thrown off paving), 0 the sand's crust */
+	/** per chunk: 1 a ceramic chip (thrown off the citadel's floor), 0 the sand's crust */
 	private readonly kind: THREE.InstancedBufferAttribute;
 	/** per chunk: the ground's height where it comes down (its flight is measured from there) */
 	private readonly floor: THREE.InstancedBufferAttribute;
@@ -95,9 +95,9 @@ export class Debris {
 		const crust = mix( color( 0x9c8266 ), color( 0xc9b090 ), n.r );
 		const stone = mix( color( 0x5f4d3e ), color( 0x8b735c ), n.g );
 		const sand = mix( crust, stone, smoothstep( 0.6, 0.75, v0.w.mul( 3.7 ).fract() ) );
-		// broken concrete: the slab's grey skin on its top, the aggregate showing in its fractures
-		const aggregate = mix( color( 0x4d4943 ), color( 0x756f64 ), smoothstep( 0.45, 0.62, N( positionLocal.xz.mul( 6.1 ) ).r ) );
-		const slab = mix( aggregate, mix( color( 0x98948b ), color( 0xaaa59b ), n.g ), smoothstep( 0.35, 0.8, normalLocal.y ) );
+		// ceramic chips: the satin bone skin on their top, the grey substrate showing in their fractures
+		const aggregate = mix( color( 0x7a7671 ), color( 0x8e8a84 ), smoothstep( 0.45, 0.62, N( positionLocal.xz.mul( 6.1 ) ).r ) );
+		const slab = mix( aggregate, mix( color( 0xc2bbae ), color( 0xd6d0c4 ), n.g ), smoothstep( 0.35, 0.8, normalLocal.y ) );
 		m.colorNode = mix( sand, slab, concrete ).mul( mix( float( 0.72 ), float( 1.04 ), smoothstep( - 0.6, 0.6, normalLocal.y ) ) );
 		m.roughnessNode = float( 0.93 );
 		this.mesh = new THREE.Mesh( geometry, m );

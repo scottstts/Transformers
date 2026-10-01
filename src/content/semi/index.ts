@@ -12,7 +12,7 @@ import { SemiEffects } from './effects'
 import { createSemiCombat } from './combat'
 
 export const SEMI_LABEL = 'Semi'
-/** The robot's gun (public/models/semi-gun.*). */
+/** The robot's gun (semi-gun.* on the asset CDN). */
 export const SEMI_WEAPON = 'semi-gun'
 
 /** The kingpin: where the van rides the fifth wheel (authoring frame, m; 2.3 m behind the car origin). */

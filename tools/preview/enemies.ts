@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readMirror } from '../mirror.ts'
 import { PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three/webgpu'
 import { createHeadlessRenderer, writePng } from './headless'
 import { bakeEnvironment, configureRenderer, createPostPipeline } from '../../src/rendering/look'
@@ -14,8 +14,8 @@ const W = 960
 const H = 540
 
 function readSoldier(): SoldierAsset {
-  const manifest = JSON.parse(readFileSync('public/models/soldier.json', 'utf8')) as SoldierManifest
-  const bin = readFileSync('public/models/soldier.bin')
+  const manifest = JSON.parse(readMirror('soldier.json', 'utf8')) as SoldierManifest
+  const bin = readMirror('soldier.bin')
   return decodeSoldierAsset(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength))
 }
 

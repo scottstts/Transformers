@@ -1,6 +1,6 @@
 # Bat character
 
-The Tumbler, its robot (5.4 m, about the pickup robot's size) and the transformation are authored procedurally in Blender (`blender/bat_build/`, package `btb`) and exported as `public/models/bat.{json,bin}` in the shared container and runtime (`src/content/transformer/`). The spear is `public/models/bat-spear.{json,bin}` (weapons.md). Export with:
+The Tumbler, its robot (5.4 m, about the pickup robot's size) and the transformation are authored procedurally in Blender (`blender/bat_build/`, package `btb`) and exported as `assets/bat.{json,bin}` in the shared container and runtime (`src/content/transformer/`). The spear is `assets/bat-spear.{json,bin}` (weapons.md). Export with:
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b blender/bat.blend --python blender/bat_build/export_game.py

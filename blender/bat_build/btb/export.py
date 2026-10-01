@@ -30,7 +30,7 @@ from . import dims as D
 
 FRAMES = bake.FRAMES
 NAME = 'bat'
-OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'public', 'models'))
+OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets'))
 MAT_PREFIX = 'bat.'
 
 

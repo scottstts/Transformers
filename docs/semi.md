@@ -1,6 +1,6 @@
 # Semi character
 
-The Tesla Semi tractor with a 28 ft pup van, its robot (a seven-metre heavy, a head taller than the Cybertruck's) and the transformation are authored procedurally in Blender (`blender/semi_build/`, package `smb`). They are exported as `public/models/semi.{json,bin}` in the shared container and runtime (`src/content/transformer/`). Export with:
+The Tesla Semi tractor with a 28 ft pup van, its robot (a seven-metre heavy, a head taller than the Cybertruck's) and the transformation are authored procedurally in Blender (`blender/semi_build/`, package `smb`). They are exported as `assets/semi.{json,bin}` in the shared container and runtime (`src/content/transformer/`). Export with:
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b blender/semi.blend --python blender/semi_build/export_game.py

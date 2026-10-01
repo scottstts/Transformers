@@ -1,10 +1,10 @@
 # Weapons
 
 The robots' combat weapons are authored procedurally in Blender (`blender/weapons_build/`, package `wpn`) into `blender/weapons.blend`. Each is exported as its own asset, loaded with its character:
-- `public/models/cybertruck-axe.{json,bin}`;
-- `public/models/ferrari-f1-sword.{json,bin}`;
-- `public/models/semi-gun.{json,bin}`;
-- `public/models/bat-spear.{json,bin}`.
+- `assets/cybertruck-axe.{json,bin}`;
+- `assets/ferrari-f1-sword.{json,bin}`;
+- `assets/semi-gun.{json,bin}`;
+- `assets/bat-spear.{json,bin}`.
 
 The large character assets are not touched. Build, save the `.blend` and export with:
 

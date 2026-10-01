@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readMirror } from '../mirror.ts'
 import { PerspectiveCamera, Scene, Vector3 } from 'three/webgpu'
 import { createHeadlessRenderer, writePng } from './headless'
 import { bakeEnvironment, configureRenderer, createPostPipeline } from '../../src/rendering/look'
@@ -54,8 +54,8 @@ export interface FightSheet {
 export async function renderFightSheet(out: string, sheet: FightSheet): Promise<void> {
   const entry = rosterEntry(sheet.car)
   const read = (name: string): [unknown, ArrayBuffer] => {
-    const bin = readFileSync(`public/models/${name}.bin`)
-    return [JSON.parse(readFileSync(`public/models/${name}.json`, 'utf8')), bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength)]
+    const bin = readMirror(`${name}.bin`)
+    return [JSON.parse(readMirror(`${name}.json`, 'utf8')), bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength)]
   }
   const [manifest, bin] = read(entry.id)
   const asset = decodeTransformerAsset(manifest as TransformerManifest, bin, entry.label)

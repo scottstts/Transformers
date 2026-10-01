@@ -123,10 +123,16 @@ export class Soldier implements HordeInstance {
   blade = 0
   distance = 0
 
-  /** ground point (world x, z), height above the sand, velocities */
+  /**
+   * ground point (world x, z), height above the floor under it, velocities;
+   * `floor` is that floor's height (the horde keeps it up to date as the
+   * body moves), so a soldier stands, flies and lands over whichever level
+   * it is on
+   */
   x = 0
   z = 0
   y = 0
+  floor = 0
   vx = 0
   vz = 0
   vy = 0
@@ -198,9 +204,9 @@ export class Soldier implements HordeInstance {
     this.anim.set(this.poses.guard)
   }
 
-  /** Put a fresh soldier on the sand at (x, z) facing `yaw`. */
-  reset(x: number, z: number, yaw: number, serial: number): void {
-    this.x = x; this.z = z; this.y = 0
+  /** Put a fresh soldier on the floor (at height `floor`) at (x, z) facing `yaw`. */
+  reset(x: number, z: number, yaw: number, serial: number, floor = 0): void {
+    this.x = x; this.z = z; this.y = 0; this.floor = floor
     this.vx = this.vz = this.vy = 0
     this.yaw = yaw
     this.health = this.tune.health
@@ -233,7 +239,7 @@ export class Soldier implements HordeInstance {
     this.sector = -1
     this.posed = false
     this.goal.x = x; this.goal.z = z; this.goal.face = yaw; this.goal.speed = 0; this.goal.drive = false; this.goal.ready = false
-    this.place.x = x; this.place.z = z; this.place.y = 0; this.place.yaw = yaw
+    this.place.x = x; this.place.z = z; this.place.y = floor; this.place.yaw = yaw
     writePose(this.anim, this.pose)
     this.refresh()
   }
@@ -645,12 +651,12 @@ export class Soldier implements HordeInstance {
     this.pose.spin = this.spin
     this.blade += (this.bladeTarget() - this.blade) * Math.min(1, dt * 6)
     this.heat = Math.max(0, this.heat - dt * 0.5)
-    // lying: the pelvis near the sand
+    // lying: the pelvis near the floor
     const lie = 1 - _v.set(0, 0, 1).applyQuaternion(this.tilt).z
     const lying = Math.min(1, Math.max(0, lie)) * (this.rig.dims.hipZ - this.tune.lie)
     this.place.x = this.x
     this.place.z = this.z
-    this.place.y = this.y - lying
+    this.place.y = this.floor + this.y - lying
     this.place.yaw = this.yaw
     this.posed = false
   }

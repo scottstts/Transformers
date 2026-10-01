@@ -22,7 +22,7 @@ from mathutils import Matrix, Vector
 from . import bake, motion, rig, fold, mech, choreo
 
 FRAMES = bake.FRAMES
-OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'public', 'models'))
+OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets'))
 
 
 def _mesh_arrays(o, M):

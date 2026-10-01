@@ -1,7 +1,7 @@
-import type { Fort } from '../../worlds/desert/fort'
+import type { Citadel } from '../../worlds/desert/citadel'
 import { wrap } from '../math'
 import { SOLDIER, type Soldier } from './soldier'
-import { approach, waypoint, type FortNav } from './navigation'
+import { approach, waypoint, type CitadelNav } from './navigation'
 import type { EnemyTarget } from './horde'
 
 /** How many may be swinging at once, and how many close in to the ring at all. */
@@ -30,7 +30,7 @@ export const REEL = 1.2
  * here, near to far); `swinging` those already mid-swing. Calls `swing` for
  * each soldier that starts one.
  */
-export function engage(fort: Fort, nav: FortNav, fighters: Soldier[], t: EnemyTarget, targetSector: number, clock: number, swinging: number, swing: (s: Soldier) => void): void {
+export function engage(citadel: Citadel, nav: CitadelNav, fighters: Soldier[], t: EnemyTarget, targetSector: number, clock: number, swinging: number, swing: (s: Soldier) => void): void {
   for (const s of fighters) s.distance = Math.hypot(s.x - t.x, s.z - t.z)
   fighters.sort((a, b) => a.distance - b.distance)
   const engageR = Math.max(t.radius + ENGAGE_GAP, t.guard + 0.45) + SOLDIER.radius
@@ -41,7 +41,7 @@ export function engage(fort: Fort, nav: FortNav, fighters: Soldier[], t: EnemyTa
     const bearing = Math.atan2(t.x - s.x, t.z - s.z)
     s.goal.face = bearing
     // round through the gates when the robot is in another district
-    if (waypoint(fort, nav, s.x, s.z, s.sector, targetSector, _w)) {
+    if (waypoint(citadel, nav, s.x, s.z, s.sector, targetSector, _w)) {
       s.goal.x = _w.x
       s.goal.z = _w.z
       s.goal.face = Math.atan2(_w.x - s.x, _w.z - s.z)
@@ -57,7 +57,7 @@ export function engage(fort: Fort, nav: FortNav, fighters: Soldier[], t: EnemyTa
     const front = k < RING ? wrap(t.heading - around) * FRONT_BIAS : Math.sin(clock * 0.4 + s.serial) * 0.5
     const a = around + front
     // round whatever stands between it and its place in the ring
-    approach(fort, nav, s.x, s.z, t.x + Math.sin(a) * r, t.z + Math.cos(a) * r, s.sector, _w)
+    approach(citadel, nav, s.x, s.z, t.x + Math.sin(a) * r, t.z + Math.cos(a) * r, s.sector, _w)
     s.goal.x = _w.x
     s.goal.z = _w.z
     s.goal.speed = s.distance > r + 4 ? SOLDIER.chargeSpeed : SOLDIER.engageSpeed

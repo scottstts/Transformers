@@ -1,3 +1,4 @@
+import { fetchModel } from '../../assets'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
 /**
@@ -76,13 +77,10 @@ export interface SoldierAsset {
   shadow: BufferGeometry
 }
 
-/** A unit in the soldier's asset format (`public/models/<name>`): the soldier, or the commander. */
-export async function loadSoldierAsset(name = 'soldier', base = import.meta.env.BASE_URL): Promise<SoldierAsset> {
-  const root = `${base}models/${name}`
-  const [manifestResponse, binaryResponse] = await Promise.all([fetch(`${root}.json`), fetch(`${root}.bin`)])
-  if (!manifestResponse.ok) throw new Error(`${name} manifest: HTTP ${manifestResponse.status}`)
-  if (!binaryResponse.ok) throw new Error(`${name} geometry: HTTP ${binaryResponse.status}`)
-  return decodeSoldierAsset(await manifestResponse.json() as SoldierManifest, await binaryResponse.arrayBuffer())
+/** A unit in the soldier's asset format (`<name>.{json,bin}` on the asset CDN): the soldier, or the commander. */
+export async function loadSoldierAsset(name = 'soldier'): Promise<SoldierAsset> {
+  const { manifest, buffer } = await fetchModel<SoldierManifest>(name, name)
+  return decodeSoldierAsset(manifest, buffer)
 }
 
 export function decodeSoldierAsset(manifest: SoldierManifest, buffer: ArrayBuffer): SoldierAsset {

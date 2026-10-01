@@ -15,7 +15,7 @@ export interface RosterEntry {
   accent: string
   /** colour of its special's energy in the HUD (CSS): the light its special is made of */
   special: string
-  /** the robot's weapon asset (public/models/<weapon>.*), loaded with the car */
+  /** the robot's weapon asset (<weapon>.* on the asset CDN), loaded with the car */
   weapon: string
   load(): Promise<PlayableTransformerAsset>
   create(asset: PlayableTransformerAsset, contactEffects: ContactEffects, mix: AudioMix): Character

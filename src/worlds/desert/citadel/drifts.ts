@@ -5,18 +5,20 @@ import { groundSurface } from '../materials.ts'
 import { DUNE_WIND, valueNoise, type Occlusion } from '../terrain.ts'
 
 /**
- * Sand the wind has banked against the fortress: a drift along the foot of
- * every wall face that looks into the wind (the dunes' wind, terrain.ts),
- * highest against the wall and running out concave onto the ground, with a
- * low tail on the lee side. Its height wanders along the wall and it tapers
- * off at the ends; a face turned partly across the wind gathers less.
+ * Sand the wind has banked against the citadel's lowest walls: a drift along
+ * the foot of every wall face on T0 that looks into the wind (the dunes'
+ * wind, terrain.ts), highest against the wall and running out concave onto
+ * the ground, with a low tail on the lee side. Its height wanders along the
+ * wall and it tapers off at the ends; a face turned partly across the wind
+ * gathers less. The terraces above stay clean: the wind's sand load is near
+ * the ground.
  *
- * Built from the fortress's wall colliders (a capsule's side is its wall's
- * face; T-walls start inside their stem, over the footing), kept to faces
- * that stand in the open (the height map shows no roof beyond them: not
- * inside a building) and off the rampart. The drift's outer edge dips just
- * under the ground so the two meet along a line, never coplanar. Its sand is
- * the ground's own surface (`groundSurface`), so it reads as the same sand.
+ * Built from the wall colliders (a capsule's side is its wall's face, the
+ * drift starting just inside it), kept to faces whose ground beyond is T0 in
+ * the open: the height map shows neither a raised tier nor a roof a metre
+ * and three out. The drift's outer edge dips just under the ground so the
+ * two meet along a line, never coplanar. Its sand is the ground's own
+ * surface (`groundSurface`), so it reads as the same sand.
  */
 const STEP = 0.6
 const ACROSS = [0, 0.08, 0.2, 0.36, 0.56, 0.78, 1]
@@ -28,11 +30,10 @@ const LEE = 0.35
 const LEE_RUN = 3
 /** faces must look this far into the wind (cos) to gather sand */
 const FACING = 0.15
-/** a perimeter T-wall's collider radius: its drift starts inside the stem instead */
-const T_WALL_R = 0.55
+/** the drift starts this far inside the capsule's side (m) */
 const STEM_INSET = 0.15
-/** the rampart and other broad capsules are left bare */
-const BROAD = 1.2
+/** the ground beyond a face must be no higher than this (m): T0 paving, not a terrace */
+const LOW = 0.6
 /** the drift's edge sinks this far under the ground (m) */
 const DIP = 0.03
 /** drifts are grouped into square chunks this size (m), each its own draw, so those out of view are culled */
@@ -42,7 +43,6 @@ export function buildDrifts(segments: readonly SegmentCollider[], topAt: (x: num
   const chunks = new Map<string, { pos: number[]; idx: number[] }>()
   const wx = DUNE_WIND.x, wz = DUNE_WIND.z
   for (const s of segments) {
-    if (s.r > BROAD) continue
     const dx = s.bx - s.ax, dz = s.bz - s.az
     const length = Math.hypot(dx, dz)
     if (length < 1.5) continue
@@ -53,10 +53,10 @@ export function buildDrifts(segments: readonly SegmentCollider[], topAt: (x: num
       const into = -(nx * wx + nz * wz)
       const lee = into < -FACING
       if (into < FACING && !lee) continue
-      const start = s.r === T_WALL_R ? STEM_INSET : s.r - STEM_INSET
-      // open air beyond the face: no roof a metre and three out, at its middle
+      const start = s.r - STEM_INSET
+      // low open ground beyond the face: no terrace or roof a metre and three out, at its middle
       const mx = (s.ax + s.bx) / 2, mz = (s.az + s.bz) / 2
-      if (topAt(mx + nx * (s.r + 1), mz + nz * (s.r + 1)) > 0.6 || topAt(mx + nx * (s.r + 3), mz + nz * (s.r + 3)) > 0.6) continue
+      if (topAt(mx + nx * (s.r + 1), mz + nz * (s.r + 1)) > LOW || topAt(mx + nx * (s.r + 3), mz + nz * (s.r + 3)) > LOW) continue
       const chunk = `${Math.floor(mx / CHUNK)},${Math.floor(mz / CHUNK)}`
       if (!chunks.has(chunk)) chunks.set(chunk, { pos: [], idx: [] })
       const { pos, idx } = chunks.get(chunk)!

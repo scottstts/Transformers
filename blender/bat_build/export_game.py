@@ -4,7 +4,7 @@
         --python blender/bat_build/export_game.py
 
 Rebuilds the Tumbler, robot and mechanisms from the scripts, bakes the
-timeline (the density warp) and writes public/models/bat.{json,bin}. The open
+timeline (the density warp) and writes assets/bat.{json,bin}. The open
 .blend is not saved: the build is deterministic and the working file already
 carries the same timeline."""
 import sys

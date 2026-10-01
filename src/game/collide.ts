@@ -19,7 +19,17 @@ export function pushOut(p: { x: number; z: number }, r: number, segments: readon
     const dx = p.x - (s.ax + ex * t), dz = p.z - (s.az + ez * t)
     const d = Math.hypot(dx, dz)
     const min = s.r + r
-    if (d < min && d > 1e-5) {
+    if (d < min) {
+      if (d <= 1e-5) {
+        // dead on the core line (a grid point on a wall): out along the wall's normal
+        const l = Math.sqrt(len2)
+        const nx = l > 0 ? -ez / l : 1, nz = l > 0 ? ex / l : 0
+        p.x += nx * min
+        p.z += nz * min
+        if (min > out.depth) { out.nx = nx; out.nz = nz; out.depth = min }
+        hit = true
+        continue
+      }
       const depth = min - d
       p.x += (dx / d) * depth
       p.z += (dz / d) * depth
@@ -32,7 +42,12 @@ export function pushOut(p: { x: number; z: number }, r: number, segments: readon
     const dx = p.x - c.x, dz = p.z - c.z
     const d = Math.hypot(dx, dz)
     const min = c.r + r
-    if (d < min && d > 1e-5) {
+    if (d <= 1e-5) {
+      // dead on its centre: out along +x
+      p.x += min
+      if (min > out.depth) { out.nx = 1; out.nz = 0; out.depth = min }
+      hit = true
+    } else if (d < min) {
       const depth = min - d
       p.x += (dx / d) * depth
       p.z += (dz / d) * depth

@@ -31,3 +31,5 @@ __pycache__
 renders
 preview-out
 tasks
+# local mirror of the CDN assets (tools/assets.mjs)
+assets/

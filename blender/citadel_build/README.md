@@ -31,6 +31,15 @@ Every run writes its reports and caches to `out/`, which is created on demand an
 | Compile | `Blender -b --factory-startup --python compile.py` | builds the geometry, then audits and clips faces that lie on top of each other, up to 5 passes (`out/compiled_geometry.npz`, `out/compile_report.json`). About 8 minutes. |
 | Sync | in the live Blender: `runpy.run_path(".../run.py", init_globals={...})` | loads the compiled geometry, uploads it, saves `citadel.blend` (seconds). Globals: `RAW` (skip the compile), `FORCE_COMPILED`, `GROUPS`, `VIEW`, `SAVE`. |
 | Verify | `Blender -b --factory-startup --python-exit-code 1 --python verify.py [-- --scene]` | one PASS/FAIL table: layout and routes, compile freshness, coincident faces, material swaps, hygiene, budgets (`out/verify.json`, `out/verify.txt`). `--scene` audits the meshes stored in `citadel.blend`. |
+| Export | `Blender -b blender/citadel.blend --python-exit-code 1 --python blender/citadel_build/export_game.py` (from the repo root) | `assets/citadel.glb` (the meshes in `citadel.blend`, packed losslessly by `tools/citadel-pack.mjs`) and `assets/citadel.plan.json`. The .blend is not saved. |
+
+## Game export
+
+- One glTF node per `bucket × slot × class`, in the fort frame (glTF +Y up equals `(x, height, z)`), with identity transforms.
+- The game reads the node extras `ctd_bucket`, `ctd_slot`, `ctd_lod` and `ctd_triangles`. It never reads the node name, because three strips the dots from it.
+- Each vertex has a float position and the custom split normal, and nothing else: no UVs, colours or materials. The game supplies a world-space material for each slot.
+- `EXT_meshopt_compression` with no quantisation, decoded by GLTFLoader's `MeshoptDecoder`. Blender's own meshopt option quantises positions to 0.25 m over the citadel's extent, so it is not used.
+- The glTF exporter drops exact duplicate triangles (about 500 in all). Corners whose custom normal has zero length are written as +Y.
 
 ## Checks
 

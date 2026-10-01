@@ -3,7 +3,7 @@
     /Applications/Blender.app/Contents/MacOS/Blender -b --python blender/cybertruck_build/export_game.py
 
 Rebuilds the car, robot and mechanisms from the scripts, writes
-public/models/cybertruck.{json,bin}, bakes the timeline and saves a scrubbable
+assets/cybertruck.{json,bin}, bakes the timeline and saves a scrubbable
 copy as blender/cybertruck-transformer-baked.blend."""
 import sys
 import time

@@ -1,27 +1,29 @@
 import { pushOut, type Contact } from '../../../game/collide'
-import { sectorAt, type FortPlan, type Xz } from './plan'
-import { gatesOf } from './districts'
+import { districtAt, type CitadelPlan, type Xz } from './plan'
 
 /**
  * Where each district's garrison stands at peace and the beats it walks
  * (plan.ts `Post`): patrols circling the yard (alternate ones the other way
- * round), sentries pacing along the wall beside each of the district's
- * gates, pairs walking in from the gates toward the yard, guards pacing
+ * round), sentries pacing beside each of the district's gates, guards pacing
  * before each spawn door. Every beat point stands clear of every collider
  * and inside its own district: a point that lands in something is pushed
  * clear, or dropped if that takes it out of the district.
+ *
+ * The export carries no posts: these are the fortress's rules, applied to
+ * the citadel's gates, yards and doors. Deterministic: no randomness.
  */
 
 /** A soldier's radius against the scenery (m): the beat points keep it clear (game/enemies/soldier.ts). */
 const BODY = 0.62
 
-export function planPosts(plan: FortPlan, rand: () => number): void {
+export function planPosts(plan: CitadelPlan): void {
   const contact: Contact = { nx: 0, nz: 0, depth: 0 }
+  const outer = plan.gates.filter((g) => g.kind === 'outer')
   const settle = (p: Xz, sector: number): Xz | null => {
     const q = { x: p[0], z: p[1] }
     for (let i = 0; i < 4 && pushOut(q, BODY + 0.05, plan.segments, plan.circles, contact); i++) { /* pushed clear */ }
     if (pushOut({ x: q.x, z: q.z }, BODY, plan.segments, plan.circles, contact)) return null
-    return sectorAt(plan, q.x, q.z) === sector ? [q.x, q.z] : null
+    return districtAt(plan, outer, q.x, q.z) === sector ? [q.x, q.z] : null
   }
   const post = (sector: number, yaw: number, beat: Xz[]): boolean => {
     const clear = beat.map((p) => settle(p, sector)).filter((p): p is Xz => p !== null)
@@ -32,16 +34,18 @@ export function planPosts(plan: FortPlan, rand: () => number): void {
   for (const s of plan.sectors) {
     let count = 0
     const { at: y, r: yr } = s.yard
-    // sentries either side of every gate on this side, pacing along the wall
-    for (const g of gatesOf(plan, s.index)) {
-      const side = g.sectors[0] === s.index ? -1 : 1
+    // sentries either side of every gate on this side, pacing across its mouth's flanks, looking out through it
+    for (const g of plan.gates) {
+      const k = g.sectors.indexOf(s.index)
+      if (k < 0) continue
+      const side = k === 0 ? -1 : 1
       const way: Xz = side < 0 ? g.inside : g.outside
-      // looking out through the gate
       const facing = Math.atan2(-side * g.out[0], -side * g.out[1])
       const along: Xz = [-g.out[1], g.out[0]]
-      for (const k of [-1, 1]) {
-        const p: Xz = [way[0] + along[0] * k * 3.4, way[1] + along[1] * k * 3.4]
-        if (post(s.index, facing, [p, [p[0] + along[0] * k * 4, p[1] + along[1] * k * 4]])) count++
+      const off = g.width / 2 - 3
+      for (const e of [-1, 1]) {
+        const p: Xz = [way[0] + along[0] * e * off, way[1] + along[1] * e * off]
+        if (post(s.index, facing, [p, [p[0] + along[0] * e * 4, p[1] + along[1] * e * 4]])) count++
       }
     }
     // a guard before each spawn door, pacing across it
@@ -56,7 +60,7 @@ export function planPosts(plan: FortPlan, rand: () => number): void {
     // patrols round the yard: at least 45 % of the garrison, and until it has a post each
     const loops = Math.ceil(s.garrison * 0.45)
     for (let i = 0, made = 0; (made < loops || count < s.garrison) && i < s.garrison * 3; i++) {
-      const a0 = (i / 7) * Math.PI * 2 + rand() * 0.3
+      const a0 = (i / 7) * Math.PI * 2 + ((i * 0.618) % 1) * 0.3
       const r = yr * (0.45 + ((i * 0.37) % 1) * 0.45)
       const dir = i % 2 ? 1 : -1
       const beat: Xz[] = []

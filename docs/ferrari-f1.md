@@ -1,6 +1,6 @@
 # Ferrari F1 character
 
-The SF-25-style car, its robot and the transformation are authored procedurally in Blender (`blender/ferrari-f1_build/`, package `f1b`). They are exported as `public/models/ferrari-f1.{json,bin}`, in the same container and runtime as the Cybertruck (`src/content/transformer/`). Export with:
+The SF-25-style car, its robot and the transformation are authored procedurally in Blender (`blender/ferrari-f1_build/`, package `f1b`). They are exported as `assets/ferrari-f1.{json,bin}`, in the same container and runtime as the Cybertruck (`src/content/transformer/`). Export with:
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b blender/ferrari-f1-transformer.blend --python blender/ferrari-f1_build/export_game.py
@@ -8,7 +8,7 @@ The SF-25-style car, its robot and the transformation are authored procedurally 
 
 The export rebuilds the scene from the scripts and does not save the `.blend`; the working file already carries the baked timeline for scrubbing. Car-only review edits can retain that timeline while updating the geometry with `f1b.build.refresh_car()`. A later full build/export recalculates geometry-dependent assembly fitting and ground support.
 
-For a car-only inspection pass in the open Blender file, reload `run.py`, then call `from f1b import build; build.refresh_car()`. This stages the car, validates its object inventory, mesh coordinates and object bases, and swaps only mesh data on the existing car objects. It leaves the robot meshes, parents and animation actions intact. Save the working `.blend` for inspection; do not export to `public/models` until the user explicitly approves the result.
+For a car-only inspection pass in the open Blender file, reload `run.py`, then call `from f1b import build; build.refresh_car()`. This stages the car, validates its object inventory, mesh coordinates and object bases, and swaps only mesh data on the existing car objects. It leaves the robot meshes, parents and animation actions intact. Save the working `.blend` for inspection; do not export to `assets/` until the user explicitly approves the result.
 
 After changes to the front wing, `review_sync.foot_mounts()` updates the heel-wing fit and the four foot carriers using the open file's existing timeline pacing. `review_sync.ground_clearance()` then updates the common vertical ground offset without changing joint poses or timing. The carrier rods now park at their physical collapsed length horizontally inside the feet. The rear diffuser is part of the continuous floor, and the single tapered spine fin belongs to the tail so the telescoping hood cannot duplicate its surfaces.
 

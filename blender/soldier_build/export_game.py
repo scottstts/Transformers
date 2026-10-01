@@ -4,7 +4,7 @@
         --python blender/soldier_build/export_game.py
 
 Rebuilds the SOLDIER collection from the scripts, saves the .blend (pass
-`-- --no-save` to skip) and writes public/models/soldier.{json,bin}."""
+`-- --no-save` to skip) and writes assets/soldier.{json,bin}."""
 import sys
 import time
 import bpy

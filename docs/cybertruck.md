@@ -1,6 +1,6 @@
 # Cybertruck character
 
-The car, the robot and the transformation between them are authored procedurally in Blender (`blender/cybertruck_build/`, package `ctb`) and exported as one asset, `public/models/cybertruck.{json,bin}`. The game replays that asset; it does not build geometry. Rebuild and export with:
+The car, the robot and the transformation between them are authored procedurally in Blender (`blender/cybertruck_build/`, package `ctb`) and exported as one asset, `assets/cybertruck.{json,bin}`. The game replays that asset; it does not build geometry. Rebuild and export with:
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b --python blender/cybertruck_build/export_game.py

@@ -102,8 +102,8 @@ export class Commander extends Soldier {
     super(manifest, new CommanderRig(manifest), COMMANDER, COMMANDER_POSES)
   }
 
-  reset(x: number, z: number, yaw: number, serial: number): void {
-    super.reset(x, z, yaw, serial)
+  reset(x: number, z: number, yaw: number, serial: number, floor = 0): void {
+    super.reset(x, z, yaw, serial, floor)
     this.leanFwd = this.leanSide = 0
     this.lastVx = this.lastVz = 0
     this.length = 0

@@ -1,6 +1,6 @@
 # Soldier model (Blender)
 
-The enemy soldier (`ref_images/soldier.jpeg`) is built by `blender/soldier_build/` into `blender/soldier.blend` (collection `SOLDIER`) and exported to `public/models/soldier.{json,bin}`:
+The enemy soldier (`ref_images/soldier.jpeg`) is built by `blender/soldier_build/` into `blender/soldier.blend` (collection `SOLDIER`) and exported to `assets/soldier.{json,bin}`:
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b blender/soldier.blend --python blender/soldier_build/export_game.py

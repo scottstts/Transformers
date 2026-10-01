@@ -9,6 +9,7 @@ import { Speedometer } from '../ui/speedometer'
 import { PauseMenu } from '../ui/pause-menu'
 import { PerspectiveCamera } from 'three/webgpu'
 import { loadSoldierAsset } from '../content/soldier/asset'
+import { loadCitadelAsset } from '../worlds/desert/citadel'
 
 export async function startGame(setStage: (stage: string) => void): Promise<GameSession> {
   const mount = document.querySelector<HTMLElement>('#app')
@@ -20,11 +21,21 @@ export async function startGame(setStage: (stage: string) => void): Promise<Game
   const entry = rosterEntry(savedVehicle())
   const assetLoad = loadRosterAsset(entry)
   assetLoad.catch(() => undefined)
-  // the forts' soldiers and their commander download alongside
+  // the citadel's soldiers and their commander download alongside
   const soldierLoad = loadSoldierAsset()
   soldierLoad.catch(() => undefined)
   const commanderLoad = loadSoldierAsset('commander')
   commanderLoad.catch(() => undefined)
+  // and the citadel (the largest download: its stage shows how far it has come)
+  let citadelShown = -1
+  let citadelStage = false
+  const citadelLoad = loadCitadelAsset((loaded, total) => {
+    const mb = Math.floor(loaded / 1e6)
+    if (!citadelStage || mb === citadelShown) return
+    citadelShown = mb
+    setStage(`Loading citadel ${mb} / ${Math.round(total / 1e6)} MB`)
+  })
+  citadelLoad.catch(() => undefined)
   try {
     await host.initialize()
     setStage(`Loading ${entry.label} model`)
@@ -33,8 +44,12 @@ export async function startGame(setStage: (stage: string) => void): Promise<Game
     const soldiers = await host.observe(soldierLoad)
     setStage('Loading commander model')
     const commander = await host.observe(commanderLoad)
+    setStage('Loading citadel')
+    citadelStage = true
+    const citadel = await host.observe(citadelLoad)
+    citadelStage = false
     setStage('Building game world')
-    const session = new GameSession(host.renderer, sizingCamera, entry, asset, soldiers, commander, (error) => host.fail(error))
+    const session = new GameSession(host.renderer, sizingCamera, entry, asset, soldiers, commander, citadel, (error) => host.fail(error))
     setStage('Preparing audio')
     session.prepareAudio()
     setStage('Compiling shaders')

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readMirror } from '../../tools/mirror.ts'
 import { decodeTransformerAsset, type TransformerAsset } from '../../src/content/transformer/asset/loader.ts'
 import type { TransformerManifest } from '../../src/content/transformer/asset/format.ts'
 import type { ContactEffects } from '../../src/game/contact-effects.ts'
@@ -6,10 +6,10 @@ import type { GaitPose } from '../../src/content/transformer/model/rig.ts'
 import { decodeWeaponAsset, type WeaponAsset, type WeaponManifest } from '../../src/content/transformer/asset/weapon.ts'
 import { decodeSoldierAsset, type SoldierAsset, type SoldierManifest } from '../../src/content/soldier/asset.ts'
 
-/** An exported model from public/models, decoded as the game does. */
+/** An exported model from the asset mirror, decoded as the game does. */
 export function readAsset(name: string): TransformerAsset {
-  const manifest = JSON.parse(readFileSync(`public/models/${name}.json`, 'utf8')) as TransformerManifest
-  const binary = readFileSync(`public/models/${name}.bin`)
+  const manifest = JSON.parse(readMirror(`${name}.json`, 'utf8')) as TransformerManifest
+  const binary = readMirror(`${name}.bin`)
   return decodeTransformerAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength), name)
 }
 
@@ -38,16 +38,16 @@ export const REST_GAIT: GaitPose = {
   lean: 0, roll: 0, twist: 0, breath: 0, headYaw: 0, headPitch: 0, curl: 0.45,
 }
 
-/** An exported combat weapon from public/models, decoded as the game does. */
+/** An exported combat weapon from the asset mirror, decoded as the game does. */
 export function readWeapon(name: string): WeaponAsset {
-  const manifest = JSON.parse(readFileSync(`public/models/${name}.json`, 'utf8')) as WeaponManifest
-  const binary = readFileSync(`public/models/${name}.bin`)
+  const manifest = JSON.parse(readMirror(`${name}.json`, 'utf8')) as WeaponManifest
+  const binary = readMirror(`${name}.bin`)
   return decodeWeaponAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength), name)
 }
 
-/** The enemy soldier (or, by name, the commander) from public/models, decoded as the game does. */
+/** The enemy soldier (or, by name, the commander) from the asset mirror, decoded as the game does. */
 export function readSoldier(name = 'soldier'): SoldierAsset {
-  const manifest = JSON.parse(readFileSync(`public/models/${name}.json`, 'utf8')) as SoldierManifest
-  const binary = readFileSync(`public/models/${name}.bin`)
+  const manifest = JSON.parse(readMirror(`${name}.json`, 'utf8')) as SoldierManifest
+  const binary = readMirror(`${name}.bin`)
   return decodeSoldierAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength))
 }

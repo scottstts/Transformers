@@ -191,7 +191,7 @@ require(not changed, 'build differs from the approved scene: ' + ', '.join(chang
 print('commander: rebuilt geometry, shading, transforms and materials match the approved scene')
 dims, non_blade_bones = inspect_source(coll)
 manifest = shared_export.export(
-    coll, out_dir=str(PROJECT / 'public' / 'models'), name='commander',
+    coll, out_dir=str(PROJECT / 'assets'), name='commander',
     material_prefix='commander.', rig_module=rig, shadow_skip=SHADOW_SKIP, dims=dims,
     validate=lambda m: validate_manifest(m, non_blade_bones),
 )
@@ -199,4 +199,4 @@ print('commander: LOD triangles %s, shadow %d, %d bones, %d pieces in %.1fs' % (
     [lod['triangles'] for lod in manifest['lods']], manifest['shadow']['triangles'],
     len(manifest['bones']), len(manifest['pieces']), time.time() - t))
 print('commander: dims ' + json.dumps(manifest['dims'], sort_keys=True))
-print('commander: exported public/models/commander.{json,bin}; approved .blend preserved')
+print('commander: exported assets/commander.{json,bin}; approved .blend preserved')

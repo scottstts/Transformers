@@ -4,7 +4,7 @@
         --python blender/ferrari-f1_build/export_game.py
 
 Rebuilds the car, robot and mechanisms from the scripts, writes
-public/models/ferrari-f1.{json,bin}. The open .blend is not saved: the build is
+assets/ferrari-f1.{json,bin}. The open .blend is not saved: the build is
 deterministic and the working file already carries the same timeline."""
 import sys
 import time

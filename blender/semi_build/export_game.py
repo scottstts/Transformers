@@ -5,7 +5,7 @@
 
 Rebuilds the truck, van, robot and mechanisms from the scripts, bakes the
 timeline (the density warp and robot_fit's panel tailoring) and writes
-public/models/semi.{json,bin}. The open .blend is not saved: the build is
+assets/semi.{json,bin}. The open .blend is not saved: the build is
 deterministic and the working file already carries the same timeline."""
 import sys
 import time

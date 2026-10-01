@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { Scene, Vector3 } from 'three/webgpu'
+import { PerspectiveCamera, Scene, Vector3 } from 'three/webgpu'
 import { ROSTER } from '../src/content/roster.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { SOLDIER, Soldier, type SoldierImpact } from '../src/game/enemies/soldier.ts'
 import { COMMANDER, Commander } from '../src/game/enemies/commander.ts'
 import { Horde } from '../src/game/enemies/horde.ts'
-import { Forts } from '../src/worlds/desert/fort'
+import { Citadel } from '../src/worlds/desert/citadel'
+import { mirrorCitadel } from '../tools/mirror.ts'
 import type { Character } from '../src/content/transformer/character.ts'
 import type { MoveHits } from '../src/content/transformer/combat/hits.ts'
 import { NO_CONTACT, readAsset, readSoldier, readWeapon } from './support/assets.ts'
 import { DT, runFight } from './support/fight.ts'
+
+const citadel = new Citadel(new Scene(), await mirrorCitadel())
 
 /**
  * The combat interaction contract (src/game/combat/contract.ts), for every
@@ -57,10 +60,11 @@ describe.each(ROSTER.map((entry) => ({ name: entry.id, entry })))('the combat co
   })
 
   it('its special holds what it empties, soldiers and commander alike, until its last blow', () => {
-    const forts = new Forts(new Scene())
-    const horde = new Horde(soldiers, forts, NO_CONTACT, new AudioMix(), commanders)
+    const horde = new Horde(soldiers, citadel, NO_CONTACT, new AudioMix(), commanders)
     const c = horde.commanderPosts[0].unit
     const [s] = horde.nearby(c.x, c.z, 60).filter((k) => k !== c)
+    // the robot stands by them on the crown (blows reach only its own level), out of their fight
+    horde.update(0, { x: c.x, z: c.z, radius: 1.5, vx: 0, vz: 0, height: 5.6, heading: 0, guard: 0, present: false }, new PerspectiveCamera())
     horde.special = true
     for (const hit of blows(character).filter((b) => b.special)) {
       for (const u of [c, s]) {

@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync } from 'node:fs'
+import { readMirror } from '../mirror.ts'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { PerspectiveCamera, Scene, Vector3 } from 'three/webgpu'
 import { createHeadlessRenderer } from './headless'
@@ -139,8 +140,8 @@ const SHOTS: Record<string, Shot> = {
 export async function renderShots(outDir: string, names: string[], car: string | null = null): Promise<void> {
   mkdirSync(outDir, { recursive: true })
   const entry = rosterEntry(car)
-  const manifest = JSON.parse(readFileSync(`public/models/${entry.id}.json`, 'utf8')) as TransformerManifest
-  const bin = readFileSync(`public/models/${entry.id}.bin`)
+  const manifest = JSON.parse(readMirror(`${entry.id}.json`, 'utf8')) as TransformerManifest
+  const bin = readMirror(`${entry.id}.bin`)
   const asset = decodeTransformerAsset(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength), entry.label)
   const { renderer, capture } = await createHeadlessRenderer(WIDTH, HEIGHT)
   for (const name of names.length ? names : Object.keys(SHOTS)) {

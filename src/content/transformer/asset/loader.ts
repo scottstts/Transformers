@@ -1,6 +1,7 @@
 import { Box3, BufferAttribute, BufferGeometry, Sphere, Vector3 } from 'three/webgpu'
 import type { TransformerManifest, MeshRecord } from './format'
 import type { WeaponAsset } from './weapon'
+import { fetchModel } from '../../../assets'
 
 export interface DecodedMesh {
   material: string
@@ -28,16 +29,11 @@ export interface PlayableTransformerAsset extends TransformerAsset {
 }
 
 /**
- * Fetches and decodes an exported model (`public/models/<name>.{json,bin}`);
+ * Fetches and decodes an exported model (`<name>.{json,bin}` on the asset CDN);
  * any failure rejects with a message naming `label`.
  */
-export async function loadTransformerAsset(name: string, label: string, base = import.meta.env.BASE_URL): Promise<TransformerAsset> {
-  const root = `${base}models/${name}`
-  const [manifestResponse, binaryResponse] = await Promise.all([fetch(`${root}.json`), fetch(`${root}.bin`)])
-  if (!manifestResponse.ok) throw new Error(`${label} manifest: HTTP ${manifestResponse.status}`)
-  if (!binaryResponse.ok) throw new Error(`${label} geometry: HTTP ${binaryResponse.status}`)
-  const manifest = await manifestResponse.json() as TransformerManifest
-  const buffer = await binaryResponse.arrayBuffer()
+export async function loadTransformerAsset(name: string, label: string): Promise<TransformerAsset> {
+  const { manifest, buffer } = await fetchModel<TransformerManifest>(name, label)
   return decodeTransformerAsset(manifest, buffer, label)
 }
 

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readMirror } from '../mirror.ts'
 import { Quaternion, Vector3 } from 'three/webgpu'
 import { decodeSoldierAsset, type SoldierAsset, type SoldierManifest } from '../../src/content/soldier/asset'
 import { createSoldierPose } from '../../src/content/soldier/rig'
@@ -24,8 +24,8 @@ const TIP = 2.68
  *   node tools/commander-probe.mjs move <1-4> [every]
  */
 export function probeCommander(kind: string, what: string, every: number): void {
-  const bin = readFileSync('public/models/commander.bin')
-  const asset = decodeSoldierAsset(JSON.parse(readFileSync('public/models/commander.json', 'utf8')) as SoldierManifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength))
+  const bin = readMirror('commander.bin')
+  const asset = decodeSoldierAsset(JSON.parse(readMirror('commander.json', 'utf8')) as SoldierManifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength))
   const rig = new CommanderRig(asset.manifest)
   const tris = triangles(asset)
   const pose = createSoldierPose()

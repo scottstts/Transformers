@@ -1,8 +1,9 @@
 import type { MeshRecord } from './format'
 import { decodeGeometry, type DecodedMesh } from './loader'
+import { fetchModel } from '../../../assets'
 
 /**
- * A combat weapon exported from blender/weapons_build (`public/models/<name>.{json,bin}`):
+ * A combat weapon exported from blender/weapons_build (`<name>.{json,bin}` on the asset CDN):
  * one rigid body in the weapon frame (+z along the haft or blade toward the
  * head, +x the cutting edge's direction, the main hand's grip at the origin;
  * a gun: +z along the barrels, +x its top, the pistol grip at the origin),
@@ -30,12 +31,9 @@ export interface WeaponAsset {
   meshes: DecodedMesh[]
 }
 
-export async function loadWeaponAsset(name: string, label: string, base = import.meta.env.BASE_URL): Promise<WeaponAsset> {
-  const root = `${base}models/${name}`
-  const [manifestResponse, binaryResponse] = await Promise.all([fetch(`${root}.json`), fetch(`${root}.bin`)])
-  if (!manifestResponse.ok) throw new Error(`${label} weapon manifest: HTTP ${manifestResponse.status}`)
-  if (!binaryResponse.ok) throw new Error(`${label} weapon geometry: HTTP ${binaryResponse.status}`)
-  return decodeWeaponAsset(await manifestResponse.json() as WeaponManifest, await binaryResponse.arrayBuffer(), label)
+export async function loadWeaponAsset(name: string, label: string): Promise<WeaponAsset> {
+  const { manifest, buffer } = await fetchModel<WeaponManifest>(name, `${label} weapon`)
+  return decodeWeaponAsset(manifest, buffer, label)
 }
 
 export function decodeWeaponAsset(manifest: WeaponManifest, buffer: ArrayBuffer, label = 'Weapon'): WeaponAsset {

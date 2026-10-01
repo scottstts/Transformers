@@ -58,7 +58,7 @@ export async function loadCybertruckAsset(): Promise<PlayableTransformerAsset> {
   return { ...asset, weapon }
 }
 
-/** The robot's axe (public/models/cybertruck-axe.*). */
+/** The robot's axe (cybertruck-axe.* on the asset CDN). */
 export const CYBERTRUCK_WEAPON = 'cybertruck-axe'
 
 /** The Cybertruck's authored parts and simulation settings. */

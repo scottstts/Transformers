@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readMirror } from '../mirror.ts'
 import { PerspectiveCamera, Scene, Vector3, type Object3D } from 'three/webgpu'
 import { createDesertWorld } from '../../src/worlds/desert'
 import { rosterEntry } from '../../src/content/roster'
@@ -34,8 +34,8 @@ export function probeClash(car: string, tokens: string[], until: number): void {
   const specials = tokens.filter((c) => c.startsWith('F')).map((c) => Number(c.slice(1)))
   const entry = rosterEntry(car)
   const read = (name: string): [unknown, ArrayBuffer] => {
-    const bin = readFileSync(`public/models/${name}.bin`)
-    return [JSON.parse(readFileSync(`public/models/${name}.json`, 'utf8')), bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength)]
+    const bin = readMirror(`${name}.bin`)
+    return [JSON.parse(readMirror(`${name}.json`, 'utf8')), bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength)]
   }
   const [manifest, bin] = read(entry.id)
   const asset = decodeTransformerAsset(manifest as TransformerManifest, bin, entry.label)

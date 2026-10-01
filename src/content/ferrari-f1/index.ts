@@ -12,7 +12,7 @@ import { loadWeaponAsset } from '../transformer/asset/weapon'
 import { createF1Combat } from './combat'
 
 export const F1_LABEL = 'Ferrari F1'
-/** The robot's sword (public/models/ferrari-f1-sword.*). */
+/** The robot's sword (ferrari-f1-sword.* on the asset CDN). */
 export const F1_WEAPON = 'ferrari-f1-sword'
 
 /**

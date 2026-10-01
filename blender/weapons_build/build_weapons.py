@@ -5,7 +5,7 @@
 
 Rebuilds each weapon from the scripts into its own collection of
 blender/weapons.blend (the axe at the origin, the sword, the gun and the spear
-beside it), saves the file and writes public/models/cybertruck-axe.{json,bin},
+beside it), saves the file and writes assets/cybertruck-axe.{json,bin},
 ferrari-f1-sword.{json,bin}, semi-gun.{json,bin} and bat-spear.{json,bin}. Pass `-- --no-save` to
 export without saving."""
 import sys

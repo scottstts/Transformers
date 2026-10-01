@@ -1,11 +1,11 @@
 /**
- * Why the player is held at a fort: the car at its perimeter, the robot
+ * Why the player is held at the citadel: the car at its perimeter, the robot
  * against its walls, or the robot refused the car form inside its perimeter.
  */
 export type FortHold = 'car' | 'wall' | 'locked' | null
 
 /**
- * A quiet line at the top of the screen when the player is held at a fort:
+ * A quiet line at the top of the screen when the player is held at the citadel:
  * the car at the perimeter (only the robot can go in), the robot against the
  * walls (it goes in through a gate), or a transformation refused inside. It
  * fades in after a moment of being held (brushing past doesn't flash it; a
@@ -14,15 +14,15 @@ export type FortHold = 'car' | 'wall' | 'locked' | null
 export class FortHint {
   private readonly el: HTMLDivElement
   private readonly car: string
-  private readonly wall = '<span>Fort walls</span><i></i><span>go in through a gate</span>'
-  private readonly locked = '<span>Inside the fort</span><i></i><span>no car form until you are out</span>'
+  private readonly wall = '<span>Citadel walls</span><i></i><span>go in through a gate</span>'
+  private readonly locked = '<span>Inside the citadel</span><i></i><span>no car form until you are out</span>'
   private timer = 0
   private shown: FortHold = null
 
   constructor() {
     this.el = document.createElement('div')
     this.el.className = 'fort-hint'
-    this.car = '<span>Fort perimeter</span><i></i><kbd>R</kbd><span>transform to go in</span>'
+    this.car = '<span>Citadel perimeter</span><i></i><kbd>R</kbd><span>transform to go in</span>'
     document.body.append(this.el)
   }
 

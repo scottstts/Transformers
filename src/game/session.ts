@@ -1,6 +1,8 @@
 import { Euler, Matrix4, PerspectiveCamera, PointLight, RenderPipeline, Scene, Timer, Vector3, WebGPURenderer } from 'three/webgpu'
 import { bakeEnvironment, configureRenderer, createPostPipeline } from '../rendering/look'
 import { createDesertWorld } from '../worlds/desert'
+import type { CitadelAsset } from '../worlds/desert/citadel'
+import type { DesertWorld } from '../worlds/desert/world'
 import { AudioMix } from '../audio/mix'
 import { loadRosterAsset, type RosterEntry } from '../content/roster'
 import type { PlayableTransformerAsset } from '../content/transformer/asset/loader'
@@ -35,8 +37,8 @@ const SWITCH_SETTLE_FRAMES = 3
 export class GameSession {
   readonly scene = new Scene()
   readonly camera: PerspectiveCamera
-  readonly environment = createDesertWorld(this.scene)
-  readonly world = this.environment.world
+  readonly environment: ReturnType<typeof createDesertWorld>
+  readonly world: DesertWorld
   readonly state = createMotionState()
   readonly audio = new AudioMix()
   readonly cameraRig: FollowCamera
@@ -89,7 +91,7 @@ export class GameSession {
   private readonly suspensionInverse = new Matrix4()
   private readonly suspensionEuler = new Euler()
   private readonly onFrameError: (error: Error) => void
-  /** the forts' soldiers, and the ring that keeps the car out of the forts */
+  /** the citadel's soldiers, and the ring that keeps the car out of it */
   readonly horde: Horde
   private readonly barrier = new CarBarrier()
   private readonly target: EnemyTarget = { x: 0, z: 0, radius: 1, vx: 0, vz: 0, height: 4, heading: 0, guard: 0, present: true }
@@ -100,23 +102,25 @@ export class GameSession {
   private frozenWidth = 0
   private frozenHeight = 0
   private wallTime = 0
-  /** how long the refusal of the car form inside a fort stays up (s) */
+  /** how long the refusal of the car form inside the citadel stays up (s) */
   private lockedTime = 0
-  /** called when the player is held at a fort (the car at its perimeter, the robot against its walls, the car form refused inside), or no longer (UI hint) */
+  /** called when the player is held at the citadel (the car at its ring, the robot against its walls, the car form refused inside), or no longer (UI hint) */
   onFortHold: ((hold: FortHold) => void) | null = null
 
-  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: PlayableTransformerAsset, soldiers: SoldierAsset, commander: SoldierAsset, onFrameError: (error: Error) => void) {
+  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: PlayableTransformerAsset, soldiers: SoldierAsset, commander: SoldierAsset, citadel: CitadelAsset, onFrameError: (error: Error) => void) {
+    this.environment = createDesertWorld(this.scene, citadel)
+    this.world = this.environment.world
     this.renderer = renderer
     this.camera = camera
     this.onFrameError = onFrameError
     this.character = this.build(entry, asset)
     this.built.set(entry.id, this.character)
     this.lightSlots.use(this.lightsOf(this.character))
-    placeCar(this.state, this.character.profile.drive, this.world.terrain)
+    placeCar(this.state, this.character.profile.drive, this.world.ground)
     configureRenderer(renderer)
     this.scene.add(this.lightSlots.object, this.character.model.root, this.character.effects.object)
     this.character.model.pose(0, null)
-    this.horde = new Horde(soldiers, this.world.forts, this.environment.contactEffects, this.audio, commander)
+    this.horde = new Horde(soldiers, this.world.citadel, this.environment.contactEffects, this.audio, commander)
     this.horde.onStruck = (at, from, strength) => this.character.combat.effects.struck(at, from, strength, this.fight.guarded)
     // the commander's whirl knocks the robot back (the combat contract: not in a special, not through a raised guard)
     this.horde.onKnockback = (from) => this.fight.knockback(from)
@@ -129,7 +133,7 @@ export class GameSession {
 
     this.fight = this.fightFor(this.character)
     this.cameraRig = new FollowCamera(this.camera, renderer.domElement, this.state.yaw, this.character.robotOffset, this.character.profile.camera)
-    this.cameraRig.ground = this.world.terrain
+    this.cameraRig.ground = this.world.ground
     this.cameraRig.showSide(this.state.yaw)
     this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.audio.resume())
     this.pipeline = createPostPipeline(renderer, this.scene, this.camera, this.lens)
@@ -140,8 +144,8 @@ export class GameSession {
 
   selectForm(form: Form): void {
     if (this.jump.active || this.fight.active || this.switching) return
-    // inside a fort's perimeter the robot stays a robot: the car could never have driven in
-    if (form === 'car' && this.state.mode === 'robot' && this.world.forts.within(this.state.pos.x, this.state.pos.z)) {
+    // inside the citadel's ring the robot stays a robot: the car could never have driven in
+    if (form === 'car' && this.state.mode === 'robot' && this.world.citadel.within(this.state.pos.x, this.state.pos.z)) {
       this.lockedTime = 2.4
       return
     }
@@ -164,7 +168,7 @@ export class GameSession {
 
   /**
    * A car can be swapped in at once whenever no transformation, jump or
-   * special is playing (either form, fighting or not, inside a fortress or
+   * special is playing (either form, fighting or not, inside the citadel or
    * out): a combo or a raised guard is simply dropped by the swap.
    */
   get canSwitch(): boolean {
@@ -264,7 +268,7 @@ export class GameSession {
 
   /**
    * Compile and draw every path the scene can use, including the hidden
-   * combat weapon and its shadow, the soldiers' every tier and the forts
+   * combat weapon and its shadow, the soldiers' every tier and the citadel
    * wherever they stand (culling is off for this draw, so the parts of the
    * world outside the start view, and their shadow casters, are ready before
    * they first come into sight).
@@ -501,16 +505,16 @@ export class GameSession {
       this.standing = standing
       this.onStandingChange?.(standing)
     }
-    if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive, this.world.terrain)
+    if (state.progress < 0.5) updateCar(state, this.input, dt, busy || state.mode === 'robot', profile.drive, this.world.ground)
     else if (!fight.active) updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)
-    // the forts' ring holds the car back; the robot walks through it
-    this.barrier.apply(state, this.world.forts, profile.drive.maxSpeed, state.progress < 1)
+    // the citadel's ring holds the car back; the robot walks through it
+    this.barrier.apply(state, this.world.citadel, profile.drive.maxSpeed, state.progress < 1)
     // the commander's bulk pushed the robot last frame (the walls still have the last word)
     const shove = this.horde.shove
     if (!frozen) { state.pos.x += shove.x; state.pos.z += shove.z }
     shove.x = shove.z = 0
     const walled = resolveCircleCollisions(state, this.world.colliders, this.character.robotOffset, profile, this.world.segments)
-    // a robot pushing against a fort's walls for a moment is told where the way in is
+    // a robot pushing against the citadel's walls for a moment is told where the way in is
     this.wallTime = walled && state.mode === 'robot' && !fight.active ? this.wallTime + frameDt : 0
     this.lockedTime = Math.max(0, this.lockedTime - frameDt)
     const hold: FortHold = this.barrier.holding ? 'car'
@@ -521,7 +525,7 @@ export class GameSession {
       this.onFortHold?.(hold)
     }
     fight.afterCollisions(state)
-    standOnGround(state, this.world.terrain, profile.drive, this.character.robotOffset, dt)
+    standOnGround(state, this.world.ground, profile.drive, this.character.robotOffset, dt)
 
     const pose = gait.update(dt, state.speed, state.yawRate, this.input.running, state.progress >= 1, jump)
     if (jump.tookOff) effects.takeoff()
@@ -578,10 +582,10 @@ export class GameSession {
     this.onFrame?.(frameDt)
   }
 
-  /** Near a fortress but outside its perimeter (the walls' hint is about the way in, not the buildings inside). */
+  /** Near the citadel but outside its walls (the walls' hint is about the way in, not the buildings inside). */
   private outsideWalls(x: number, z: number): boolean {
-    const fort = this.world.forts.near(x, z)
-    return fort !== null && !fort.inside(x, z)
+    const citadel = this.world.citadel
+    return citadel.near(x, z) && !citadel.inside(x, z)
   }
 
   /** Where the player's body stands for the soldiers: the robot's standing point, or the car. */
