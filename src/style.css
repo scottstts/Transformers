@@ -80,7 +80,7 @@ body:not(.ready) .garage { opacity: 0; visibility: hidden; }
 .garage.open { pointer-events: auto; }
 .garage.open::before { opacity: 1; }
 /* laid out at full size throughout; collapsed, the clip shows only the pill at its foot */
-.garage-panel { --item: 250px; --accent: #f3eee7; --hint-h: 34px; --hint-w: 220px; position: absolute; left: 50%; bottom: 22px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; width: min(620px, calc(100% - 32px)); padding: 16px 14px 20px; border-radius: 20px; background: rgba(20, 22, 25, 0.62); backdrop-filter: blur(20px) saturate(1.25); color: #f3eee7; user-select: none; pointer-events: auto; transform: translateX(-50%); clip-path: inset(calc(100% - var(--hint-h)) calc(50% - var(--hint-w) / 2) 0 round calc(var(--hint-h) / 2)); transition: clip-path 0.5s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.garage-panel { --item: 250px; --accent: #f3eee7; --hint-h: 34px; --hint-w: 220px; position: absolute; left: 50%; bottom: 22px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; width: min(max(620px, var(--hint-w) + 28px), calc(100% - 32px)); padding: 16px 14px 20px; border-radius: 20px; background: rgba(20, 22, 25, 0.62); backdrop-filter: blur(20px) saturate(1.25); color: #f3eee7; user-select: none; pointer-events: auto; transform: translateX(-50%); clip-path: inset(calc(100% - var(--hint-h)) calc(50% - var(--hint-w) / 2) 0 round calc(var(--hint-h) / 2)); transition: clip-path 0.5s cubic-bezier(0.3, 0.8, 0.2, 1); }
 .garage.open .garage-panel { clip-path: inset(0 round 20px); }
 .garage-body { display: contents; }
 .garage-body > * { opacity: 0; transition: opacity 0.2s ease; }
@@ -91,6 +91,7 @@ body:not(.ready) .garage { opacity: 0; visibility: hidden; }
 .garage-hint-label { position: absolute; top: 0; left: 50%; display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 16px; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; opacity: 0; transform: translateX(-50%); transition: opacity 0.25s ease; }
 .garage-hint-label.shown { opacity: 1; transition-delay: 0.1s; }
 .garage-hint-label kbd { min-width: 20px; padding: 1px 6px; border: 1px solid rgba(255, 255, 255, 0.2); border-bottom-width: 2px; border-radius: 5px; font: 600 10px/15px var(--mono); letter-spacing: 0.04em; text-align: center; color: #efe9e0; }
+.garage-hint-label kbd.ready { border-color: rgba(255, 255, 255, 0.7); background: rgba(255, 255, 255, 0.16); color: #fff; box-shadow: 0 0 9px rgba(255, 255, 255, 0.35); }
 .garage-hint-label i { width: 3px; height: 3px; margin: 0 5px; border-radius: 50%; background: rgba(243, 238, 231, 0.4); }
 .garage-view { position: relative; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
 .garage-track { display: flex; padding-inline: calc(50% - var(--item) / 2); transform: translateX(calc(var(--i, 0) * var(--item) * -1)); transition: transform 0.42s cubic-bezier(0.22, 0.8, 0.24, 1); }
@@ -131,9 +132,10 @@ body:not(.ready) .garage { opacity: 0; visibility: hidden; }
 
 /* ── special energy: a shift-light strip in a small glass plate, top left ─────────────── */
 @property --level { syntax: "<number>"; inherits: true; initial-value: 0; }
-.energy { --charge: #9cc4ff; --cell-w: 13px; --cell-h: 9px; --gap: 3px; --cut: 7px; position: fixed; z-index: 14; left: 18px; top: 18px; display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 11px; background: rgba(20, 22, 25, 0.5); backdrop-filter: blur(14px) saturate(1.2); clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); pointer-events: none; transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.35s ease, transform 0.45s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.energy { --charge: #9cc4ff; --cell-w: 13px; --cell-h: 9px; --gap: 3px; --cut: 7px; position: fixed; z-index: 14; left: 18px; top: 18px; display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 11px; background: rgba(20, 22, 25, 0.5); backdrop-filter: blur(14px) saturate(1.2); clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); pointer-events: none; transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s ease 0.1s, transform 0.35s cubic-bezier(0.3, 0.8, 0.2, 1) 0.1s; }
 body:not(.ready) .energy, body.cinematic .energy, body.menu-open .energy { opacity: 0; transform: translateY(-6px); }
-.energy.idle { opacity: 0.42; }
+/* out of the robot's stance (car form, transforming): gone, in step with the hint pill's label (out at once, in after 0.1 s) */
+.energy.idle { opacity: 0; transform: translateY(-6px); transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s ease, transform 0.35s cubic-bezier(0.3, 0.8, 0.2, 1); }
 /* a hairline rule along the plate's foot, as on the entry gauge */
 .energy::after { content: ""; position: absolute; left: var(--cut); right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, color-mix(in srgb, var(--charge) 55%, transparent), rgba(255, 255, 255, 0.08) 60%, transparent); }
 .energy-core { position: relative; width: 11px; height: 11px; border: 1.5px solid rgba(243, 238, 231, 0.45); transform: rotate(45deg); transition: border-color 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease; }
@@ -206,8 +208,9 @@ body.cinematic .fort-hint, body.menu-open .fort-hint { opacity: 0; }
 
 /* ── speedometer: a race dash's segmented dial in a glass plate, bottom left (car form) ── */
 /* no plate: the dial lies on the picture, held readable by a soft shade that has no edge and by shadows on its marks */
-.speedo { --charge: #9cc4ff; --v: 0; position: fixed; z-index: 14; left: 14px; bottom: 14px; width: 148px; height: 148px; background: radial-gradient(closest-side, rgba(10, 11, 13, 0.34), rgba(10, 11, 13, 0.2) 55%, rgba(10, 11, 13, 0) 100%); pointer-events: none; opacity: 0; transform: translateY(8px); transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.3, 0.8, 0.2, 1); }
-.speedo.shown { opacity: 1; transform: none; }
+.speedo { --charge: #9cc4ff; --v: 0; position: fixed; z-index: 14; left: 14px; bottom: 14px; width: 148px; height: 148px; background: radial-gradient(closest-side, rgba(10, 11, 13, 0.34), rgba(10, 11, 13, 0.2) 55%, rgba(10, 11, 13, 0) 100%); pointer-events: none; opacity: 0; transform: translateY(8px); transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.3, 0.8, 0.2, 1); }
+/* in step with the hint pill's label and the energy plate: out at once, in after 0.1 s */
+.speedo.shown { opacity: 1; transform: none; transition-delay: 0.1s; }
 body:not(.ready) .speedo.shown, body.cinematic .speedo.shown, body.menu-open .speedo.shown, body.paused .speedo.shown { opacity: 0; transform: translateY(8px); }
 .speedo-dial { position: absolute; inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55)); }
 /* each segment lights as the level passes it, in the special's colour; past the car's normal top speed they burn ember */

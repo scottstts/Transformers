@@ -72,7 +72,7 @@ export function attachControls(session: GameSession): GameControls {
   const hits = new HitCounter()
   session.onHits = (count) => hits.hit(count)
   session.onFrame = (dt) => {
-    speedo.update(session.carSpeed)
+    speedo.update(session.groundSpeed)
     hits.update(dt)
   }
   session.onFortHold = (hold) => fortHint.set(hold)
@@ -124,12 +124,15 @@ export function attachControls(session: GameSession): GameControls {
   }
   showCharacter()
   energy.setActive(session.standingRobot)
+  speedo.setShown(!session.standingRobot)
   session.energy.onChange = (_level, gained) => {
     showEnergy(gained)
     menu.refreshHint()
   }
   session.onStandingChange = (standing) => {
+    // the energy plate, the speedometer and the hint pill change together
     energy.setActive(standing)
+    speedo.setShown(!standing)
     menu.refreshHint()
   }
   session.onCinematicChange = (on) => {

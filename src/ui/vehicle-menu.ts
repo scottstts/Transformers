@@ -33,10 +33,12 @@ export interface VehicleHost {
 
 type HintMode = 'play' | 'fight' | 'special' | 'paused'
 
+const ROBOT_KEYS = '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span><i></i><kbd>Click</kbd><span>to fight</span><i></i><kbd>Right</kbd><span>guard</span><i></i>'
+/** The robot's two labels are the same line (the pill keeps its width); a full meter lights the special's key. */
 const HINTS: Record<HintMode, string> = {
-  play: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span>',
-  fight: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span><i></i><kbd>Click</kbd><span>to fight</span><i></i><kbd>Right</kbd><span>guard</span>',
-  special: '<kbd>Click</kbd><span>to fight</span><i></i><kbd>Right</kbd><span>guard</span><i></i><kbd>F</kbd><span>special</span>',
+  play: '<kbd>Tab</kbd><span>to switch</span><i></i><kbd>R</kbd><span>to transform</span><i></i><kbd>Shift</kbd><span>to drift</span>',
+  fight: ROBOT_KEYS + '<kbd>F</kbd><span>for special</span>',
+  special: ROBOT_KEYS + '<kbd class="ready">F</kbd><span>for special</span>',
   paused: '<span>Click to play</span><i></i><kbd>Tab</kbd><span>to switch</span>',
 }
 

@@ -85,14 +85,16 @@ export class Speedometer {
     this.shownKmh = -1
   }
 
-  /** The car's speed over the ground (m/s), or null in robot form. */
-  update(speed: number | null): void {
-    const shown = speed !== null
-    if (shown !== this.shown) {
-      this.shown = shown
-      this.root.classList.toggle('shown', shown)
-    }
-    if (speed === null) return
+  /** Shown out of the robot's stance (car form, transforming), when the hint pill turns to the car's keys. */
+  setShown(shown: boolean): void {
+    if (shown === this.shown) return
+    this.shown = shown
+    this.root.classList.toggle('shown', shown)
+  }
+
+  /** The speed over the ground (m/s); read only while shown. */
+  update(speed: number): void {
+    if (!this.shown) return
     const kmh = Math.round(speed * KMH)
     if (kmh === this.shownKmh) return
     this.shownKmh = kmh

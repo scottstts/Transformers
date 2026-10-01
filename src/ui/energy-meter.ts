@@ -57,7 +57,7 @@ export class EnergyMeter {
     this.root.style.setProperty('--charge', color)
   }
 
-  /** Dimmed while the robot is not standing to fight (car form, transforming). */
+  /** Hidden while the robot is not standing to fight (car form, transforming), as the hint pill changes. */
   setActive(active: boolean): void {
     this.root.classList.toggle('idle', !active)
   }

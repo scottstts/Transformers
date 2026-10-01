@@ -5,7 +5,7 @@ The speedometer (`src/ui/speedometer.ts`) and the hit streak (`src/ui/hit-counte
 ## Speedometer
 
 - Bottom left, with no plate: the dial lies directly on the picture. An edgeless radial shade and dark drop shadows on the marks and text keep it readable over bright sand. A boxed glass plate looked heavy there.
-- Shown only in car form (until a transformation is half through, while the car's dynamics still run). It reads the speed over the ground, the forward and sideways velocity together, so a drift still counts.
+- The energy plate, the speedometer and the hint pill's label change together on the robot's stance (`onStandingChange`): the speedometer shows in car form and through a transformation, the energy plate only in the stance, and both use the label's crossfade (out over 0.25 s, in after 0.1 s). The speedometer reads the speed over the ground, the forward and sideways velocity together, so a drift still counts.
 - A 270° dial of 45 segments. Full scale is the car's boosted top speed rounded up to 20 km/h. Segments past the normal top speed are the ember stretch, reached only with the boost. km/h is the main readout and mph sits in the dial's open foot.
 - It writes to the DOM only when the whole km/h changes: one custom property (`--v`) that every segment reads in CSS, plus two text nodes.
 

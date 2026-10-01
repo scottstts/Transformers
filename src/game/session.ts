@@ -305,10 +305,9 @@ export class GameSession {
   /** Something holds the game still: nothing is simulated, drawn or heard. */
   get isPaused(): boolean { return this.paused }
 
-  /** In car form, the car's speed over the ground (m/s); null in robot form or once a transformation is half through. */
-  get carSpeed(): number | null {
-    const state = this.state
-    return state.progress < 0.5 ? Math.hypot(state.speed, state.lateral) : null
+  /** The player's speed over the ground (m/s): forward and, in car form, sideways. */
+  get groundSpeed(): number {
+    return Math.hypot(this.state.speed, this.state.lateral)
   }
 
   /**
