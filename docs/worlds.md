@@ -17,7 +17,14 @@ The sky, the sun's colour at the ground and the aerial perspective of every surf
 
 ## Horizon landforms (`landforms.ts`)
 
-Low foothills 1.8-2.3 km out and eroded ranges behind them to 3 km follow the camera. They are lit geometry, so the sun models their slopes and the air hazes them; the flat-coloured ridge cut-outs they replaced read as cardboard. At that range only the silhouette, the slope shading and the haze read, so that is all they carry. Their shape is broad masses of doubly warped fbm, with each octave turned against the last so no lattice direction shows, and rough crests from the finer octaves (none finer than the mesh can hold). Ridged value noise was tried and dropped: its crests pinned to the noise lattice and came out as rows of identical cones. Heights vary along the horizon from saddles to 340 m massifs, with alluvial fans easing their feet into the plain. The colour comes in broad patches, darker on steep rock and paler on the fans. Things that looked unreal and were removed: regular strata bands (they read as a pattern, not as rock), quantized mesa ledges (wedding cakes) and a long uniform escarpment wall. The ring is 16 sectors (~55 k triangles), so the half behind the camera is culled. Its base starts under the terrain, whose swells hide where it begins.
+A sea of megadunes 1.8-3.6 km out follows the camera. It is lit geometry, so the sun models the slopes and the air hazes them. At that range only the silhouette, the slope shading and the haze read, so that is all it carries.
+
+- Shape: transverse draa across the near dunes' wind (`DUNE_WIND`), 900 m apart, so their slip faces look the same way. Each has a flat corridor, a long stoss rounding toward the brink, and a straight slip face easing into an apron. Slopes stay under ~41° (`tests/landforms.test.ts`). Warped fbm bends the crests, and their height rises and falls along the horizon and along each crest. Oblique dunes 250 m apart ride over them, so the crests break into peaks and saddles. Crests reach 70 m at the near edge and 150 m at the far edge, so far ridges show over near ones through more haze.
+- Brinks: the sunlit stoss and the shaded slip face must meet along a line. Interpolated vertex normals blur that edge over a vertex spacing, so where the vertex normal turns far from the face's own normal, the material takes the face normal.
+- Colour: one warm sand tone with faint broad variation, and greyer corridors. Mottled patches read as camouflage spots on smooth dunes.
+- Mesh: 1536 columns × 48 rows (8 m apart round the ring at 1.8 km), ~147 k triangles in 32 sectors, so the half behind the camera is culled. Normals come from the whole ring's grid, so the sector seams don't show. One material, built at load, always drawn.
+- Its base starts under the terrain, whose swells hide where it begins.
+- Rejected earlier rocky ranges: rounded fbm massifs read as blobs, ridged value noise as rows of identical cones, and strata and mesa ledges as patterns.
 
 ## Stone
 
