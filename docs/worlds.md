@@ -52,6 +52,16 @@ The world answers contact through `DesertSurface` (the `ContactEffects` interfac
 - **Roost:** a sliding tread throws a roost of dust along its slide (7 puffs/s per m/s of slide per tyre, bigger, longer-lived and taller than rolling dust) and ballistic grit (`grit.ts`): up to 1200 tiny alpha-tested clods, CPU-simulated in a ring and drawn in one call, uploaded only while something is in the air.
 - **Blasts:** fused-glass craters and furrows that cool through blackbody light, crust debris, a base surge of dust and grit bursts; a special's effects call them through `ContactEffects` (specials.md).
 - **On the relief:** everything that meets the ground asks `ContactEffects.height`. Dust keeps each puff above the ground at its birth, grit lands where the ground is under it, and debris solves its flight to the ground at its landing point. Sparks and billows store the ground under their birth, and the Cybertruck's jets end on the ground's plane under the car.
+- **On the paving** (`PavedGround.top`): no footprints (concrete takes no print), and a dust burst is a scuff, a quarter of the puffs at a little over half the strength: concrete holds only a film of sand.
+- **The fight's dust** is a supporting effect, never a weather of its own. `ContactEffects.fight` says whose dust is being raised. The session sets `combo` while the fight owns the robot and `special` in a special's cutscene; the horde marks its own blows, break-ups and the commander's moves as `combo`. A walk and a car are `none`.
+  - A fight's bursts are a quarter of the puffs at 0.55 of the strength on the sand, and 30 % of that on the paving.
+  - Its surges and jet blasts are cut the same way. A special's surges are its own effect and keep their strength on the sand.
+  - `loose` gives the same share, so a fighter's own sand clouds (the Semi's rounds and cannon) follow it.
+  - Measured as the air's fill (live puffs' opacity times area, `Dust.fill`): a walk holds about 170, a car's drift about 330, and a special's surge peaks near 3500 and clears. A cannon-heavy fight once held about 2400 and read as a sandstorm.
+  - Bursts raise at most 220 puffs a second (120 at once).
+  - A surge's size, life and opacity scale with its strength.
+  - Past a fill of 650, new fight puffs are thinned. A car's tyre dust is never thinned.
+  - Off a fight, bursts on the paving are a quarter of the puffs at 0.55 of the strength. `node tools/dust-bench.mjs` times a combo's dust.
 - **Footprints:** one decal per footfall in a ring of 240. Each is a rounded, sole-shaped depression with a displaced-sand lip and transverse tread bars, fading over 90 s. The character measures its planted sole (the foot's and toe cap's lowest support points, boxed along the foot's heading), so prints match the foot.
 
 ## Wind (`wind.ts`)

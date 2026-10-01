@@ -18,7 +18,8 @@ export type SoldierChannel = typeof SOLDIER_CHANNELS[number]
 export const SC = Object.fromEntries(SOLDIER_CHANNELS.map((n, i) => [n, i])) as Record<SoldierChannel, number>
 export const SOLDIER_CHANNEL_COUNT = SOLDIER_CHANNELS.length
 
-function pose(values: Partial<Record<SoldierChannel, number>>): Float32Array {
+/** A key pose from named channels (the rest zero). */
+export function pose(values: Partial<Record<SoldierChannel, number>>): Float32Array {
   const v = new Float32Array(SOLDIER_CHANNEL_COUNT)
   for (const [k, x] of Object.entries(values)) v[SC[k as SoldierChannel]] = x as number
   return v

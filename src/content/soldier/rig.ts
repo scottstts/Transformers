@@ -97,10 +97,12 @@ export class SoldierRig {
   readonly world: Matrix4[]
   /** the renderer's rows: 12 floats per bone (x, y, z rows of the affine world matrix) */
   readonly rows: Float32Array
-  private readonly parent: Int32Array
-  private readonly restT: Vector3[]
-  private readonly restQ: Quaternion[]
-  private readonly auth: Matrix4[]
+  protected readonly parent: Int32Array
+  protected readonly restT: Vector3[]
+  /** rest rotations relative to the parent (a subclass may redefine where a limb's channels start) */
+  protected readonly restQ: Quaternion[]
+  /** bone matrices in the authoring frame, relative to the ground point (before the placement) */
+  protected readonly auth: Matrix4[]
   private readonly poseQ: Quaternion[]
   private readonly ik: Record<'L' | 'R', { thigh: number; shin: number; foot: number; wheel: number; hipT: Vector3 }>
   private readonly order: number[]
@@ -172,6 +174,7 @@ export class SoldierRig {
       W[i].multiplyMatrices(W[par], _m)
     }
     this.legs(p)
+    this.afterLegs()
     for (let i = 0; i < this.bones; i++) {
       const w = this.world[i].multiplyMatrices(_place, W[i])
       const e = w.elements
@@ -182,6 +185,9 @@ export class SoldierRig {
       r[o + 8] = e[2]; r[o + 9] = e[6]; r[o + 10] = e[10]; r[o + 11] = e[14]
     }
   }
+
+  /** Bones that follow the posed legs (a subclass's skirt hinges): `auth` holds the rest of the posed body. */
+  protected afterLegs(): void {}
 
   /** Copy explicit three.js-space bone matrices (debris) into `world` and `rows`. */
   setWorld(i: number, m: Matrix4): void {

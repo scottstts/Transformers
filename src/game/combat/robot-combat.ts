@@ -8,6 +8,8 @@ import { MovePlayer } from '../../content/transformer/combat/player'
 import { FootPlanner } from '../../content/transformer/combat/feet'
 import { Curve } from '../../content/transformer/combat/curves'
 import { toePivot } from '../../content/transformer/combat/overlay'
+import { KNOCKBACK_HOLD, knockbackMove } from '../../content/transformer/combat/knockback'
+import { robotKnockedBack } from './contract'
 import { CH, LEG, SIDES, type Side } from '../../content/transformer/combat/pose'
 import type { MotionState } from '../types'
 import { ComboController, type ComboEvent } from './combo'
@@ -74,6 +76,9 @@ export class RobotCombat {
   private readonly tempoCurve = new Curve(33)
   /** the current combo move's blow has landed */
   private struck = false
+  /** the knock-back reaction (knockback.ts) for this robot, and whether it is playing */
+  private readonly knock: CombatMove
+  private reeling = false
   /** a combo move's blow lands (it charges the special) */
   onStrike: ((move: number) => void) | null = null
   /** turns a move's aim (rad) from the standing point (x, z) toward something to hit within `range` m and `cone` rad, if anything is there */
@@ -103,7 +108,7 @@ export class RobotCombat {
   private steering = false
   /** released to movement: the pose is handing back to the gait, the fight no longer owns the robot */
   private loose = false
-  private readonly pull: PullEvent = { x: 0, z: 0, radius: 0, speed: 0, dt: 0 }
+  private readonly pull: PullEvent = { x: 0, z: 0, radius: 0, speed: 0, dt: 0, special: false }
   private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true }
   /** when the special's last blow lands (its time), so that blow can be marked final */
   private finalAt = -1
@@ -130,6 +135,7 @@ export class RobotCombat {
     this.releaseCues = (combat.moveset.recoverCues ?? []).map((cue) => cue.cue === 'weapon-out' ? { ...cue, value: 0.18 } : cue)
     const recover = combat.moveset.recover
     this.combo = new ComboController(this.moves, recover)
+    this.knock = knockbackMove(model.dims, combat.stepLift)
     this.frame = { weight: 0, values: this.player.values, move: -1, time: 0, state, camera, probe: null, airborne: null }
     this.frameState = state
     this.player.reset(combat.overlay.neutral)
@@ -137,7 +143,12 @@ export class RobotCombat {
 
   /** The fight owns the robot (movement, jumps and transforming wait). */
   get active(): boolean {
-    return this.combo.active || this.special !== null || (this.weight > 0 && !this.loose) || this.guarding
+    return this.combo.active || this.special !== null || (this.weight > 0 && !this.loose) || this.guarding || this.reeling
+  }
+
+  /** Knocked back and not yet able to answer (the reaction's first KNOCKBACK_HOLD s). */
+  get staggered(): boolean {
+    return this.reeling && this.player.time < KNOCKBACK_HOLD
   }
 
   /** The direction the player steers (world x, z; camera-relative input), or null; aims the next move. */
@@ -148,6 +159,7 @@ export class RobotCombat {
 
   /** Movement may take the robot back from the fight now (a recovery, or a move whose window has passed its strike). */
   get releasable(): boolean {
+    if (this.reeling) return !this.staggered && !this.guardHeld
     return !this.special && !this.guarding && !this.guardHeld && !this.loose && this.combo.cancellable
   }
 
@@ -158,6 +170,7 @@ export class RobotCombat {
    */
   release(): void {
     if (!this.releasable) return
+    this.reeling = false
     const turn = this.heading - this.frameState.yaw
     this.frameState.speed = Math.max(0, this.player.velocity(CH.advance) * Math.cos(turn) - this.player.velocity(CH.strafe) * Math.sin(turn))
     this.combo.release()
@@ -218,7 +231,46 @@ export class RobotCombat {
   }
 
   press(): void {
+    // knocked back: no answer until the robot has caught itself
+    if (this.staggered) return
     this.combo.press()
+  }
+
+  /**
+   * An enemy's heavy blow from `from` (world) knocks the robot back
+   * (knockback.ts): whatever it was doing on its feet ends (a combo move as a
+   * cancel ends it, its continuation forgotten; a walk or a run stops; a
+   * formed weapon dissolves), it is turned to face the blow and thrown back
+   * from it, stumbling. For KNOCKBACK_HOLD it takes no attack, guard or
+   * movement; from then movement takes it back as from a combo's recovery and
+   * a click starts the combo, and otherwise it recovers into the stance. A
+   * raised guard or a special is not knocked back (the caller checks the
+   * guard: the blow lands on the shield).
+   */
+  knockback(from: Vector3): void {
+    if (!robotKnockedBack(this)) return
+    const state = this.frameState
+    if (this.weight === 0) {
+      this.player.reset(this.combat.overlay.neutral)
+      this.combat.effects.begin()
+    }
+    if (this.weight === 0 || this.loose) this.plantFeet()
+    this.combo.cancel()
+    this.queued.length = 0
+    this.hits = null
+    this.loose = false
+    this.exiting = false
+    this.reeling = true
+    const x = state.pos.x + Math.sin(state.yaw) * this.robotOffset
+    const z = state.pos.z + Math.cos(state.yaw) * this.robotOffset
+    const heading = state.yaw + wrap(Math.atan2(from.x - x, from.z - z) - state.yaw)
+    this.setGround(state, heading)
+    if (Math.abs(heading - state.yaw) > PIVOT_TURN) this.pivotFeet()
+    // thrown: the travel starts at full speed (the curve bounds it to its keys)
+    this.player.start(this.knock, this.combat.overlay.neutral, -40, 0)
+    this.nextStep = 0
+    this.struck = true
+    this.lastDesired.set(NaN, 0, 0)
   }
 
   /**
@@ -239,6 +291,7 @@ export class RobotCombat {
     this.exiting = false
     this.loose = false
     this.endGuard()
+    this.reeling = false
     this.special = special
     this.tempoCurve.set(1, special.tempo)
     this.beginMove(special.move, state, camera, true)
@@ -251,6 +304,7 @@ export class RobotCombat {
   /** Drop the fight at once and hand the pose back (the robot leaves the stance, or the character is swapped out). */
   cancel(): void {
     this.special = null
+    this.reeling = false
     this.hits = null
     if (this.guarding) this.combat.effects.guard(false)
     this.guarding = false
@@ -268,7 +322,7 @@ export class RobotCombat {
     this.frameCamera = camera
     if (!this.special) this.combo.update(dt, this.onComboEvent)
     this.updateGuard(state, camera)
-    if (!this.combo.active && !this.special && this.weight === 0 && !this.guarding) {
+    if (!this.combo.active && !this.special && this.weight === 0 && !this.guarding && !this.reeling) {
       this.loose = false
       this.combat.effects.ambient(dt, state.yaw)
       return
@@ -292,7 +346,12 @@ export class RobotCombat {
       this.special = null
       this.combo.recover(this.onComboEvent)
     }
-    const owning = this.combo.active || this.special !== null || this.guarding
+    // caught itself: the reaction hands over to the ordinary recovery
+    if (this.reeling && this.player.time >= this.knock.duration) {
+      this.reeling = false
+      this.combo.recover(this.onComboEvent)
+    }
+    const owning = this.combo.active || this.special !== null || this.guarding || this.reeling
 
     // weight: in over the first moments, out as the recovery settles
     if (this.combo.phase === 'recover' && this.combo.time > this.combat.moveset.recover - EXIT) this.exiting = true
@@ -348,6 +407,7 @@ export class RobotCombat {
     const effects = this.combat.effects
     if (event.type === 'start') {
       this.endGuard()
+      this.reeling = false
       const first = this.weight === 0
       if (first) {
         this.player.reset(this.combat.overlay.neutral)
@@ -413,7 +473,7 @@ export class RobotCombat {
   /** Raise the guard when it is held and nothing else plays; lower it when released. */
   private updateGuard(state: MotionState, camera: PerspectiveCamera): void {
     // it rises in a recovery, or cuts a move short once movement could (its window open, no click waiting)
-    if (this.guardHeld && !this.guarding && !this.special && (this.combo.phase !== 'move' || this.combo.cancellable)) {
+    if (this.guardHeld && !this.guarding && !this.special && !this.staggered && (this.combo.phase !== 'move' || this.combo.cancellable)) {
       if (this.weight === 0) {
         this.player.reset(this.combat.overlay.neutral)
         this.combat.effects.begin()
@@ -423,6 +483,7 @@ export class RobotCombat {
       this.queued.length = 0
       this.exiting = false
       this.loose = false
+      this.reeling = false
       this.guarding = true
       this.beginMove(this.combat.guard, state, camera, false)
       this.combat.effects.guard(true)
@@ -487,7 +548,7 @@ export class RobotCombat {
           u.x = d.x + Math.sin(state.yaw) * (w.ahead ?? 0)
           u.z = d.z + Math.cos(state.yaw) * (w.ahead ?? 0)
         }
-        u.radius = w.radius; u.speed = w.speed; u.dt = dt
+        u.radius = w.radius; u.speed = w.speed; u.dt = dt; u.special = this.special !== null
         this.onPull(u)
       }
     }

@@ -330,7 +330,7 @@ export class Gunnery {
       if (hit.on === 'ground') {
         p.contact.burst(hit.at, 0.7, 8)
         p.sparks.emit({ count: 5, at: hit.at, dir: _up, spread: 0.6, speed: [3, 9], life: [0.12, 0.35], size: 0.012, drag: 2, gravity: 1, palette: 0 })
-        p.billows.emit({ count: 1, at: onGround(p.contact, _a.copy(hit.at), 0.3), jitter: 0.3, dir: _up, spread: 0.4, speed: [1.5, 4], life: [0.9, 1.8], size: [0.4, 1.9], heat: 0, drag: 2.5, buoyancy: 0.3, tone: 1, opacity: 0.35 })
+        p.billows.emit({ count: 1, at: onGround(p.contact, _a.copy(hit.at), 0.3), jitter: 0.3, dir: _up, spread: 0.4, speed: [1.5, 4], life: [0.9, 1.8], size: [0.4, 1.9], heat: 0, drag: 2.5, buoyancy: 0.3, tone: 1, opacity: 0.35 * p.contact.loose(hit.at.x, hit.at.z) })
       } else if (hit.on === 'body') {
         // a heavy round on light armour: sparks thrown back off it, a puff of the plate's paint and dust
         p.sparks.emit({ count: 16, at: hit.at, dir: _up, spread: 0.85, speed: [2, 11], life: [0.12, 0.45], size: 0.016, drag: 2.5, gravity: 0.8, palette: 0, jitter: 0.2 })
@@ -362,12 +362,14 @@ export class Gunnery {
     const lift = air ? 0 : 1
     // the fireball, the smoke it rolls up into and (on the ground) the sand thrown out round it
     p.billows.emit({ count: Math.round(14 * strength), at: _a.copy(at).setY(at.y + lift), jitter: 1.4 * strength, dir: _up, spread: 1, speed: [4, 10], life: [0.45, 0.9], size: [1.4 * strength, 5 * strength], heat: 2500, drag: 2.8, buoyancy: 5, tone: 0.6, opacity: 0.3 })
-    p.billows.emit({ count: Math.round(18 * strength), at: _a.copy(at).setY(at.y + lift), jitter: 2 * strength, dir: _up, spread: air ? 1 : 0.35, speed: [3, 14], life: [3, 5.5], size: [1.8 * strength, 7 * strength], heat: 0, drag: 1.2, buoyancy: 0.6, tone: air ? 0.15 : 0.85, opacity: 0.4 })
+    // the sand thrown up: a supporting cloud, thin where the ground is paved
+    const sand = air ? 1 : p.contact.loose(at.x, at.z)
+    p.billows.emit({ count: Math.round(11 * strength), at: _a.copy(at).setY(at.y + lift), jitter: 2 * strength, dir: _up, spread: air ? 1 : 0.35, speed: [3, 14], life: [2.4, 4], size: [1.8 * strength, 6 * strength], heat: 0, drag: 1.2, buoyancy: 0.6, tone: air ? 0.15 : 0.85, opacity: 0.36 * sand })
     if (!air) {
-      for (let k = 0; k < 20; k++) {
-        const a = (k / 20) * Math.PI * 2
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2
         _v.set(Math.cos(a), 0.1, Math.sin(a))
-        p.billows.emit({ count: 1, at, jitter: 1.4, dir: _v, spread: 0.1, speed: [10, 17], life: [2.5, 4], size: [1.3, 5.5], heat: 0, drag: 1.6, buoyancy: 0.2, tone: 1, opacity: 0.38 })
+        p.billows.emit({ count: 1, at, jitter: 1.4, dir: _v, spread: 0.1, speed: [10, 17], life: [2, 3.2], size: [1.3, 4.8], heat: 0, drag: 1.6, buoyancy: 0.2, tone: 1, opacity: 0.34 * sand })
       }
     }
     p.sparks.emit({ count: Math.round(110 * strength), at: _a.copy(at).setY(at.y + 0.3), dir: _up, spread: air ? 1 : 0.7, speed: [6, 20], life: [0.8, 2], size: 0.026, drag: 0.4, gravity: 1, palette: 0, jitter: 1.6 })

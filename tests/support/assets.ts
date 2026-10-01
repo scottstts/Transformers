@@ -19,6 +19,8 @@ export const NO_CONTACT: ContactEffects = {
   tyre: () => undefined,
   footprint: () => undefined,
   burst: () => undefined,
+  loose: () => 1,
+  fight: 'none',
   blast: () => undefined,
   crater: () => undefined,
   furrow: () => 0,
@@ -43,9 +45,9 @@ export function readWeapon(name: string): WeaponAsset {
   return decodeWeaponAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength), name)
 }
 
-/** The enemy soldier from public/models, decoded as the game does. */
-export function readSoldier(): SoldierAsset {
-  const manifest = JSON.parse(readFileSync('public/models/soldier.json', 'utf8')) as SoldierManifest
-  const binary = readFileSync('public/models/soldier.bin')
+/** The enemy soldier (or, by name, the commander) from public/models, decoded as the game does. */
+export function readSoldier(name = 'soldier'): SoldierAsset {
+  const manifest = JSON.parse(readFileSync(`public/models/${name}.json`, 'utf8')) as SoldierManifest
+  const binary = readFileSync(`public/models/${name}.bin`)
   return decodeSoldierAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength))
 }

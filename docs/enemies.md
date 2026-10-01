@@ -1,5 +1,7 @@
 # Enemy soldiers
 
+The fortress's commander (a 7 m unit with a lance combo that can knock the robot back) is commander.md; it shares the soldier's body code (`Commander extends Soldier`) and the horde's hits, rays, aim assist, bars and warm-up. How enemies take blows is the combat contract (combat.md): a soldier's reactions for every enemy, and an enemy mid-combo interrupted only by a special.
+
 Every district of the fortress (forts.md) keeps a garrison of 3 m wheeled robot soldiers. The game side is `src/game/enemies/`: `horde.ts` (the update, hits, culling and drawing), `garrison.ts` (a district's garrison: posts, reinforcements, alert and stand-down, patrols), `engage.ts` (the fight round the robot), `navigation.ts` (way-finding), `soldier.ts` (one body's physics, health, reactions and pose), `debris.ts` (the break-apart) and `barrier.ts` (the car ring). The soldier's asset, rig, poses, materials, renderer, health bars and sound are `src/content/soldier/`; its Blender build is soldier-model.md.
 
 ## Rendering the horde
@@ -32,6 +34,7 @@ Every district of the fortress (forts.md) keeps a garrison of 3 m wheeled robot 
 - A sweep hits each soldier once (a serial per sweep), throwing it along the motion and out of the path. Sweep knock is capped at 16 m/s.
 - **A vacuum** (a move's pull, `Soldier.pull`): a soldier within its reach staggers (it cannot drive against it) and slides toward the centre on its wheels at up to the pull's speed, slowing as it arrives (1.6 m/s per metre from the centre); one thrown into the air drifts that way as it falls. Held in it, it seizes as a flurry's blows make it: thrown between its two hit poses on a jittered 0.1 s beat, each beat a flurry blow's jolt back away from the draw (head up), shaking, and on for 0.25 s after the draw lets go (the blow's spring kick is shared, `Soldier.jolt`). Only leaning in the ready pose, it read as drifting, not caught. The crowd gathers where the blow will land instead of overshooting it; the soldiers' own collisions keep them from stacking.
 - Reactions come from physics plus pose springs. The push goes into the wheel velocity. Past `launchLift` or `launchKnock` the soldier flies ballistically, tumbling about the axis across the push. The tumble rate is set from the flight time so it turns about a third of a revolution and lands on its back or face; a fixed rate spun it upright again. Landed upright it staggers; otherwise it lies 1.1-1.9 s and gets up.
+- The fight's dust supports the blows rather than filling the air: a soldier thrown hard scuffs a little sand (4 puffs past a knock of 9), a break-up 7, and the world budgets bursts (worlds.md).
 - Bodies bowl each other over: a collision faster than 5 m/s between a flying and a standing soldier shares momentum as an impact. A body thrown into a wall faster than 7 m/s takes damage.
 - A connected strike adds a short hit-stop in the session.
 

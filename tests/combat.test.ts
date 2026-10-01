@@ -9,6 +9,9 @@ import { CH, CHANNEL_NAMES } from '../src/content/transformer/combat/pose.ts'
 import type { Character } from '../src/content/transformer/character.ts'
 import { NO_CONTACT, readAsset, readWeapon } from './support/assets.ts'
 import { DT, bodyCore, runFight } from './support/fight.ts'
+import { KNOCKBACK_HOLD, KNOCKBACK_TIME, knockbackTravel } from '../src/content/transformer/combat/knockback.ts'
+import { wrap } from '../src/game/math.ts'
+import type { MotionState } from '../src/game/types.ts'
 
 interface Fighter {
   name: string
@@ -365,5 +368,122 @@ describe('truck finisher continuity', () => {
     // and 6 degrees while lowering the hands and returning to the gait.
     expect(peak, where).toBeLessThan(480)
     expect(settledPeak, settledWhere).toBeLessThan(360)
+  })
+})
+
+describe.each(FIGHTERS)('$name knocked back by the commander', ({ make, clicks }) => {
+  type Case = { name: string; knockAt: number; clicks: number[]; run?: boolean; behind?: boolean }
+  const cases: Case[] = [
+    { name: 'the stance', knockAt: 0.3, clicks: [] },
+    { name: 'the stance, from behind', knockAt: 0.3, clicks: [], behind: true },
+    { name: 'a run', knockAt: 0.5, clicks: [], run: true },
+    ...[0, 1, 2, 3].map((i) => ({ name: `move ${i + 1}`, knockAt: clicks[i] + 0.2, clicks: clicks.slice(0, i + 1) })),
+  ]
+  for (const dt of [1 / 30, 1 / 120]) {
+    it.each(cases)(`is thrown back from $name, turned to the blow, feet down and hands clear, and recovers at dt=${dt.toFixed(4)}`, ({ knockAt, clicks: schedule, run, behind }) => {
+      const c = make()
+      const chest = bodyCore(c, 'bone:chest', 0.15)
+      const pelvis = bodyCore(c, 'bone:pelvis', 0.15)
+      const head = bodyCore(c, 'bone:head', 0.1)
+      const inv = new Matrix4(), p = new Vector3()
+      const inside = (box: Box3, node: string, world: Vector3): boolean => box.containsPoint(p.copy(world).applyMatrix4(inv.copy(c.model.node(node).matrixWorld).invert()))
+      const from = new Vector3()
+      let knocked = false
+      let last = -Infinity
+      let start = 0
+      let travelled = 0
+      let state: MotionState | null = null
+      const point = (s: MotionState): Vector3 => new Vector3(s.pos.x + Math.sin(s.yaw) * c.robotOffset, 0, s.pos.z + Math.cos(s.yaw) * c.robotOffset)
+      const combat = runFight(c, schedule, knockAt + 3.5, (t, fight) => {
+        for (const node of c.model.root.children[0].children) expect(Number.isFinite(node.matrixWorld.elements[12])).toBe(true)
+        if (!knocked || !state) return
+        const since = t - knockAt
+        const d = point(state).distanceTo(from)
+        // straight away from the blow, never back toward it
+        if (since < KNOCKBACK_TIME) expect(d, `toward the blow at ${since.toFixed(3)}`).toBeGreaterThanOrEqual(last - 1e-4)
+        last = d
+        if (since > 0.3 && since < KNOCKBACK_TIME) {
+          const bearing = Math.atan2(from.x - point(state).x, from.z - point(state).z)
+          expect(Math.abs(wrap(state.yaw - bearing)), `facing the blow at ${since.toFixed(3)}`).toBeLessThan(0.12)
+        }
+        if (since < KNOCKBACK_TIME) travelled = d - start
+        if (fight.poseWeight === 1 && fight.air < 0.01) expect(Math.min(c.model.footClearance('R'), c.model.footClearance('L'))).toBeLessThan(0.03)
+        for (const b of ['hand.R', 'hand.L']) {
+          const w = new Vector3().setFromMatrixPosition(c.model.node(`bone:${b}`).matrixWorld)
+          for (const [box, node] of [[chest, 'bone:chest'], [pelvis, 'bone:pelvis'], [head, 'bone:head']] as const) {
+            expect(inside(box, node, w), `${b} inside ${node} at ${since.toFixed(3)}`).toBe(false)
+          }
+        }
+      }, dt, [], (t, fight, s) => {
+        state = s
+        if (run && t < knockAt) s.speed = 8
+        if (!knocked && t >= knockAt) {
+          knocked = true
+          // the commander six metres off: ahead of the robot, or behind it
+          const at = point(s)
+          const a = s.yaw + (behind ? Math.PI : 0)
+          from.set(at.x + Math.sin(a) * 6, 4, at.z + Math.cos(a) * 6)
+          fight.knockback(from)
+          expect(fight.staggered).toBe(true)
+          start = at.distanceTo(new Vector3(from.x, 0, from.z))
+          last = start
+          from.y = 0
+        }
+      })
+      const T = knockbackTravel(c.model.dims)
+      expect(travelled).toBeGreaterThan(T * 0.85)
+      expect(travelled).toBeLessThan(T * 1.2)
+      // back in the stance, the gait in charge
+      expect(combat.active).toBe(false)
+      expect(c.model.overlay).toBeNull()
+      expect(c.combat.effects.weapon?.presence ?? 0).toBe(0)
+    })
+  }
+
+  it('takes no attack, guard or movement while staggered, and answers once it has caught itself', () => {
+    const c = make()
+    const strikes: number[] = []
+    let releasableEarly: boolean | null = null
+    let releasableLate: boolean | null = null
+    runFight(c, [], 4, () => undefined, DT, [], (t, fight, s) => {
+      fight.onStrike = (move) => strikes.push(move)
+      if (Math.abs(t - 0.3) < DT / 2) fight.knockback(new Vector3(s.pos.x + 6, 4, s.pos.z))
+      if (Math.abs(t - 0.5) < DT / 2) {
+        // a click while staggered is dropped; so is the guard
+        fight.press()
+        fight.setGuard(true)
+        fight.setSteer({ x: 1, z: 0 })
+        releasableEarly = fight.releasable
+      }
+      if (Math.abs(t - 0.55) < DT / 2) {
+        expect(fight.guarded).toBe(false)
+        fight.setGuard(false)
+        fight.setSteer(null)
+      }
+      if (Math.abs(t - 0.3 - KNOCKBACK_HOLD - 0.05) < DT / 2) {
+        fight.setSteer({ x: 1, z: 0 })
+        releasableLate = fight.releasable
+        fight.setSteer(null)
+        fight.press()
+      }
+    })
+    expect(releasableEarly).toBe(false)
+    expect(releasableLate).toBe(true)
+    // only the click after the hold played: move 1
+    expect(strikes).toEqual([0])
+  })
+
+  it('is not knocked back behind a raised guard', () => {
+    const c = make()
+    let staggered: boolean | null = null
+    runFight(c, [], 1.5, () => undefined, DT, [], (t, fight, s) => {
+      fight.setGuard(t > 0.1)
+      if (Math.abs(t - 0.8) < DT / 2) {
+        expect(fight.guarded).toBe(true)
+        fight.knockback(new Vector3(s.pos.x + 6, 4, s.pos.z))
+        staggered = fight.staggered
+      }
+    })
+    expect(staggered).toBe(false)
   })
 })

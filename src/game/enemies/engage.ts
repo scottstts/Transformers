@@ -10,8 +10,12 @@ const RING = 9
 /** Share of the way round the ring the fighting soldiers move toward the robot's front. */
 const FRONT_BIAS = 0.3
 /** Distance beyond the robot's body where the ring stands, and the outer holding ring (m). */
-const ENGAGE_GAP = 1.55
+export const ENGAGE_GAP = 1.55
 const HOLD_GAP = 5.0
+/** A soldier in the ring swings once it is within this of its place there (m), nearer the robot. */
+export const ATTACK_WINDOW = 0.7
+/** The slash's reach past the robot's body (m). */
+export const SLASH_REACH = 2.1
 /** After a blow a soldier doesn't swing back for this long (s): a combo's target reels rather than trades. */
 export const REEL = 1.2
 
@@ -58,7 +62,7 @@ export function engage(fort: Fort, nav: FortNav, fighters: Soldier[], t: EnemyTa
     s.goal.z = _w.z
     s.goal.speed = s.distance > r + 4 ? SOLDIER.chargeSpeed : SOLDIER.engageSpeed
     // a swing when close, facing it, off cooldown and a token is free
-    const close = s.distance < engageR + 0.7
+    const close = s.distance < engageR + ATTACK_WINDOW
     const facing = Math.abs(wrap(bearing - s.yaw)) < 0.5
     if (k < RING && close && facing && s.free && swinging < ATTACKERS && s.nextSwing < clock) {
       s.attack()

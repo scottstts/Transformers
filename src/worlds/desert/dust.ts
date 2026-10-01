@@ -19,6 +19,18 @@ const ROOST_RATE = 7;
  * largest as it fades, so its last tenth of life is a fifth of its fill.
  */
 const FADED = 0.006;
+/**
+ * How much dust the air may hold: the live puffs' opacity times their area
+ * (m^2), summed. Past it new puffs are thinned (kept with the share squared
+ * that the ceiling is of the fill), so nothing, however many sources pile up
+ * (a crowd's blows, a gun's shells, the stamping feet), turns the air into a
+ * sandstorm, and the dust's overdraw stays bounded. Only the fight's dust
+ * (bursts, surges, jet blasts) is thinned; a car's tyres never are. A special's blast into
+ * clear air is never thinned: the fill is the last frame's. A walk holds
+ * about 170, a drift about 330, a special's surge peaks near 3500 and clears;
+ * a heavy fight on the sand holds here, on concrete it stays near 160.
+ */
+const FILL_CEILING = 650;
 
 export class Dust {
 	pos: Float32Array;
@@ -37,6 +49,10 @@ export class Dust {
 	aData: THREE.InstancedBufferAttribute;
 	mesh: THREE.Sprite;
 	wind: THREE.Vector3;
+	/** the air's dust after the last update (see FILL_CEILING) */
+	fill = 0;
+	/** the share of new puffs kept now */
+	private keep = 1;
 
 	constructor( scene, ground: Ground ) {
 
@@ -96,9 +112,10 @@ export class Dust {
 
 	}
 
-	/** A puff at (x, z), `y` m above the ground there. */
-	emit( x, y, z, vx, vy, vz, { size = 0.5, grow = 2.5, life = 2.5, alpha = 0.25 } = {} ) {
+	/** A puff at (x, z), `y` m above the ground there; `governed` (the fight's dust) is thinned past FILL_CEILING, a car's tyres never are. */
+	emit( x, y, z, vx, vy, vz, { size = 0.5, grow = 2.5, life = 2.5, alpha = 0.25 } = {}, governed = true ) {
 
+		if ( governed && this.keep < 1 && Math.random() > this.keep ) return;
 		const i = this.cursor;
 		this.cursor = ( this.cursor + 1 ) % MAX;
 		const floor = this.ground.height( x, z );
@@ -136,7 +153,7 @@ export class Dust {
 			this.emit(
 				p.x + ( Math.random() - 0.5 ) * 0.4, 0.2 + Math.random() * 0.2, p.z + ( Math.random() - 0.5 ) * 0.4,
 				velocity.x * back + ( Math.random() - 0.5 ) * 2.0, 0.4 + Math.random() * 1.4 * intensity, velocity.z * back + ( Math.random() - 0.5 ) * 2.0,
-				{ size: 0.45 + v * 0.01, grow: 2.0 + v * 0.09, life: 2.2 + v * 0.05, alpha: 0.12 + 0.2 * intensity }
+				{ size: 0.45 + v * 0.01, grow: 2.0 + v * 0.09, life: 2.2 + v * 0.05, alpha: 0.12 + 0.2 * intensity }, false
 			);
 
 		}
@@ -155,7 +172,7 @@ export class Dust {
 				sx * throwSpeed + velocity.x * carry + ( Math.random() - 0.5 ) * 2.4,
 				0.8 + Math.random() * ( 1.2 + s * 0.14 ),
 				sz * throwSpeed + velocity.z * carry + ( Math.random() - 0.5 ) * 2.4,
-				{ size: 0.55 + s * 0.035, grow: 3.0 + s * 0.28, life: 2.6 + s * 0.09, alpha: 0.16 + 0.16 * Math.min( 1, s / 8 ) }
+				{ size: 0.55 + s * 0.035, grow: 3.0 + s * 0.28, life: 2.6 + s * 0.09, alpha: 0.16 + 0.16 * Math.min( 1, s / 8 ) }, false
 			);
 
 		}
@@ -186,6 +203,10 @@ export class Dust {
 	 */
 	surge( p: THREE.Vector3, radius: number, strength: number ) {
 
+		// a weaker surge (a shell, a slam) is not only fewer puffs but smaller, fainter and shorter lived: at
+		// a full special's strength (1) it is the wall of sand it was, below it the cloud falls away fast
+		const s = Math.min( 1.5, strength );
+		const small = Math.min( 1, s );
 		const ring = Math.round( 260 * strength );
 		for ( let i = 0; i < ring; i ++ ) {
 
@@ -195,7 +216,7 @@ export class Dust {
 			this.emit(
 				p.x + Math.cos( a ) * r, 0.3 + Math.random() * 0.8, p.z + Math.sin( a ) * r,
 				Math.cos( a ) * sp, 0.6 + Math.random() * 3.2 * strength, Math.sin( a ) * sp,
-				{ size: 1.4, grow: 5.5 + 3 * strength, life: 4.5 + 2.5 * strength, alpha: 0.3 + 0.12 * strength }
+				{ size: 1.4, grow: 3 + 5.5 * s, life: 2 + 5 * s, alpha: ( 0.3 + 0.12 * s ) * small }
 			);
 
 		}
@@ -208,7 +229,7 @@ export class Dust {
 			this.emit(
 				p.x + Math.cos( a ) * r, 0.5 + Math.random() * 1.5, p.z + Math.sin( a ) * r,
 				Math.cos( a ) * 2.5 * strength, up, Math.sin( a ) * 2.5 * strength,
-				{ size: 1.6, grow: 6 + 3 * strength, life: 5 + 3 * strength, alpha: 0.26 + 0.1 * strength }
+				{ size: 1.6, grow: 3 + 6 * s, life: 2.5 + 5.5 * s, alpha: ( 0.26 + 0.1 * s ) * small }
 			);
 
 		}
@@ -240,6 +261,7 @@ export class Dust {
 
 		const P = this.pos, V = this.vel, D = this.aData.array, O = this.aPos.array;
 		const drag = Math.exp( - 1.8 * dt );
+		let fill = 0;
 		for ( let i = 0; i < MAX; i ++ ) {
 
 			const age = ( this.age[ i ] += dt );
@@ -275,10 +297,13 @@ export class Dust {
 			}
 			D[ k ] = size;
 			D[ k + 1 ] = alpha;
+			fill += alpha * size * size;
 			D[ k + 3 ] += this.spin[ i ] * dt;
 
 		}
 
+		this.fill = fill;
+		this.keep = fill > FILL_CEILING ? ( FILL_CEILING / fill ) ** 2 : 1;
 		this.aPos.needsUpdate = true;
 		this.aData.needsUpdate = true;
 

@@ -24,7 +24,7 @@ const CH = { u0: 0.045, u1: 0.955, v0: 0.27, v1: 0.73 }
 export class HealthBars {
   readonly mesh: Mesh
   private readonly geometry: InstancedBufferGeometry
-  /** anchor (x, y, z) and opacity; health, chip, flash */
+  /** anchor (x, y, z) and opacity; health, chip, flash, size */
   private readonly a0: InstancedBufferAttribute
   private readonly a1: InstancedBufferAttribute
   private readonly capacity: number
@@ -57,7 +57,8 @@ export class HealthBars {
     const fwd = toCam.div(dist)
     const right = normalize(cross(vec3(0, 1, 0), fwd))
     const up = cross(fwd, right)
-    const k = max(float(1), dist.div(REF))
+    // (a bar's own scale: the commander's is larger)
+    const k = max(float(1), dist.div(REF)).mul(s0.w)
     m.positionNode = centre.add(right.mul(positionLocal.x.mul(WIDTH).mul(k))).add(up.mul(positionLocal.y.mul(HEIGHT).mul(k)))
 
     const health = s0.x, chip = s0.y, flash = s0.z
@@ -93,14 +94,14 @@ export class HealthBars {
     this.count = 0
   }
 
-  /** A bar anchored at (x, y, z), `fade` 0..1; health and chip 0..1, flash 0..1. */
-  add(x: number, y: number, z: number, fade: number, health: number, chip: number, flash: number): void {
+  /** A bar anchored at (x, y, z), `fade` 0..1; health and chip 0..1, flash 0..1; `size` scales it. */
+  add(x: number, y: number, z: number, fade: number, health: number, chip: number, flash: number, size = 1): void {
     if (this.count >= this.capacity) return
     const i = this.count++ * 4
     const a0 = this.a0.array as Float32Array
     const a1 = this.a1.array as Float32Array
     a0[i] = x; a0[i + 1] = y; a0[i + 2] = z; a0[i + 3] = fade
-    a1[i] = health; a1[i + 1] = chip; a1[i + 2] = flash
+    a1[i] = health; a1[i + 1] = chip; a1[i + 2] = flash; a1[i + 3] = size
   }
 
   /** Upload what was added and draw it. */

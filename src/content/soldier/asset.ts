@@ -76,11 +76,12 @@ export interface SoldierAsset {
   shadow: BufferGeometry
 }
 
-export async function loadSoldierAsset(base = import.meta.env.BASE_URL): Promise<SoldierAsset> {
-  const root = `${base}models/soldier`
+/** A unit in the soldier's asset format (`public/models/<name>`): the soldier, or the commander. */
+export async function loadSoldierAsset(name = 'soldier', base = import.meta.env.BASE_URL): Promise<SoldierAsset> {
+  const root = `${base}models/${name}`
   const [manifestResponse, binaryResponse] = await Promise.all([fetch(`${root}.json`), fetch(`${root}.bin`)])
-  if (!manifestResponse.ok) throw new Error(`Soldier manifest: HTTP ${manifestResponse.status}`)
-  if (!binaryResponse.ok) throw new Error(`Soldier geometry: HTTP ${binaryResponse.status}`)
+  if (!manifestResponse.ok) throw new Error(`${name} manifest: HTTP ${manifestResponse.status}`)
+  if (!binaryResponse.ok) throw new Error(`${name} geometry: HTTP ${binaryResponse.status}`)
   return decodeSoldierAsset(await manifestResponse.json() as SoldierManifest, await binaryResponse.arrayBuffer())
 }
 

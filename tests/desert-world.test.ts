@@ -4,6 +4,8 @@ import { DesertWorld } from '../src/worlds/desert/world.ts'
 import { TyreTracks } from '../src/worlds/desert/tyre-tracks.ts'
 import { Footprints } from '../src/worlds/desert/footprints.ts'
 import { DesertTerrain } from '../src/worlds/desert/terrain.ts'
+import { DesertSurface } from '../src/worlds/desert/surface.ts'
+import { Dust } from '../src/worlds/desert/dust.ts'
 
 describe('desert collision field', () => {
   it('recenters existing collider objects with their rock instances', () => {
@@ -73,5 +75,116 @@ describe('footprints', () => {
     expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(0.5)
     expect((Math.max(...xs) + Math.min(...xs)) / 2).toBeCloseTo(5, 6)
     expect((Math.max(...zs) + Math.min(...zs)) / 2).toBeCloseTo(2, 6)
+  })
+})
+
+describe('contact on the fortress paving', () => {
+  const make = () => {
+    const scene = new Scene()
+    const world = new DesertWorld(scene)
+    const surface = new DesertSurface(scene, world.forts.paving, world.terrain)
+    const shape = world.forts.paving.shapes[0]
+    const paved = new Vector3(shape.x, shape.top, shape.z)
+    const sand = new Vector3(paved.x + 400, 0, paved.z + 400)
+    expect(world.forts.paving.top(sand.x, sand.z)).toBe(-1)
+    return { surface, paved, sand }
+  }
+  const live = (surface: DesertSurface): number => surface.dust.age.filter((a) => a < 1e8).length
+
+  it('leaves footprints in the sand but none on the concrete', () => {
+    const { surface, paved, sand } = make()
+    const forward = new Vector3(0, 0, 1)
+    surface.footprint(paved, forward, 1, 0.5, 1)
+    expect(surface.footprints.stamped).toBe(0)
+    surface.footprint(sand, forward, 1, 0.5, 1)
+    expect(surface.footprints.stamped).toBe(1)
+  })
+
+  it('raises only a scuff of dust off the concrete, and a crowd fight\'s bursts are budgeted', () => {
+    const { surface, paved, sand } = make()
+    surface.burst(sand, 1, 28)
+    const onSand = live(surface)
+    const { surface: s2 } = make()
+    s2.burst(paved, 1, 28)
+    expect(live(s2)).toBeLessThan(onSand * 0.4)
+    // a burst of blows in one frame: no more than the budget's worth of puffs
+    const { surface: s3 } = make()
+    for (let i = 0; i < 40; i++) s3.burst(sand, 1, 28)
+    expect(live(s3)).toBeLessThanOrEqual(120)
+    // it refills over time: a walk's footfalls always raise their dust
+    for (let i = 0; i < 20; i++) {
+      s3.update(0.4)
+      const before = live(s3)
+      s3.burst(sand, 1, 30)
+      expect(live(s3) - before).toBeGreaterThanOrEqual(25)
+    }
+  })
+})
+
+describe('fight dust', () => {
+  const coverage = (d: InstanceType<typeof Dust>): number => d.fill
+  it('holds a crowd fight\'s dust under its ceiling but never thins a car\'s tyres', () => {
+    const dust = new Dust(new Scene(), new DesertTerrain([]))
+    const p = new Vector3()
+    // a fight: shells' surges every few seconds, blows and footfalls between
+    let peak = 0
+    for (let i = 0; i < 60 * 16; i++) {
+      const t = i / 60
+      if (i % 240 === 0) { dust.surge(p, 2.1, 0.3); dust.surge(p, 2.6, 0.6) }
+      if (i % 2 === 0) dust.burst(p, 0.8, 8)
+      if (i % 20 === 0) dust.burst(p, 1, 30)
+      dust.update(1 / 60)
+      if (t > 6) peak = Math.max(peak, coverage(dust))
+    }
+    expect(peak).toBeLessThan(1400)
+    // the air full of it: a drifting tyre still throws its whole roost
+    const before = dust.age.filter((a) => a < 1e8).length
+    for (let i = 0; i < 30; i++) dust.wheel(p, new Vector3(10, 0, 0), new Vector3(0, 0, 8), 1 / 60)
+    const tyres = dust.age.filter((a) => a < 1e8).length - before
+    const clear = new Dust(new Scene(), new DesertTerrain([]))
+    for (let i = 0; i < 30; i++) clear.wheel(p, new Vector3(10, 0, 0), new Vector3(0, 0, 8), 1 / 60)
+    expect(tyres).toBeGreaterThan(clear.age.filter((a) => a < 1e8).length * 0.6)
+  })
+
+  it('throws a smaller, shorter cloud from a shell than from a special\'s blast', () => {
+    const peakOf = (strength: number): [number, number] => {
+      const dust = new Dust(new Scene(), new DesertTerrain([]))
+      dust.surge(new Vector3(), 3, strength)
+      let peak = 0, last = 0
+      for (let i = 0; i < 60 * 12; i++) {
+        dust.update(1 / 60)
+        peak = Math.max(peak, dust.fill)
+        if (dust.fill > 20) last = i / 60
+      }
+      return [peak, last]
+    }
+    const [shell, shellLasts] = peakOf(0.4)
+    const [special, specialLasts] = peakOf(1)
+    expect(shell).toBeLessThan(special * 0.15)
+    expect(shellLasts).toBeLessThan(specialLasts * 0.7)
+  })
+})
+
+describe('a fight\'s dust on the ground', () => {
+  it('raises a quarter of a walk\'s burst on the sand, and 30 % of that on the concrete; a special\'s surge keeps its strength', () => {
+    const scene = new Scene()
+    const world = new DesertWorld(scene)
+    const shape = world.forts.paving.shapes[0]
+    const paved = new Vector3(shape.x, shape.top, shape.z)
+    const sand = new Vector3(paved.x + 400, 0, paved.z + 400)
+    const raised = (fight: 'none' | 'combo' | 'special', at: Vector3, what: (s: DesertSurface) => void): number => {
+      const surface = new DesertSurface(new Scene(), world.forts.paving, world.terrain)
+      surface.fight = fight
+      what(surface)
+      return surface.dust.age.filter((a) => a < 1e8).length
+    }
+    const walk = raised('none', sand, (s) => s.burst(sand, 1, 40))
+    const onSand = raised('combo', sand, (s) => s.burst(sand, 1, 40))
+    const onConcrete = raised('combo', paved, (s) => s.burst(paved, 1, 40))
+    expect(onSand).toBe(Math.round(walk * 0.25))
+    expect(onConcrete).toBe(Math.round(walk * 0.25 * 0.3))
+    const surge = raised('none', sand, (s) => s.surge(sand, 6, 0.6))
+    expect(raised('combo', sand, (s) => s.surge(sand, 6, 0.6))).toBeLessThan(surge * 0.6)
+    expect(raised('special', sand, (s) => s.surge(sand, 6, 0.6))).toBe(surge)
   })
 })

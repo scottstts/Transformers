@@ -340,7 +340,7 @@ describe('horde', () => {
     const start = Math.hypot(s.x - cx, s.z - cz)
     let low = Infinity, high = -Infinity, swings = 0, last = 0
     for (let t = 0; t < 1.5; t += DT) {
-      horde.pull({ x: cx, z: cz, radius: 40, speed: 8, dt: DT })
+      horde.pull({ x: cx, z: cz, radius: 40, speed: 8, dt: DT, special: false })
       horde.update(DT, target, camera)
       const lean = s.anim[SC.lean]
       low = Math.min(low, lean)

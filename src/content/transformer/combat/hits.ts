@@ -129,6 +129,8 @@ export interface PullEvent {
   radius: number
   speed: number
   dt: number
+  /** a special's vacuum: it draws in even an enemy in the middle of its combo (combat/contract.ts) */
+  special: boolean
 }
 
 /** When a move's last blow lands (s): its latest strike or blast, or the end of its latest sweep. */

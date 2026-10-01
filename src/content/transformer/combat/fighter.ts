@@ -158,7 +158,7 @@ export class Fighter implements CombatEffects {
 
   skid(_side: Side, at: Vector3, speed: number, dt: number): void {
     // a dragged foot ploughs the sand: a spray at the heel of it
-    if (Math.random() < Math.min(1, speed * dt * 3)) this.contact.burst(at, Math.min(1.2, speed * 0.18), 6)
+    if (Math.random() < Math.min(1, speed * dt * 2)) this.contact.burst(at, Math.min(1, speed * 0.15), 3)
   }
 
   update(dt: number, frame: CombatFrame): void {

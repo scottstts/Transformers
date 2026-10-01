@@ -1,5 +1,5 @@
 import type { Scene, Vector3 } from 'three/webgpu'
-import type { ContactEffects, TyreContact } from '../../game/contact-effects'
+import type { ContactEffects, FightDust, TyreContact } from '../../game/contact-effects'
 import { Dust } from './dust.ts'
 import { Grit } from './grit.ts'
 import { TyreTracks } from './tyre-tracks.ts'
@@ -13,10 +13,34 @@ import type { DesertTerrain } from './terrain.ts'
 const FULL_SCRAPE = 5
 /** Length of a tyre's footprint in the sand (m): a sideways tyre sweeps this, not its tread width. */
 const PATCH = 0.36
+/**
+ * Kicked-up dust on the fortress's paving: concrete holds only a film of
+ * sand, so a footfall or a blow there raises a scuff (this share of the
+ * puffs, at this share of the strength), not a cloud.
+ */
+const PAVED_COUNT = 0.25
+const PAVED_STRENGTH = 0.55
+/**
+ * A fight's dust (`fight`), a supporting effect: on the sand this share of
+ * the puffs at this share of the strength, on the paving FIGHT_PAVED of that
+ * again. A special's surges are its own effect and keep their strength.
+ */
+const FIGHT_COUNT = 0.25
+const FIGHT_STRENGTH = 0.55
+const FIGHT_PAVED = 0.3
+/**
+ * Bursts may raise this many puffs a second (and this many at once): a
+ * crowd fight's footfalls, blows and break-ups each throw a little dust, and
+ * unbudgeted they filled the air like a sandstorm (and the dust's fill cost
+ * with it). A walk or a single blow never reaches it.
+ */
+const BURST_RATE = 220
+const BURST_CAP = 120
 
 /**
  * How the desert answers contact: kicked-up dust and grit, tyre tracks and
- * footprints in the sand; and a blast: fused-glass craters and furrows, a
+ * footprints in the sand (none on the paving, where the dust is only a
+ * scuff); and a blast: fused-glass craters and furrows, a
  * base surge of sand and crust thrown out. On the fortress's paving a blast
  * spalls, cracks and chars the concrete and throws concrete (scorch.ts).
  */
@@ -30,6 +54,10 @@ export class DesertSurface implements ContactEffects {
 
   private readonly paving: PavedGround | null
   private readonly terrain: DesertTerrain
+  /** puffs bursts may still raise now (BURST_RATE) */
+  private budget = BURST_CAP
+  /** whose dust is raised now */
+  fight: FightDust = 'none'
 
   /** `paving`: where the floor is paved (a blast marks concrete as concrete, and throws concrete); `terrain`: the landform every mark lies on */
   constructor(scene: Scene, paving: PavedGround | null, terrain: DesertTerrain) {
@@ -62,15 +90,39 @@ export class DesertSurface implements ContactEffects {
   }
 
   footprint(center: Vector3, forward: Vector3, length: number, width: number, strength: number): void {
+    // a foot on concrete leaves no print
+    if (this.paved(center)) return
     this.footprints.stamp(center, forward, length, width, strength)
   }
 
+  loose(x: number, z: number): number {
+    return FIGHT_COUNT * ((this.paving?.top(x, z) ?? -1) >= 0 ? FIGHT_PAVED : 1)
+  }
+
   burst(point: Vector3, strength: number, count: number): void {
-    this.dust.burst(point, strength, count)
+    const paved = this.paved(point)
+    if (this.fight !== 'none') {
+      count *= FIGHT_COUNT * (paved ? FIGHT_PAVED : 1)
+      strength *= FIGHT_STRENGTH
+    } else if (paved) {
+      count *= PAVED_COUNT
+      strength *= PAVED_STRENGTH
+    }
+    const n = Math.min(Math.round(count), Math.floor(this.budget))
+    if (n <= 0) return
+    this.budget -= n
+    this.dust.burst(point, strength, n)
+  }
+
+  /** On the fortress's paving (not the sand). */
+  private paved(p: Vector3): boolean {
+    return (this.paving?.top(p.x, p.z) ?? -1) >= 0
   }
 
   blast(point: Vector3, strength: number, dt: number): void {
-    this.dust.blast(point, strength, dt)
+    const paved = this.paved(point)
+    const k = this.fight === 'combo' ? FIGHT_STRENGTH * 0.6 * (paved ? FIGHT_PAVED : 1) : paved ? PAVED_STRENGTH * 0.6 : 1
+    this.dust.blast(point, strength * k, dt)
   }
 
   crater(center: Vector3, radius: number, heat: number): void {
@@ -86,12 +138,15 @@ export class DesertSurface implements ContactEffects {
   }
 
   surge(center: Vector3, radius: number, strength: number): void {
-    this.dust.surge(center, radius, strength)
+    // off concrete a blast throws a thin film of sand, not a wall of it
+    const paved = this.paved(center)
+    const k = this.fight === 'combo' ? FIGHT_STRENGTH * (paved ? FIGHT_PAVED : 1) : paved ? PAVED_STRENGTH : 1
+    this.dust.surge(center, radius, strength * k)
   }
 
   eject(center: Vector3, speed: number, count: number, dir: Vector3, spread: number, size: number): void {
     // off a slab the chunks are broken concrete, off the sand its crust
-    this.debris.burst(center, speed, count, dir, spread, size, (this.paving?.top(center.x, center.z) ?? -1) >= 0)
+    this.debris.burst(center, speed, count, dir, spread, size, this.paved(center))
     this.grit.burst(center, speed * 0.8, count * 4, dir, spread)
   }
 
@@ -100,6 +155,7 @@ export class DesertSurface implements ContactEffects {
   }
 
   update(dt: number): void {
+    this.budget = Math.min(BURST_CAP, this.budget + BURST_RATE * dt)
     this.tracks.update(dt)
     this.footprints.update(dt)
     this.scorch.update(dt)

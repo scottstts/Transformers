@@ -88,7 +88,8 @@ function damage(m: Lit, nodes: HordeNodes): Lit {
   return m
 }
 
-function standard(nodes: HordeNodes, spec: { color: Node<'vec3'> | Node<'color'>; metal: Node<'float'> | number; rough: Node<'float'>; coat?: number }): Lit {
+/** A lit slot on the horde's skinning, with its heat and dissolve (`coat` adds a clear coat). */
+export function standard(nodes: HordeNodes, spec: { color: Node<'vec3'> | Node<'color'>; metal: Node<'float'> | number; rough: Node<'float'>; coat?: number }): Lit {
   const m = (spec.coat ? new MeshPhysicalNodeMaterial() : new MeshStandardNodeMaterial()) as Lit
   m.colorNode = spec.color
   m.metalnessNode = typeof spec.metal === 'number' ? float(spec.metal) : spec.metal

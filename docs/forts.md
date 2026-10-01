@@ -34,7 +34,7 @@ One fortress stands in the desert (`FORT_SITES` in `src/worlds/desert/fort/plan.
 - **Keep**: the vehicle bay runs through both podium floors; the floor band and the second-floor slab break round it. The control room's glass leans out.
 - **Garage**: only the front's open bays show the hall; its closed doors are a corrugated slat curtain. Corrugation everywhere is tilted normals at 0.6 of the true slope (the full slope shimmered at a distance).
 - **HESCO rows** build only the row's outer faces: the walls between cells are hidden.
-- **Paving** is slabs 3 cm proud of the sand in bays of at most 6 m with chamfered top edges: a joint reads as a groove in raking light. Feet and wheels sink those 3 cm; footprints and tyre ribbons hide under the slabs.
+- **Paving** is slabs 3 cm proud of the sand in bays of at most 6 m with chamfered top edges: a joint reads as a groove in raking light. Feet and wheels sink those 3 cm; tyre ribbons hide under the slabs, and no footprint is laid on them (worlds.md).
 - **Flags** all fly one way (one wind over the fortress): their modules share one yaw.
 
 ## Draw cost

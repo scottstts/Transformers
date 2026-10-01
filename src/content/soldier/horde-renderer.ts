@@ -1,10 +1,18 @@
 import { BufferAttribute, BufferGeometry, Group, InstancedBufferGeometry, Mesh, StorageBufferAttribute, type Material } from 'three/webgpu'
 import type { SoldierAsset } from './asset'
-import { createShadowMaterial, createSoldierMaterials, hordeNodes } from './materials'
+import { createShadowMaterial, createSoldierMaterials, hordeNodes, type HordeNodes } from './materials'
 import { SHADOW_ONLY_LAYER } from '../../rendering/layers'
 
 /** Soldiers drawn at most at once (the fortress's garrisons and their debris). */
 export const HORDE_CAPACITY = 160
+
+/** A renderer for another unit in the soldier's format (the commander): how many it draws at once, and its slot materials. */
+export interface HordeOptions {
+  capacity?: number
+  materials?: (nodes: HordeNodes) => Record<string, Material>
+  /** its detail tiers' distance bands (m): a bigger unit keeps its detail further out */
+  lodDistance?: readonly [number, number]
+}
 
 /** One soldier to draw this frame: its bone rows (bones x 12 floats, affine world rows) and state. */
 export interface HordeInstance {
@@ -47,6 +55,9 @@ export const SHADOW_FAR = 150
 export class HordeRenderer {
   readonly object = new Group()
   readonly bones: number
+  /** instances drawn at most at once */
+  readonly capacity: number
+  private readonly lodDistance: readonly [number, number]
   private readonly rows: StorageBufferAttribute
   private readonly state: StorageBufferAttribute
   private readonly tiers: Array<{ meshes: Mesh[]; geometries: InstancedBufferGeometry[] }> = []
@@ -54,12 +65,14 @@ export class HordeRenderer {
   private readonly shadows: Array<{ mesh: Mesh; geometry: InstancedBufferGeometry }> = []
   private readonly counts = [0, 0, 0]
 
-  constructor(asset: SoldierAsset) {
+  constructor(asset: SoldierAsset, options: HordeOptions = {}) {
     this.bones = asset.manifest.bones.length
-    this.rows = new StorageBufferAttribute(new Float32Array(HORDE_CAPACITY * this.bones * 12), 4)
-    this.state = new StorageBufferAttribute(new Float32Array(HORDE_CAPACITY * 4), 4)
+    this.capacity = options.capacity ?? HORDE_CAPACITY
+    this.lodDistance = options.lodDistance ?? LOD_DISTANCE
+    this.rows = new StorageBufferAttribute(new Float32Array(this.capacity * this.bones * 12), 4)
+    this.state = new StorageBufferAttribute(new Float32Array(this.capacity * 4), 4)
     const nodes = hordeNodes({ rows: this.rows, state: this.state, bones: this.bones })
-    const materials = createSoldierMaterials(nodes)
+    const materials = (options.materials ?? createSoldierMaterials)(nodes)
     for (const lod of asset.lods) {
       const meshes: Mesh[] = []
       const geometries: InstancedBufferGeometry[] = []
@@ -102,7 +115,7 @@ export class HordeRenderer {
    * view, and only cast.
    */
   draw(list: readonly HordeInstance[], visible = list.length): void {
-    const n = Math.min(list.length, HORDE_CAPACITY)
+    const n = Math.min(list.length, this.capacity)
     const shown = Math.min(visible, n)
     const rows = this.rows.array as Float32Array
     const state = this.state.array as Float32Array
@@ -120,7 +133,7 @@ export class HordeRenderer {
       state[i * 4 + 3] = s.blade
       if (i < shown) {
         // the list is sorted, so the caps keep each tier one consecutive run
-        counts[s.distance < LOD_DISTANCE[0] && counts[0] < LOD_CAP[0] ? 0 : s.distance < LOD_DISTANCE[1] && counts[1] < LOD_CAP[1] ? 1 : 2]++
+        counts[s.distance < this.lodDistance[0] && counts[0] < LOD_CAP[0] ? 0 : s.distance < this.lodDistance[1] && counts[1] < LOD_CAP[1] ? 1 : 2]++
         if (s.distance < NEAR_SHADOW && near === i && near < NEAR_SHADOW_CAP) near = i + 1
       }
       if (s.distance < SHADOW_FAR) far = i + 1

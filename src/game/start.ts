@@ -18,17 +18,21 @@ export async function startGame(setStage: (stage: string) => void): Promise<Game
   const entry = rosterEntry(savedVehicle())
   const assetLoad = loadRosterAsset(entry)
   assetLoad.catch(() => undefined)
-  // the forts' soldiers download alongside
+  // the forts' soldiers and their commander download alongside
   const soldierLoad = loadSoldierAsset()
   soldierLoad.catch(() => undefined)
+  const commanderLoad = loadSoldierAsset('commander')
+  commanderLoad.catch(() => undefined)
   try {
     await host.initialize()
     setStage(`Loading ${entry.label} model`)
     const asset = await host.observe(assetLoad)
     setStage('Loading soldier model')
     const soldiers = await host.observe(soldierLoad)
+    setStage('Loading commander model')
+    const commander = await host.observe(commanderLoad)
     setStage('Building game world')
-    const session = new GameSession(host.renderer, sizingCamera, entry, asset, soldiers, (error) => host.fail(error))
+    const session = new GameSession(host.renderer, sizingCamera, entry, asset, soldiers, commander, (error) => host.fail(error))
     setStage('Preparing audio')
     session.prepareAudio()
     setStage('Compiling shaders')

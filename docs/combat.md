@@ -77,6 +77,25 @@ The fight is one flat vector of named channels (pelvis, torso, arms, weapon, hee
 - **No trail for a gun:** `FighterStyle.trail` is optional; the Semi has none (a swung gun is not an edge).
 - **Materials:** each weapon has forged copies of its character's materials. Compiling skips invisible objects, so the session warms the weapon, trail and sparks during boot and first-time car switches. Warmup forces the complete weapon and its cast-shadow path visible under the loading cover and submits a real hidden draw, so shader pipelines and geometry uploads are complete before play resumes. On a first car switch that draw happens before ordinary frame updates can hide idle effects again; this also covers the Semi's flashes, tracers and casings before combo 3 fires.
 
+## The combat contract (`game/combat/contract.ts`)
+
+How every robot and every enemy interact, through the shared machinery only, so a new robot or enemy follows it by using that machinery (robots' blows as `HitEvent`s and `PullEvent`s marked `special` in a special; enemies as `Soldier`s; enemy blows through the horde):
+
+1. **Enemies mid-combo:** an enemy in the middle of its combo (`Soldier.inCombo`: the commander's combo; a soldier's slash is not one) cannot be interrupted, except by a special's blow or vacuum. Other blows still take its health, and empty health destroys it (rule 4 aside).
+2. **Enemies otherwise:** every enemy takes every hit effect a soldier does through the same code: flinch, knock-back, launch, fall, vacuum seizure and the body blows (walls, barging, bowling). Its weight (`UnitTuning.push`, 1 a soldier's, 0.4 the commander's) sizes how far it is knocked and lifted, along with its own launch threshold and how long it lies. A special's lift reaches every enemy whole, at a soldier's threshold, so a special throws them all as high.
+3. **The robot:** the commander's knock-back (its combo's fourth move) interrupts whatever a robot is doing on its feet, a combo included, except a special or a raised guard.
+4. **The special's hold:** in a special, an enemy its blows (or anything else) empty is held, not destroyed. Soldiers and the commander alike break apart at the special's last blow, or as it ends (`enemyHeld`).
+
+`tests/contract.test.ts` runs every robot in the roster against it:
+- each of its combo and special blows on a soldier and on an idle commander (the same reaction, the commander pushed by its share and thrown as high by a special);
+- on the commander mid-combo (only the special's interrupt);
+- its special's hold on both until the last blow;
+- the knock-back in its combo, standing, in its special and behind its guard.
+
+## Knock-back
+
+The commander's whirl knocks the robot back unless it guards (`RobotCombat.knockback`, `transformer/combat/knockback.ts`; commander.md): one shared move scaled by each robot's hip height and stance, 0.6 s with no input, then movement or a click takes it back.
+
 ## Guard
 
 - Holding the right mouse button raises the guard. It is `CharacterCombat.guard`, a `CombatMove` whose keys ease into a defensive pose and then hold, played on the same channels. The truck uses a boxer's high guard; the racer crosses its forearms.

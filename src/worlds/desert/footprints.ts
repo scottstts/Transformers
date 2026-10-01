@@ -28,6 +28,13 @@ export class Footprints {
 	private readonly time = uniform( 0 );
 	private written = 0;
 
+	/** Prints stamped so far (tests). */
+	get stamped(): number {
+
+		return this.written;
+
+	}
+
 	constructor( scene: THREE.Scene, terrain: DesertTerrain ) {
 
 		const geometry = new THREE.BufferGeometry();

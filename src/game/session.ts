@@ -27,6 +27,8 @@ import type { FortHold } from '../ui/fort-hint'
 /** What can hold the game still (`GameSession.hold`): the pause menu, or the vehicle menu while it is open and not switching. */
 export type GameHold = 'pause' | 'menu'
 
+/** How far from the camera the ground's shaking (the commander's slam) still shakes it (m). */
+const QUAKE_REACH = 45
 /** Frames rendered behind the switch cover before the new car is revealed (the first draws its every effect). */
 const SWITCH_SETTLE_FRAMES = 3
 
@@ -99,7 +101,7 @@ export class GameSession {
   /** called when the player is held at a fort (the car at its perimeter, the robot against its walls, the car form refused inside), or no longer (UI hint) */
   onFortHold: ((hold: FortHold) => void) | null = null
 
-  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: PlayableTransformerAsset, soldiers: SoldierAsset, onFrameError: (error: Error) => void) {
+  constructor(renderer: WebGPURenderer, camera: PerspectiveCamera, entry: RosterEntry, asset: PlayableTransformerAsset, soldiers: SoldierAsset, commander: SoldierAsset, onFrameError: (error: Error) => void) {
     this.renderer = renderer
     this.camera = camera
     this.onFrameError = onFrameError
@@ -110,8 +112,12 @@ export class GameSession {
     configureRenderer(renderer)
     this.scene.add(this.lightSlots.object, this.character.model.root, this.character.effects.object)
     this.character.model.pose(0, null)
-    this.horde = new Horde(soldiers, this.world.forts, this.environment.contactEffects, this.audio)
+    this.horde = new Horde(soldiers, this.world.forts, this.environment.contactEffects, this.audio, commander)
     this.horde.onStruck = (at, from, strength) => this.character.combat.effects.struck(at, from, strength, this.fight.guarded)
+    // the commander's whirl knocks the robot back (the combat contract: not in a special, not through a raised guard)
+    this.horde.onKnockback = (from) => this.fight.knockback(from)
+    // the commander's lance driven into the ground shakes the camera near it
+    this.horde.onQuake = (at, strength) => this.cameraFx.shake(strength * Math.max(0, 1 - at.distanceTo(this.camera.position) / QUAKE_REACH) * 0.6)
     this.scene.add(this.horde.object)
 
     bakeEnvironment(renderer, this.scene, this.environment.environmentScene())
@@ -474,7 +480,11 @@ export class GameSession {
       this.jump.start(momentum, this.character.gait.leapTakeoff(momentum))
     }
     const jump = this.jump.update(dt)
+    const contact = this.environment.contactEffects
+    // the fight's dust is far lighter than a walk's (contact-effects.ts)
+    contact.fight = fight.cinematic || special ? 'special' : fight.active || fight.poseWeight > 0 || attack ? 'combo' : 'none'
     fight.update(dt, state, this.camera)
+    contact.fight = fight.cinematic ? 'special' : fight.active || fight.poseWeight > 0 ? 'combo' : 'none'
     if (this.cinematic && !fight.cinematic) this.setCinematic(false)
     const standing = state.mode === 'robot' && state.progress >= 1
     if (standing !== this.standing) {
@@ -485,6 +495,10 @@ export class GameSession {
     else if (!fight.active) updateRobot(state, this.input, this.camera, dt, busy || state.mode === 'car', this.character.robotOffset, profile.robot, jump.airborne)
     // the forts' ring holds the car back; the robot walks through it
     this.barrier.apply(state, this.world.forts, profile.drive.maxSpeed, state.progress < 1)
+    // the commander's bulk pushed the robot last frame (the walls still have the last word)
+    const shove = this.horde.shove
+    if (!frozen) { state.pos.x += shove.x; state.pos.z += shove.z }
+    shove.x = shove.z = 0
     const walled = resolveCircleCollisions(state, this.world.colliders, this.character.robotOffset, profile, this.world.segments)
     // a robot pushing against a fort's walls for a moment is told where the way in is
     this.wallTime = walled && state.mode === 'robot' && !fight.active ? this.wallTime + frameDt : 0

@@ -1,5 +1,8 @@
 import type { Vector3 } from 'three/webgpu'
 
+/** Whose dust is being raised (ContactEffects.fight). */
+export type FightDust = 'none' | 'combo' | 'special'
+
 /** One tyre on the ground this frame, in world space. */
 export interface TyreContact {
   /** contact point on the ground */
@@ -23,6 +26,16 @@ export interface ContactEffects {
   /** a foot planted at `center` (ground), heading `forward` (unit), sole length and width in m, load 0..1+ */
   footprint(center: Vector3, forward: Vector3, length: number, width: number, strength: number): void
   burst(point: Vector3, strength: number, count: number): void
+  /**
+   * Whose dust is raised now: the world's (a walk, a car), a fight's (the
+   * session sets it while the fight owns the robot, the horde while it answers
+   * blows), or a special's. A fight's dust is a supporting effect, far
+   * lighter than a walk's or a car's; a special's blast surges are its own
+   * effect and keep their strength.
+   */
+  fight: FightDust
+  /** the share of a full cloud of sand a fight raises at a point (lower on paving): a fighter's own sand clouds scale by it */
+  loose(x: number, z: number): number
   /** a jet exhaust striking the surface at `point` (strength 0..1), continuous */
   blast(point: Vector3, strength: number, dt: number): void
   /** a blast of heat at `center`: a crater `radius` m across its bowl, `heat` 0..1+ (1: fused white-hot) */

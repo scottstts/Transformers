@@ -12,13 +12,17 @@ import type { Fort, Forts } from '../../worlds/desert/fort'
 import type { Contact } from '../collide'
 import { wrap } from '../math'
 import { Soldier, SOLDIER, type SoldierImpact } from './soldier'
+import { COMMANDER } from './commander'
+import { CommanderPost } from './commander-post'
+import { createCommanderMaterials } from '../../content/commander/materials'
+import { enemyHeld, enemyReacts } from '../combat/contract'
+import type { CommanderCue } from '../../content/commander/moves'
 import { Debris, DEBRIS_FADE, DEBRIS_LIE } from './debris'
 import { aliveIn, createGarrison, patrol, reinforce, station, updateAlert, type Garrison } from './garrison'
-import { engage, REEL } from './engage'
+import { engage, REEL, SLASH_REACH } from './engage'
 import { FortNav } from './navigation'
 
-/** The slash's reach past the robot's body (m) and its cone (rad) either side of the soldier's heading. */
-const SLASH_REACH = 2.1
+/** The slash's cone (rad) either side of the soldier's heading (its reach is engage.ts's). */
 const SLASH_CONE = 1.05
 /**
  * Simulation rates by a district's distance from the camera (m, from its
@@ -39,6 +43,26 @@ const BAR_FADE = 46
 const BAR_LIFT = 0.78
 /** A hit's flash on the bar (s). */
 const BAR_FLASH = 0.18
+/** The commander's bar: its size over a soldier's, and its anchor above the head bone (m). */
+const COMMANDER_BAR = 1.7
+const COMMANDER_BAR_LIFT = 1.15
+/** The commander's detail tiers (m): it stands 2.3 times a soldier's height, so it keeps its detail that much further out. */
+const COMMANDER_LOD = [60, 160] as const
+/** The commander's draw sphere (m, alive and in pieces) and how far its shadow reaches across the sand (m). */
+const COMMANDER_SPHERE = [4.2, 9] as const
+const COMMANDER_SHADOW_REACH = 15
+/** The commander's body for a ray: a sphere this big about this height (m). */
+const COMMANDER_BODY_RADIUS = 2.2
+const COMMANDER_BODY_HEIGHT = 3.8
+/**
+ * The robot and the commander push each other apart: the share of their
+ * overlap the commander gives (the rest moves the robot, `shove`), and its
+ * blows' height on the robot (share of the robot's height, at most).
+ */
+const COMMANDER_YIELD = 0.6
+/** Its blade stops on a raised shield this share of its reach past it, as a soldier's does (1.2 of its 2.1 m). */
+const GUARD_REACH = 0.57
+const COMMANDER_BLOW_HEIGHT = 0.62
 
 /** What the soldiers fight: the player's body on the ground this frame. */
 export interface EnemyTarget {
@@ -64,6 +88,8 @@ interface Stronghold {
   fort: Fort
   nav: FortNav
   garrisons: Garrison[]
+  /** its commander, if the commander's asset was given */
+  post: CommanderPost | null
 }
 
 /**
@@ -92,8 +118,14 @@ export class Horde {
   readonly object = new Group()
   /** soldiers destroyed so far (a running count, for tools and tests) */
   destroyed = 0
-  /** a soldier's blade lands on the robot: where (world), from where, how hard 0..1 */
+  /** a soldier's blade (or the commander's lance) lands on the robot: where (world), from where, how hard 0..1 */
   onStruck: ((at: Vector3, from: Vector3, strength: number) => void) | null = null
+  /** the commander's fourth blow lands on the robot: knock it back from `from` (world) */
+  onKnockback: ((from: Vector3) => void) | null = null
+  /** the ground shakes at `at` (world), strength 0..1 (the session shakes the camera by its distance) */
+  onQuake: ((at: Vector3, strength: number) => void) | null = null
+  /** the commander's body pushed the robot this frame (world x, z, m): the session moves the robot by it and clears it */
+  readonly shove = { x: 0, z: 0 }
   /**
    * A special is playing: nothing destroys a soldier until its last blow
    * (walls and bowling bodies included); an emptied one is held doomed.
@@ -107,6 +139,10 @@ export class Horde {
   private readonly billows = new Billows()
   private readonly contact: ContactEffects
   private readonly strongholds: Stronghold[] = []
+  /** each fortress's commander (none without its asset) */
+  private readonly posts: CommanderPost[] = []
+  private readonly commanders: HordeRenderer | null = null
+  private readonly commanderList: Soldier[] = []
   private readonly garrisons: Garrison[] = []
   private readonly pool: Soldier[] = []
   private readonly drawList: Soldier[] = []
@@ -124,7 +160,7 @@ export class Horde {
   private readonly projScreen = new Matrix4()
   private readonly listener = new Vector3()
 
-  constructor(asset: SoldierAsset, forts: Forts, contact: ContactEffects, mix: AudioMix) {
+  constructor(asset: SoldierAsset, forts: Forts, contact: ContactEffects, mix: AudioMix, commander: SoldierAsset | null = null) {
     this.asset = asset
     this.contact = contact
     this.renderer = new HordeRenderer(asset)
@@ -133,17 +169,31 @@ export class Horde {
     for (const fort of forts.list) {
       const nav = new FortNav(fort.plan, SOLDIER.radius)
       const garrisons = fort.plan.sectors.map((sector) => createGarrison(fort, nav, sector))
-      this.strongholds.push({ fort, nav, garrisons })
+      const stronghold: Stronghold = { fort, nav, garrisons, post: null }
+      this.strongholds.push(stronghold)
       for (const g of garrisons) {
         this.garrisons.push(g)
         if (!g.posts.length) continue
         for (let i = 0; i < g.sector.garrison; i++) station(g, this.soldier(), i, this.serial++, this.clock)
       }
+      if (commander) {
+        // its distances are the soldiers' at its size
+        const post = new CommanderPost(fort, commander.manifest, mix, commander.manifest.dims.height / asset.manifest.dims.height)
+        post.onEffect = (cue, p) => this.commanderEffect(cue, p)
+        this.object.add(post.trail.mesh)
+        stronghold.post = post
+        this.posts.push(post)
+      }
+    }
+    if (commander) {
+      this.commanders = new HordeRenderer(commander, { capacity: this.posts.length, materials: createCommanderMaterials, lodDistance: COMMANDER_LOD })
+      this.object.add(this.commanders.object)
     }
   }
 
   prepareAudio(): void {
     this.audio.prepare()
+    for (const post of this.posts) post.audio.prepare()
   }
 
   /** How many soldiers are alive in the district of (x, z), and whether it is fighting; null outside every fortress. */
@@ -156,6 +206,14 @@ export class Horde {
   }
 
   update(dt: number, target: EnemyTarget, camera: PerspectiveCamera): void {
+    // the dust the horde raises (blows, break-ups, the commander's moves) is the fight's
+    const fight = this.contact.fight
+    if (fight === 'none') this.contact.fight = 'combo'
+    this.step(dt, target, camera)
+    this.contact.fight = fight
+  }
+
+  private step(dt: number, target: EnemyTarget, camera: PerspectiveCamera): void {
     this.listener.copy(camera.position)
     this.clock += dt
     this.frame++
@@ -163,7 +221,7 @@ export class Horde {
     stepped.length = 0
     steppedFort.length = 0
     let rolling = 0, lit = 0
-    for (const { fort, nav, garrisons } of this.strongholds) {
+    for (const { fort, nav, garrisons, post } of this.strongholds) {
       const targetSector = fort.sector(target.x, target.z)
       const fighters = this.fighters
       fighters.length = 0
@@ -213,6 +271,7 @@ export class Horde {
       for (let i = 0; i < fighters.length; i++) if (fighters[i].mode !== 'attack') fighters[k++] = fighters[i]
       fighters.length = k
       engage(fort, nav, fighters, target, targetSector, this.clock, swinging, (s) => this.audio.swing(this.listener.distanceTo(_v.set(s.x, 1.5, s.z))))
+      if (post) this.command(post, dt, target, targetSector)
     }
     this.collide(target)
     this.strikes(target)
@@ -227,48 +286,20 @@ export class Horde {
     let n = 0
     let nearest = Infinity
     // a special's blows before its last cannot destroy: an emptied soldier is held doomed until then
-    const hold = (e.special || this.special) && !e.final
+    const hold = enemyHeld(e.special, this.special, e.final)
     // (every garrison: a soldier may have followed the fight out of its own district)
     for (const g of this.garrisons) {
       for (const s of g.soldiers) {
-        if (!s.alive) continue
-        const dx = s.x - e.x, dz = s.z - e.z
-        const d = Math.hypot(dx, dz)
-        const reach = e.reach + SOLDIER.radius
-        if (d > reach) continue
-        const hx = Math.sin(e.heading), hz = Math.cos(e.heading)
-        if (e.shape === 'sector') {
-          const ang = Math.abs(wrap(Math.atan2(dx, dz) - e.heading))
-          if (d > 0.8 && ang > e.arc / 2 + Math.atan2(SOLDIER.radius, d)) continue
-        }
-        if (e.sweep >= 0) {
-          if (s.lastSweep === e.sweep) continue
-          s.lastSweep = e.sweep
-        }
-        const rx = d > 1e-3 ? dx / d : hx, rz = d > 1e-3 ? dz / d : hz
-        let dirX: number, dirZ: number, knock = e.knock, damage = e.damage
-        if (e.radial) {
-          // a blast: straight out from it, harder nearer
-          const f = 1 - 0.55 * Math.pow(Math.min(1, d / e.reach), 2)
-          dirX = rx; dirZ = rz
-          knock *= f
-          if (e.shape === 'circle') damage *= Math.min(1, 0.4 + 0.6 * (1 - d / e.reach) * 1.6)
-        } else if (e.shape === 'circle') {
-          // ploughed through: along the motion and out of the path
-          const side = Math.sign(dx * hz - dz * hx) || 1
-          dirX = hx * 0.8 + hz * side * 0.6
-          dirZ = hz * 0.8 - hx * side * 0.6
-          knock = Math.min(16, knock + e.motion * 0.2)
-        } else {
-          dirX = rx * 0.55 + hx * 0.45
-          dirZ = rz * 0.55 + hz * 0.45
-        }
-        const l = Math.hypot(dirX, dirZ) || 1
-        const lift = e.lift * (e.radial ? 1 - 0.5 * Math.min(1, d / e.reach) : 1)
-        this.impact(s, { dirX: dirX / l, dirZ: dirZ / l, knock, lift, damage, kind: e.kind, special: e.special }, hold)
+        if (!this.blowOn(e, s, SOLDIER.radius, hold)) continue
         nearest = Math.min(nearest, this.listener.distanceTo(_v.set(s.x, 1.5, s.z)))
         n++
       }
+    }
+    for (const post of this.posts) {
+      const c = post.unit
+      if (!this.blowOn(e, c, COMMANDER.radius, hold)) continue
+      nearest = Math.min(nearest, this.listener.distanceTo(_v.set(c.x, 3, c.z)))
+      n++
     }
     if (n > 0) {
       // the blow itself, once: a blade's chop and ring, a heavy hit, or a punch
@@ -279,15 +310,58 @@ export class Horde {
     return n
   }
 
+  /** Whether blow `e` catches unit `s` (body `radius` m): if so it takes it (thrown along the blow, out from a blast). */
+  private blowOn(e: HitEvent, s: Soldier, radius: number, hold: boolean): boolean {
+    if (!s.alive) return false
+    const dx = s.x - e.x, dz = s.z - e.z
+    const d = Math.hypot(dx, dz)
+    if (d > e.reach + radius) return false
+    const hx = Math.sin(e.heading), hz = Math.cos(e.heading)
+    if (e.shape === 'sector') {
+      const ang = Math.abs(wrap(Math.atan2(dx, dz) - e.heading))
+      if (d > 0.8 && ang > e.arc / 2 + Math.atan2(radius, d)) return false
+    }
+    if (e.sweep >= 0) {
+      if (s.lastSweep === e.sweep) return false
+      s.lastSweep = e.sweep
+    }
+    const rx = d > 1e-3 ? dx / d : hx, rz = d > 1e-3 ? dz / d : hz
+    let dirX: number, dirZ: number, knock = e.knock, damage = e.damage
+    if (e.radial) {
+      // a blast: straight out from it, harder nearer
+      const f = 1 - 0.55 * Math.pow(Math.min(1, d / e.reach), 2)
+      dirX = rx; dirZ = rz
+      knock *= f
+      if (e.shape === 'circle') damage *= Math.min(1, 0.4 + 0.6 * (1 - d / e.reach) * 1.6)
+    } else if (e.shape === 'circle') {
+      // ploughed through: along the motion and out of the path
+      const side = Math.sign(dx * hz - dz * hx) || 1
+      dirX = hx * 0.8 + hz * side * 0.6
+      dirZ = hz * 0.8 - hx * side * 0.6
+      knock = Math.min(16, knock + e.motion * 0.2)
+    } else {
+      dirX = rx * 0.55 + hx * 0.45
+      dirZ = rz * 0.55 + hz * 0.45
+    }
+    const l = Math.hypot(dirX, dirZ) || 1
+    const lift = e.lift * (e.radial ? 1 - 0.5 * Math.min(1, d / e.reach) : 1)
+    const hit = _impact
+    hit.dirX = dirX / l; hit.dirZ = dirZ / l; hit.knock = knock; hit.lift = lift; hit.damage = damage; hit.kind = e.kind; hit.special = e.special
+    this.impact(s, hit, hold)
+    return true
+  }
+
   /** A vacuum (hits.ts pulls): every soldier within its reach is drawn toward its centre. */
   pull(e: PullEvent): void {
-    for (const g of this.garrisons) {
-      for (const s of g.soldiers) {
-        if (!s.alive) continue
-        if (Math.hypot(s.x - e.x, s.z - e.z) > e.radius + SOLDIER.radius) continue
-        s.pull(e.x, e.z, e.speed, e.dt)
-      }
-    }
+    for (const g of this.garrisons) for (const s of g.soldiers) this.pullOn(e, s, SOLDIER.radius)
+    for (const post of this.posts) this.pullOn(e, post.unit, COMMANDER.radius)
+  }
+
+  /** A vacuum on one unit (body `radius` m), by the combat contract: not on one mid-combo, unless it is a special's. */
+  private pullOn(e: PullEvent, s: Soldier, radius: number): void {
+    if (!s.alive || !enemyReacts(s.inCombo, e.special)) return
+    if (Math.hypot(s.x - e.x, s.z - e.z) > e.radius + radius) return
+    s.pull(e.x, e.z, e.speed, e.dt)
   }
 
   /**
@@ -295,15 +369,16 @@ export class Horde {
    * the special ended): thrown out from (x, z), where the blow fell.
    */
   settle(x = NaN, z = NaN): void {
-    for (const g of this.garrisons) {
-      for (const s of g.soldiers) {
-        if (!s.doomed || !s.settle()) continue
-        const dx = s.x - x, dz = s.z - z
-        const d = Math.hypot(dx, dz)
-        const ux = d > 1e-3 ? dx / d : Math.sin(s.yaw + Math.PI), uz = d > 1e-3 ? dz / d : Math.cos(s.yaw + Math.PI)
-        this.breakup(s, { dirX: ux, dirZ: uz, knock: 6, lift: 3, damage: 0, kind: 'blast', special: true })
-      }
-    }
+    for (const g of this.garrisons) for (const s of g.soldiers) this.settleOne(s, x, z)
+    for (const post of this.posts) this.settleOne(post.unit, x, z)
+  }
+
+  private settleOne(s: Soldier, x: number, z: number): void {
+    if (!s.doomed || !s.settle()) return
+    const dx = s.x - x, dz = s.z - z
+    const d = Math.hypot(dx, dz)
+    const ux = d > 1e-3 ? dx / d : Math.sin(s.yaw + Math.PI), uz = d > 1e-3 ? dz / d : Math.cos(s.yaw + Math.PI)
+    this.breakup(s, { dirX: ux, dirZ: uz, knock: 6, lift: 3, damage: 0, kind: 'blast', special: true })
   }
 
   /**
@@ -325,6 +400,16 @@ export class Horde {
         bd = d
         best = bearing
       }
+    }
+    for (const { unit: c } of this.posts) {
+      if (!c.alive || c.doomed || c.mode === 'down' || c.mode === 'air') continue
+      // its body is broader: it is in reach as far beyond a soldier's as it is wider
+      const d = Math.hypot(c.x - x, c.z - z) - (COMMANDER.radius - SOLDIER.radius)
+      if (d >= bd) continue
+      const bearing = Math.atan2(c.x - x, c.z - z)
+      if (Math.abs(wrap(bearing - heading)) > cone + Math.atan2(COMMANDER.radius, Math.max(1, d))) continue
+      bd = d
+      best = bearing
     }
     return best
   }
@@ -350,6 +435,17 @@ export class Horde {
         if (hit < best && hit <= range) best = Math.max(0, hit)
       }
     }
+    for (const { unit: c } of this.posts) {
+      if (!c.alive) continue
+      const R = COMMANDER_BODY_RADIUS
+      const rx = c.x - from.x, ry = c.y + COMMANDER_BODY_HEIGHT - from.y, rz = c.z - from.z
+      const t = rx * dir.x + ry * dir.y + rz * dir.z
+      if (t < 0 || t > range + R) continue
+      const d2 = rx * rx + ry * ry + rz * rz - t * t
+      if (d2 >= R * R) continue
+      const hit = t - Math.sqrt(R * R - d2)
+      if (hit < best && hit <= range) best = Math.max(0, hit)
+    }
     return best
   }
 
@@ -369,6 +465,11 @@ export class Horde {
         out[n++].set(s.x, y, s.z)
       }
     }
+    for (const { unit: c } of this.posts) {
+      if (n >= out.length || !c.alive || c.mode !== 'air') continue
+      const y = c.y + COMMANDER_BODY_HEIGHT
+      if (Math.hypot(c.x - at.x, y - at.y, c.z - at.z) <= range) out[n++].set(c.x, y, c.z)
+    }
     return n
   }
 
@@ -379,9 +480,16 @@ export class Horde {
     return out
   }
 
+  /** Each fortress's commander (tools and tests). */
+  get commanderPosts(): readonly CommanderPost[] {
+    return this.posts
+  }
+
   /** Show every piece of the horde for a shader compile, or hide them again. */
   warm(on: boolean): void {
     this.renderer.warm(on)
+    this.commanders?.warm(on)
+    for (const post of this.posts) post.trail.mesh.visible = on
     this.sparks.mesh.visible = on
     this.billows.warm(on)
     this.bars.warm(on)
@@ -407,7 +515,7 @@ export class Horde {
           // a body thrown into a wall stops against it (a little bounce)
           s.vx -= c.nx * into * 1.25
           s.vz -= c.nz * into * 1.25
-          if (into < -7) this.impact(s, { dirX: c.nx, dirZ: c.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false }, this.special)
+          if (into < -7) this.impact(s, { dirX: c.nx, dirZ: c.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
         }
       }
       // the robot's body: soldiers give way; a body moving fast into them shoves them
@@ -421,7 +529,7 @@ export class Horde {
           s.z = t.z + nz * min
           const push = t.vx * nx + t.vz * nz
           const rel = push - (s.vx * nx + s.vz * nz)
-          if (rel > 2.5 && s.free) this.impact(s, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false }, this.special)
+          if (rel > 2.5 && s.free) this.impact(s, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
           else if (rel > 0) { s.vx += nx * rel; s.vz += nz * rel }
         }
       }
@@ -449,13 +557,78 @@ export class Horde {
           // momentum shared: the struck one is thrown on, the thrown one slowed
           const share = rel * 0.55
           a.vx -= nx * share; a.vz -= nz * share
-          this.impact(b, { dirX: nx, dirZ: nz, knock: share, lift: share * 0.15, damage: share * 3, kind: 'blunt', special: false }, this.special)
+          this.impact(b, { dirX: nx, dirZ: nz, knock: share, lift: share * 0.15, damage: share * 3, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
         } else {
           const k = rel * 0.5
           a.vx -= nx * k; a.vz -= nz * k
           b.vx += nx * k; b.vz += nz * k
         }
       }
+    }
+    for (const post of this.posts) this.collideCommander(post, t)
+  }
+
+  /**
+   * The commander against the walls, the robot (they push each other apart:
+   * it gives COMMANDER_YIELD of the overlap, the rest is the robot's
+   * `shove`) and the soldiers (they give way to its bulk). The body blows
+   * are a soldier's (the combat contract): a body thrown into a wall takes
+   * damage, the robot barging into it at speed knocks it, and a flying body
+   * bowls over the one it hits, the commander or a soldier.
+   */
+  private collideCommander(post: CommanderPost, t: EnemyTarget): void {
+    const c = post.unit
+    if (!c.alive) return
+    const R = COMMANDER.radius
+    _p.x = c.x; _p.z = c.z
+    const wall = post.fort.grid.pushOut(_p, R, _contact)
+    if (wall) {
+      c.x = _p.x; c.z = _p.z
+      const into = c.vx * wall.nx + c.vz * wall.nz
+      if (into < 0) {
+        c.vx -= wall.nx * into * 1.25
+        c.vz -= wall.nz * into * 1.25
+        if (into < -7) this.impact(c, { dirX: wall.nx, dirZ: wall.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+      }
+    }
+    if (t.present && c.mode !== 'down') {
+      const dx = c.x - t.x, dz = c.z - t.z
+      const d = Math.hypot(dx, dz)
+      const min = t.radius + R
+      if (d < min && d > 1e-4) {
+        const nx = dx / d, nz = dz / d
+        const over = min - d
+        c.x += nx * over * COMMANDER_YIELD
+        c.z += nz * over * COMMANDER_YIELD
+        this.shove.x -= nx * over * (1 - COMMANDER_YIELD)
+        this.shove.z -= nz * over * (1 - COMMANDER_YIELD)
+        const rel = (t.vx - c.vx) * nx + (t.vz - c.vz) * nz
+        if (rel > 2.5 && c.free) this.impact(c, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+        else if (rel > 0) { c.vx += nx * rel * COMMANDER_YIELD; c.vz += nz * rel * COMMANDER_YIELD }
+      }
+    }
+    for (const s of this.stepped) {
+      if (!s.alive) continue
+      const dx = s.x - c.x, dz = s.z - c.z
+      const min = R + SOLDIER.radius
+      if (dx > min || dx < -min || dz > min || dz < -min) continue
+      const d = Math.hypot(dx, dz)
+      if (d >= min || d < 1e-4) continue
+      const nx = dx / d, nz = dz / d
+      s.x = c.x + nx * min
+      s.z = c.z + nz * min
+      const rel = (c.vx - s.vx) * nx + (c.vz - s.vz) * nz
+      if (rel > 5 && (!c.free || !s.free) && c.mode === 'air') {
+        // the commander thrown into a soldier: the soldier is bowled over, the commander slowed
+        const share = rel * 0.55
+        c.vx -= nx * share; c.vz -= nz * share
+        this.impact(s, { dirX: nx, dirZ: nz, knock: share, lift: share * 0.15, damage: share * 3, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+      } else if (rel < -5 && (!c.free || !s.free) && s.mode === 'air') {
+        // a soldier thrown into the commander: the commander takes it as a soldier would
+        const share = -rel * 0.55
+        s.vx += nx * share; s.vz += nz * share
+        this.impact(c, { dirX: -nx, dirZ: -nz, knock: share, lift: share * 0.15, damage: share * 3, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+      } else if (rel > 0) { s.vx += nx * rel; s.vz += nz * rel }
     }
   }
 
@@ -475,6 +648,93 @@ export class Horde {
       _hit.set(t.x + nx * t.radius, Math.min(t.height * 0.7, Math.max(1.2, _b.y)), t.z + nz * t.radius)
       _from.set(s.x, 2.2, s.z)
       this.onStruck?.(_hit, _from, 0.55 + Math.random() * 0.3)
+    }
+    for (const post of this.posts) {
+      const c = post.unit
+      const blow = c.blow
+      c.blow = null
+      if (!blow || !c.alive) continue
+      const dx = t.x - c.x, dz = t.z - c.z
+      const d = Math.hypot(dx, dz)
+      // the soldiers' reach at its size, stopping on a raised shield as their blades do
+      if (d - COMMANDER.radius > Math.max(t.radius + post.reachGap, t.guard + post.reachGap * GUARD_REACH)) continue
+      if (blow.arc < 360 && Math.abs(wrap(Math.atan2(dx, dz) - c.yaw)) > (blow.arc * Math.PI) / 360 + Math.atan2(t.radius, Math.max(1, d))) continue
+      // where it lands: on the robot's body (or its shield) toward the commander, at the lance's height
+      c.bladeEnds(_a, _b)
+      const nx = -dx / Math.max(d, 1e-3), nz = -dz / Math.max(d, 1e-3)
+      const skin = Math.max(t.radius, t.guard)
+      _hit.set(t.x + nx * skin, Math.min(t.height * COMMANDER_BLOW_HEIGHT, Math.max(1.2, _b.y)), t.z + nz * skin)
+      _from.set(c.x, 4, c.z)
+      this.onStruck?.(_hit, _from, blow.strength)
+      post.audio.hit(blow.knockback === true, blow.strength, t.guard > 0, this.listener.distanceTo(_hit))
+      this.sparks.emit({ count: Math.round(30 + 40 * blow.strength), at: _hit, dir: _d.set(nx, 0.4, nz).normalize(), spread: 0.8, speed: [3, 13], life: [0.15, 0.7], size: 0.02, drag: 2.2, gravity: 0.8, palette: 0, jitter: 0.3 })
+      if (blow.knockback) this.onKnockback?.(_from)
+    }
+  }
+
+  /**
+   * A commander's move effect (combo.ts cues): the lance's head flaring and
+   * shedding sparks, crackling as it gathers, the wheels throwing up sand,
+   * the point driven into the ground (a burst, chunks, a surge, a camera
+   * quake near it), or a surge of sand rolling out round the whirl. All of it
+   * is the horde's sparks and billows and the world's warmed contact effects.
+   */
+  private commanderEffect(cue: CommanderCue, post: CommanderPost): void {
+    const c = post.unit
+    const v = cue.value ?? 1
+    post.lance(_a, _b)
+    switch (cue.cue) {
+      case 'flash':
+        this.sparks.emit({ count: Math.round(40 * v), at: _b, dir: _d.subVectors(_b, _a).normalize(), spread: 0.9, speed: [4, 16], life: [0.15, 0.6], size: 0.022, drag: 2.2, gravity: 0.6, palette: 0, jitter: 0.25 })
+        break
+      case 'charge':
+        this.sparks.emit({ count: Math.round(22 * v), at: _b, dir: _u.set(0, 1, 0), spread: 1, speed: [1, 5], life: [0.2, 0.7], size: 0.014, drag: 3, gravity: 0.3, palette: 0, jitter: 0.5 })
+        break
+      case 'skid':
+        // sand thrown up from both wheels
+        for (const side of ['L', 'R']) {
+          _v.setFromMatrixPosition(c.rig.world[c.rig.index[`wheel.${side}`]])
+          _v.y = this.contact.height(_v.x, _v.z)
+          this.contact.burst(_v, 0.8 * v, 10)
+        }
+        break
+      case 'slam': {
+        // the point at the sand: the ground under it bursts, chunks fly, a surge rolls out
+        _v.set(_b.x, this.contact.height(_b.x, _b.z), _b.z)
+        this.contact.burst(_v, 1.5 * v, 26)
+        this.contact.eject(_v, 9 * v, 14, _u.set(0, 1, 0), 0.7, 0.35)
+        this.contact.surge(_v, 7, 0.9 * v)
+        this.sparks.emit({ count: 70, at: _v, dir: _u.set(0, 1, 0), spread: 0.8, speed: [4, 15], life: [0.2, 0.9], size: 0.02, drag: 2, gravity: 0.9, palette: 0, jitter: 0.6 })
+        this.billows.emit({ count: 5, at: _v, jitter: 1, dir: _u.set(0, 1, 0), spread: 0.9, speed: [1, 3], life: [1.6, 2.8], size: [1.2, 2.4], heat: 0, drag: 1.2, buoyancy: 0.5, tone: 0.2, opacity: 0.5 })
+        this.onQuake?.(_v, v)
+        break
+      }
+      case 'whirl':
+        _v.set(c.x, this.contact.height(c.x, c.z), c.z)
+        this.contact.surge(_v, 9, v)
+        this.contact.burst(_v, 1.2 * v, 20)
+        this.onQuake?.(_v, 0.6 * v)
+        break
+    }
+  }
+
+  /** A fortress's commander for this step: alerted with any of its garrisons; its parts' landings heard once it is destroyed. */
+  private command(post: CommanderPost, dt: number, target: EnemyTarget, targetSector: number): void {
+    let alert = false
+    for (const g of this.garrisons) if (g.alert && g.fort === post.fort) alert = true
+    post.update(dt, this.clock, target, targetSector, alert, this.listener)
+    const c = post.unit
+    if (c.alive) {
+      // only while it can be fought: in a special's cutscene or a jump nothing reaches the robot
+      if (!target.present) c.blow = null
+      return
+    }
+    const debris = c.debris
+    if (!debris || post.gone || debris.landingCount === 0) return
+    const dist = this.listener.distanceTo(_v.set(c.x, 0.5, c.z))
+    for (let k = 0; k < debris.landingCount; k++) {
+      const l = debris.landings[k]
+      this.audio.land(l.piece, debris.size(l.piece), debris.mass(l.piece), l.speed, dist)
     }
   }
 
@@ -521,7 +781,8 @@ export class Horde {
       // it reels: no swing back while the blows keep coming
       s.nextSwing = Math.max(s.nextSwing, this.clock + REEL)
       this.audio.impact(hit.kind, strength, dist)
-      if (hit.knock > 6) this.contact.burst(_v.set(s.x, 0, s.z), Math.min(1.2, hit.knock / 12), 8)
+      // a thrown body scuffs a little sand up; the fight's dust supports the blows, it is not a storm of its own
+      if (hit.knock > 9) this.contact.burst(_v.set(s.x, this.contact.height(s.x, s.z), s.z), Math.min(0.9, hit.knock / 16), 4)
       return
     }
     this.breakup(s, hit)
@@ -530,18 +791,19 @@ export class Horde {
   /** Broken apart where it stands: the joints give, the parts fly. */
   private breakup(s: Soldier, hit: SoldierImpact): void {
     this.destroyed++
+    for (const post of this.posts) if (post.unit === s) post.fell()
     const chest = _c.setFromMatrixPosition(s.rig.world[s.rig.index.chest])
     const dist = this.listener.distanceTo(chest)
     const strength = Math.min(1.5, (hit.knock + hit.damage * 0.04) / 10)
-    const debris = s.debris ??= new Debris(s.rig, this.asset.manifest.pieces)
+    const debris = s.debris ??= new Debris(s.rig, s.pieces)
     const burst = hit.kind === 'blast' ? 2.4 : hit.kind === 'cut' ? 1.3 : 1.6
     _push.set(hit.dirX * hit.knock, hit.lift * 0.6, hit.dirZ * hit.knock).multiplyScalar(hit.special ? 1.3 : 1)
     _base.set(s.vx * 0.3, 0, s.vz * 0.3)
     debris.start(_push, _base, burst)
     this.audio.breakup(strength + 0.3, dist)
     this.sparks.emit({ count: 60, at: chest, dir: _u.set(0, 1, 0), spread: 1, speed: [2, 12], life: [0.2, 0.9], size: 0.016, drag: 2, gravity: 0.9, palette: 0, jitter: 0.5 })
-    this.billows.emit({ count: 5, at: chest, jitter: 0.6, dir: _u.set(0, 1, 0), spread: 0.8, speed: [0.5, 2], life: [1.8, 3.2], size: [0.9, 1.9], heat: 0, drag: 1.2, buoyancy: 0.6, tone: 0.15, opacity: 0.55 })
-    this.contact.burst(_v.set(s.x, 0, s.z), 1, 16)
+    this.billows.emit({ count: 3, at: chest, jitter: 0.6, dir: _u.set(0, 1, 0), spread: 0.8, speed: [0.5, 2], life: [1.6, 2.8], size: [0.9, 1.9], heat: 0, drag: 1.2, buoyancy: 0.6, tone: 0.15, opacity: 0.5 })
+    this.contact.burst(_v.set(s.x, this.contact.height(s.x, s.z), s.z), 0.8, 7)
   }
 
   /**
@@ -591,7 +853,46 @@ export class Horde {
       const fade = 1 - Math.min(1, Math.max(0, (s.distance - BAR_FADE) / (BAR_FAR - BAR_FADE)))
       bars.add(head.x, head.y + BAR_LIFT, head.z, fade, s.vitality, s.chip, Math.max(0, 1 - s.hurt / BAR_FLASH))
     }
+    this.drawCommanders(camera)
     bars.end()
+  }
+
+  /** The commanders (their own renderer), culled as the soldiers are; their larger bars into this frame's bars. */
+  private drawCommanders(camera: PerspectiveCamera): void {
+    const renderer = this.commanders
+    if (!renderer) return
+    const list = this.commanderList
+    list.length = 0
+    let visible = 0
+    // the visible ones first; then those just off screen whose shadows reach into view, which only cast
+    for (let pass = 0; pass < 2; pass++) {
+      for (const post of this.posts) {
+        const c = post.unit
+        if (post.gone) continue
+        this.sphere.center.set(c.x, 3.4 + c.y, c.z)
+        c.distance = camera.position.distanceTo(this.sphere.center)
+        if (c.distance > DRAW_FAR) continue
+        this.sphere.radius = c.alive ? COMMANDER_SPHERE[0] : COMMANDER_SPHERE[1]
+        const seen = this.frustum.intersectsSphere(this.sphere)
+        if (pass === 0) {
+          if (seen) list.push(c)
+          continue
+        }
+        if (seen || c.distance > SHADOW_FAR) continue
+        this.sphere.radius += COMMANDER_SHADOW_REACH
+        if (this.frustum.intersectsSphere(this.sphere)) list.push(c)
+      }
+      if (pass === 0) visible = list.length
+    }
+    for (const c of list) c.refresh()
+    renderer.draw(list, visible)
+    for (let i = 0; i < visible; i++) {
+      const c = list[i]
+      if (!c.alive || c.distance > BAR_FAR * COMMANDER_BAR) continue
+      const head = _c.setFromMatrixPosition(c.rig.world[c.rig.index.head])
+      const fade = 1 - Math.min(1, Math.max(0, (c.distance - BAR_FADE * COMMANDER_BAR) / ((BAR_FAR - BAR_FADE) * COMMANDER_BAR)))
+      this.bars.add(head.x, head.y + COMMANDER_BAR_LIFT, head.z, fade, c.vitality, c.chip, Math.max(0, 1 - c.hurt / BAR_FLASH), COMMANDER_BAR)
+    }
   }
 }
 
@@ -607,3 +908,4 @@ const _push = new Vector3()
 const _base = new Vector3()
 const _p = { x: 0, z: 0 }
 const _contact: Contact = { nx: 0, nz: 0, depth: 0 }
+const _impact: SoldierImpact = { dirX: 0, dirZ: 0, knock: 0, lift: 0, damage: 0, kind: 'blunt', special: false }

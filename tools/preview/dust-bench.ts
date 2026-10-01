@@ -53,6 +53,8 @@ export async function benchDust(): Promise<void> {
 
   const p = new Vector3()
   const dt = 1 / 60
+  // a combo's dust (contact-effects.ts `fight`)
+  world.contactEffects.fight = 'combo'
   for (let t = 0; t < 4; t += dt) {
     // a blow or footfall every 0.12 s somewhere round the robot, a full-strength slam every second
     if (Math.floor(t / 0.12) !== Math.floor((t - dt) / 0.12)) {
@@ -60,7 +62,8 @@ export async function benchDust(): Promise<void> {
       world.contactEffects.burst(p, 0.8, 28)
     }
     if (Math.floor(t) !== Math.floor(t - dt)) world.contactEffects.burst(focus, 1.4, 28)
-    dust.update(dt)
+    // (the surface's update: it refills the bursts' budget and steps the dust)
+    world.contactEffects.update(dt)
   }
   const fight = await time()
   const n = live()
