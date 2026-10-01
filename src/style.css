@@ -203,3 +203,51 @@ body.paused .garage, body.paused .energy, body.paused .fort-hint { opacity: 0; p
 .fort-hint kbd { min-width: 20px; padding: 1px 6px; border: 1px solid rgba(255, 255, 255, 0.2); border-bottom-width: 2px; border-radius: 5px; font: 600 10px/15px var(--mono); letter-spacing: 0.04em; text-align: center; color: #efe9e0; }
 .fort-hint i { width: 3px; height: 3px; margin: 0 4px; border-radius: 50%; background: rgba(243, 238, 231, 0.4); }
 body.cinematic .fort-hint, body.menu-open .fort-hint { opacity: 0; }
+
+/* ── speedometer: a race dash's segmented dial in a glass plate, bottom left (car form) ── */
+/* no plate: the dial lies on the picture, held readable by a soft shade that has no edge and by shadows on its marks */
+.speedo { --charge: #9cc4ff; --v: 0; position: fixed; z-index: 14; left: 14px; bottom: 14px; width: 148px; height: 148px; background: radial-gradient(closest-side, rgba(10, 11, 13, 0.34), rgba(10, 11, 13, 0.2) 55%, rgba(10, 11, 13, 0) 100%); pointer-events: none; opacity: 0; transform: translateY(8px); transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.speedo.shown { opacity: 1; transform: none; }
+body:not(.ready) .speedo.shown, body.cinematic .speedo.shown, body.menu-open .speedo.shown, body.paused .speedo.shown { opacity: 0; transform: translateY(8px); }
+.speedo-dial { position: absolute; inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55)); }
+/* each segment lights as the level passes it, in the special's colour; past the car's normal top speed they burn ember */
+.speedo-dial line { --on: clamp(0, calc(var(--v) * var(--n) - var(--i)), 1); stroke: color-mix(in srgb, var(--charge) calc(var(--on) * 100%), rgba(243, 238, 231, 0.3)); stroke-width: 2.4; transition: stroke 0.12s linear; }
+.speedo-dial line.major { stroke-width: 3; }
+.speedo-dial line.red { stroke: color-mix(in srgb, #ff5a2a calc(var(--on) * 100%), rgba(255, 120, 80, 0.36)); }
+.speedo.boost .speedo-dial { filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 3px rgba(255, 90, 42, 0.55)); }
+.speedo-track { fill: none; stroke: rgba(243, 238, 231, 0.22); stroke-width: 1; stroke-dasharray: 270 90; transform: rotate(135deg); transform-origin: 70px 70px; }
+.speedo-read { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; padding-bottom: 6px; }
+.speedo-read b { font: italic 700 38px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: #f6f1ea; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 14px color-mix(in srgb, var(--charge) 45%, transparent); transition: color 0.2s ease, text-shadow 0.2s ease; }
+.speedo-read span { margin: 5px -0.3em 0 0; font: 500 9px/1 var(--mono); letter-spacing: 0.3em; text-transform: uppercase; color: rgba(243, 238, 231, 0.78); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+.speedo.boost .speedo-read b { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 16px rgba(255, 90, 42, 0.75); }
+/* mph in the dial's open foot */
+.speedo-mph { position: absolute; left: 0; right: 0; bottom: 15px; display: flex; justify-content: center; align-items: baseline; gap: 5px; font-family: var(--mono); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+.speedo-mph b { font: 600 12px/1 var(--mono); font-variant-numeric: tabular-nums; color: #f3eee7; }
+.speedo-mph span { margin-right: -0.24em; font-size: 8.5px; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(243, 238, 231, 0.72); }
+@media (max-width: 720px), (max-height: 480px) { .speedo { left: 10px; bottom: 10px; width: 118px; height: 118px; } .speedo-read b { font-size: 30px; } .speedo-mph { bottom: 11px; } }
+
+/* ── hit streak: a heavy slanted "x12" on the right, punched by every hit, its rail draining ── */
+.hits { --charge: #9cc4ff; position: fixed; z-index: 14; right: clamp(24px, 6vw, 110px); bottom: 24vh; display: flex; align-items: baseline; pointer-events: none; opacity: 0; transform: translateX(16px) skewX(-8deg); transition: opacity 0.45s ease, transform 0.5s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.hits.live { opacity: 1; transform: skewX(-8deg); transition-duration: 0.12s, 0.22s; }
+/* it stays up through a special's cutscene, above the letterbox bars */
+body:not(.ready) .hits.live, body.menu-open .hits.live, body.paused .hits.live { opacity: 0; }
+.hits-x { margin-right: 3px; font: italic 800 30px/1 system-ui, sans-serif; color: var(--charge); text-shadow: 0 0 12px color-mix(in srgb, var(--charge) 60%, transparent); }
+.hits-n { display: inline-block; font: italic 900 68px/0.9 system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; color: #fbf7f1; text-shadow: 0 0 22px color-mix(in srgb, var(--charge) 50%, transparent), 0 3px 0 rgba(0, 0, 0, 0.3); transform-origin: 30% 75%; }
+.hits.hot .hits-n { color: color-mix(in srgb, var(--charge) 22%, #fff); text-shadow: 0 0 26px color-mix(in srgb, var(--charge) 75%, transparent), 0 3px 0 rgba(0, 0, 0, 0.3); }
+.hits.blaze .hits-n { text-shadow: 0 0 18px var(--charge), 0 0 44px color-mix(in srgb, var(--charge) 70%, transparent), 0 3px 0 rgba(0, 0, 0, 0.3); }
+/* the streak's three seconds, draining toward the right */
+.hits-rail { position: absolute; right: 0; bottom: -9px; width: 100%; height: 3px; background: linear-gradient(90deg, transparent, var(--charge) 45%, #fff); transform-origin: right; }
+/* a hit flips between twin keyframes, so the punch and the rail restart without a reflow */
+.hits.live .hits-n { animation: hits-bump-a 0.32s cubic-bezier(0.2, 0.9, 0.3, 1); }
+.hits.live.flip .hits-n { animation-name: hits-bump-b; }
+.hits.live .hits-rail { animation: hits-rail-a 3s linear both; }
+.hits.live.flip .hits-rail { animation-name: hits-rail-b; }
+body.paused .hits-rail { animation-play-state: paused; }
+/* a special holds the streak open: the rail stays full, and drains anew when it ends */
+.hits.live.held .hits-rail { animation: none; }
+@keyframes hits-bump-a { 0% { transform: scale(1.45); color: #fff; } 100% { transform: none; } }
+@keyframes hits-bump-b { 0% { transform: scale(1.45); color: #fff; } 100% { transform: none; } }
+@keyframes hits-rail-a { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes hits-rail-b { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (max-width: 720px), (max-height: 480px) { .hits-n { font-size: 48px; } .hits-x { font-size: 22px; } }
+@media (prefers-reduced-motion: reduce) { .hits.live .hits-n, .hits.live.flip .hits-n { animation: none; } .speedo-dial line { transition: none; } }

@@ -4,6 +4,8 @@ import { ROSTER, loadRosterAsset, rosterEntry, saveVehicle, savedVehicle } from 
 import { VehicleMenu } from '../ui/vehicle-menu'
 import { CinemaBars, EnergyMeter } from '../ui/energy-meter'
 import { FortHint } from '../ui/fort-hint'
+import { HitCounter } from '../ui/hit-counter'
+import { Speedometer } from '../ui/speedometer'
 import { PauseMenu } from '../ui/pause-menu'
 import { PerspectiveCamera } from 'three/webgpu'
 import { loadSoldierAsset } from '../content/soldier/asset'
@@ -59,12 +61,20 @@ export interface GameControls {
 
 /**
  * The vehicle menu (switching remembers the choice), the pause menu, the
- * special's energy meter and cutscene bars.
+ * special's energy meter, the car's speedometer, the robot's hit streak and
+ * cutscene bars.
  */
 export function attachControls(session: GameSession): GameControls {
   const energy = new EnergyMeter()
   new CinemaBars()
   const fortHint = new FortHint()
+  const speedo = new Speedometer()
+  const hits = new HitCounter()
+  session.onHits = (count) => hits.hit(count)
+  session.onFrame = (dt) => {
+    speedo.update(session.carSpeed)
+    hits.update(dt)
+  }
   session.onFortHold = (hold) => fortHint.set(hold)
   const menu = new VehicleMenu({
     roster: ROSTER,
@@ -79,7 +89,7 @@ export function attachControls(session: GameSession): GameControls {
       const switched = await session.switchCharacter(entry)
       if (switched) {
         saveVehicle(entry.id)
-        showEnergy(false)
+        showCharacter()
       }
       return switched
     },
@@ -99,13 +109,20 @@ export function attachControls(session: GameSession): GameControls {
       session.hold('pause', paused)
     },
   })
-  // The meter takes the playing robot's special colour.
-  const showEnergy = (gained: boolean): void => {
+  // The meter, the dial and the streak take the playing robot's special colour; the dial its car's speeds.
+  const showCharacter = (): void => {
     const color = rosterEntry(session.character.id).special
     energy.tint(color)
+    speedo.tint(color)
+    hits.tint(color)
+    const drive = session.character.profile.drive
+    speedo.range(drive.maxSpeed, drive.boostSpeed)
+    showEnergy(false)
+  }
+  const showEnergy = (gained: boolean): void => {
     energy.set(session.energy.level, gained)
   }
-  showEnergy(false)
+  showCharacter()
   energy.setActive(session.standingRobot)
   session.energy.onChange = (_level, gained) => {
     showEnergy(gained)
@@ -117,6 +134,7 @@ export function attachControls(session: GameSession): GameControls {
   }
   session.onCinematicChange = (on) => {
     document.body.classList.toggle('cinematic', on)
+    hits.hold(on)
   }
   return { menu, energy, pause }
 }

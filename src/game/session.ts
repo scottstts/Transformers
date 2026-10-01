@@ -67,6 +67,10 @@ export class GameSession {
   readonly energy = new Energy()
   /** called when a special's cutscene starts or ends (UI hides and shows the HUD) */
   onCinematicChange: ((on: boolean) => void) | null = null
+  /** called when a blow of the robot's catches enemies (how many) */
+  onHits: ((count: number) => void) | null = null
+  /** called once per played frame, after the update (real seconds; not while paused) */
+  onFrame: ((dt: number) => void) | null = null
   private readonly timer = new Timer()
   private readonly jump = new RobotJump()
   /** the lens reactions the post pipeline reads (blast waves, flashes, the drained zone) */
@@ -301,6 +305,12 @@ export class GameSession {
   /** Something holds the game still: nothing is simulated, drawn or heard. */
   get isPaused(): boolean { return this.paused }
 
+  /** In car form, the car's speed over the ground (m/s); null in robot form or once a transformation is half through. */
+  get carSpeed(): number | null {
+    const state = this.state
+    return state.progress < 0.5 ? Math.hypot(state.speed, state.lateral) : null
+  }
+
   /**
    * Hold the whole game still for a reason (the pause menu, the open vehicle
    * menu), or let go of it; it runs again once no reason is left. While held
@@ -353,6 +363,7 @@ export class GameSession {
       fight.airborne = (at, range, out) => this.horde.airborne(at, range, out)
       fight.onHit = (hit) => {
         const caught = this.horde.hit(hit)
+        if (caught > 0) this.onHits?.(caught)
         if (caught > 0 && hit.shape === 'sector' && hit.bite) this.cameraFx.hitStop(0.05, 0.18)
       }
       fight.onPull = (pull) => this.horde.pull(pull)
@@ -565,6 +576,7 @@ export class GameSession {
       this.pipeline.render()
       restore()
     } else this.pipeline.render()
+    this.onFrame?.(frameDt)
   }
 
   /** Near a fortress but outside its perimeter (the walls' hint is about the way in, not the buildings inside). */
