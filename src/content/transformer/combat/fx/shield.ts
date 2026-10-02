@@ -54,14 +54,16 @@ export class Shield {
   private readonly form = uniform(0)
   private readonly pulse = uniform(0)
   private readonly clock = uniform(0)
+  private readonly ground = uniform(0)
   private readonly impacts: Vector4[]
   private cursor = 0
   private time = 0
   private target = 0
   private level = 0
   private readonly anchor: Object3D
+  private readonly root: Object3D
   private readonly parts: Mesh[] = []
-  /** the sphere's radius and its centre's height (m), set as it forms */
+  /** the sphere's radius and its centre's height above the ground (m), set as it forms */
   private radius = 3
   private centerY = 1.5
   private fitted = false
@@ -73,6 +75,7 @@ export class Shield {
    */
   constructor(color: [number, number, number], anchor: Object3D, root: Object3D) {
     this.anchor = anchor
+    this.root = root
     root.traverse((o) => { if ((o as Mesh).isMesh) this.parts.push(o as Mesh) })
     this.impacts = Array.from({ length: IMPACTS }, () => new Vector4(0, 1, 0, 99))
     const impacts = uniformArray(this.impacts, 'vec4')
@@ -120,7 +123,7 @@ export class Shield {
       // kept low enough that the tint survives the tone map and bloom: brighter lines read as white, not blue
       const lines = outline.mul(float(0.1).add(rim.mul(0.38)).add(ring.mul(0.8)).add(core.mul(1.3)).add(pulse.mul(0.15)).add(arriving.mul(0.7)).add(scan.mul(0.25)))
       // the seam: where the sphere enters the sand, one continuous line (not per tile), filtered by its footprint
-      const y = positionWorld.y
+      const y = positionWorld.y.sub(this.ground)
       const fy = max(fwidth(y), float(1e-3))
       const seam = exp(y.div(fy.mul(2.5).add(0.05)).pow(2).negate()).mul(float(0.45).add(pulse.mul(0.3)))
       const glow = tint.mul(lines.add(fill.mul(float(1).sub(outline))).add(seam))
@@ -168,7 +171,7 @@ export class Shield {
     const d = this.toUnit(from, _d)
     d.y = Math.max(d.y, -0.2)
     d.normalize()
-    return out.copy(d).multiplyScalar(this.radius).applyAxisAngle(_up, this.yaw).add(_c.set(this.mesh.position.x, this.centerY, this.mesh.position.z))
+    return out.copy(d).multiplyScalar(this.radius).applyAxisAngle(_up, this.yaw).add(this.mesh.position)
   }
 
   update(dt: number, yaw: number): void {
@@ -182,10 +185,12 @@ export class Shield {
     this.mesh.visible = this.level > 0
     if (!this.mesh.visible) return
     this.yaw = yaw
+    // The model root stands on the floor: elevation is placement, not body height.
+    this.ground.value = _c.setFromMatrixPosition(this.root.matrixWorld).y
     // sized while it forms, then rigid
     if (this.target > 0 && (!this.fitted || this.level < 1)) this.fit()
     const p = _c.setFromMatrixPosition(this.anchor.matrixWorld)
-    this.mesh.position.set(p.x, this.centerY, p.z)
+    this.mesh.position.set(p.x, this.ground.value + this.centerY, p.z)
     this.mesh.rotation.set(0, yaw, 0)
     this.mesh.scale.setScalar(this.radius)
   }
@@ -214,9 +219,10 @@ export class Shield {
       for (let i = 0; i < 8 && n < MAX_POINTS; i++, n++) {
         _v.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(mesh.matrixWorld)
         pts[n * 3] = _v.x - p.x
-        pts[n * 3 + 1] = _v.y
+        const y = _v.y - this.ground.value
+        pts[n * 3 + 1] = y
         pts[n * 3 + 2] = _v.z - p.z
-        top = Math.max(top, _v.y)
+        top = Math.max(top, y)
       }
     }
     const c = top * CENTRE_SHARE
