@@ -18,6 +18,12 @@ The scene has three fixed point-light slots (`light-slots.ts`). Character lights
 
 MSAA is disabled because the temporal resolve owns scene sampling. A full-resolution HDR scene pass carries color, depth and RGBA motion: XY is unjittered NDC motion, Z is reactive coverage, and W is fragment opacity for correct transparent blending. Three's 32-sample Halton jitter, depth rejection, neighborhood variance clipping and luminance weighting resolve subpixel silhouettes and shaded detail. The subpixel-correction option is disabled to avoid a repeating square pattern.
 
+The depth buffer is reversed float32 (`rendering/depth.ts`, shared by the game and the headless renderer). Its precision is relative to distance, so trim standing millimetres proud of a wall resolves at every range. With standard depth and a 0.1 m near plane, 15 mm separations z-fought from about 160 m, and the jitter turned that into flicker no resolve can remove. Under reversed depth:
+- Decal polygon offsets point toward the camera through `towardCamera`.
+- Manual frustums pass `camera.reversedDepth`.
+- Behind-camera tests use view-space z, not NDC z.
+- Cameras whose maps are drawn once (static shadow levels) are adopted as reversed before their first draw. Three adopts a camera at its first render, after the shadow matrix has already been taken from it.
+
 Rigid meshes use previous model matrices. Custom horde skinning supplies previous bone/state data by body identity, not current packed slot; otherwise sorting or LOD changes invent motion. Morph meshes supply previous shape weight. Terrain supplies its static displaced position even when patch instances reorder. Analytic particles and casings are reactive when they do not supply a previous deformed position. Transparent coverage is reactive automatically.
 
 The resolve rejects history where current or prior reactive coverage is present. Prior coverage lives in the history texture's alpha, so a disappearing flash or particle also clears without a new texture or pass. That alpha is metadata, not image opacity: restore opaque alpha before `renderOutput`, whose color conversion unpremultiplies and premultiplies its input. History resets explicitly on car swaps and cinematic transitions, and automatically on large camera/lens changes or a render pause. Native target resize initializes fresh history. Jitter is restored after each frame so camera rays and gameplay use the authored projection.

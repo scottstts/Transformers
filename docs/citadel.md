@@ -6,7 +6,7 @@ The objective is a complete replacement of the old location with the established
 
 ## Plan and routes
 
-The exported plan supplies twelve districts, twenty-one gates, twenty-nine spawn bays, floor primitives and collision shapes. The garrisons total 184 soldiers, with the commander in the crown. The farthest curtain corner is 550.1 m from the site origin; the car barrier stays 14 m beyond it, at 564.1 m.
+The exported plan supplies twelve districts, twenty-one gates, twenty-nine spawn bays, floor primitives and collision shapes. The garrisons total 368 soldiers, and every district has its own commander. The farthest curtain corner is 550.1 m from the site origin; the car barrier stays 14 m beyond it, at 564.1 m.
 
 Gate sides are normalized from their waypoints. Some exported gates list their joined districts in the reverse order, so copying the array verbatim sent bodies toward the wrong side. Routes are recomputed over yards and gates by distance, with the outside permitted only as a route's start or end. Otherwise a shortest route could leave one outer gate and enter another.
 
@@ -32,9 +32,19 @@ Footsteps and scuffs sample the material at the actual contact. Sand retains its
 
 ## Geometry and light
 
-The Blender preview sand slot is excluded: the game owns terrain under the citadel. The remaining asset contains 1,570,697 triangles. Geometry is grouped by district, material slot and mass/articulation/detail class. Articulation is visible within 450 m of a bucket's bounds; detail within 120 m. Entry warm-up exposes both classes, every surface response and all shadow passes.
+The Blender preview sand slot is excluded: the game owns terrain under the citadel. The remaining asset contains 1,573,888 triangles. Geometry is grouped by district, material slot and mass/articulation/detail class. Articulation is visible within 450 m of a bucket's bounds; detail within 120 m. Entry warm-up exposes both classes, every surface response and all shadow passes.
 
 The exported halo was merged into the spire's alloy and light meshes. Loading partitions its 2,048 ring-shell triangles into two meshes without duplicating vertices or changing triangle totals. Only the shell rotates, at 0.025 rad/s; support arms stay fixed. Its rotationally invariant shadow remains cached. Ordinary trim emission stays below the bloom knee, while the halo, beacon, spire lantern and chasm conduits carry the hero light.
+
+Every face is wound counter-clockwise when seen from outside; the materials are single-sided. Blender draws back faces, so a face built inside out looks right there and vanishes in the game. Defects of this kind that once shipped:
+- the ramps' treads, risers and side fills;
+- the outer gates' reveals;
+- the wall strips round every bay and the bays' back glass (`block`);
+- the dishes, which were single sheets;
+- the hydroponic domes' base ring;
+- the barracks' roof ends.
+
+`node tools/citadel-backfaces.mjs` draws the asset double-sided from eye height over the whole walkable floor and names every triangle seen from behind. `tests/citadel.test.ts` requires the walkable floor to be seen from above.
 
 AO is baked world-space sky visibility, applied only to indirect light. Three floor-relative slices and the upward visibility/top height share a 2×2 half-float atlas: four 1536² tiles, one sampled-texture binding. Thin or vertical projected triangles rasterize their crossed cells rather than filling their bounding rectangles. Filling a diagonal wall's rectangle invented occluders in open courts. Atlas reads clamp inside each tile to prevent filtering between slices. T0 wall feet alone receive sand drifts.
 

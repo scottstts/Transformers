@@ -61,7 +61,7 @@ describe.each(ROSTER.map((entry) => ({ name: entry.id, entry })))('the combat co
 
   it('its special holds what it empties, soldiers and commander alike, until its last blow', () => {
     const horde = new Horde(soldiers, citadel, NO_CONTACT, new AudioMix(), commanders)
-    const c = horde.commanderPosts[0].unit
+    const c = horde.commanderPosts.find((p) => p.home.role === 'citadel')!.unit
     const [s] = horde.nearby(c.x, c.z, 60).filter((k) => k !== c)
     // the robot stands by them on the crown (blows reach only its own level), out of their fight
     horde.update(0, { x: c.x, z: c.z, radius: 1.5, vx: 0, vz: 0, height: 5.6, heading: 0, guard: 0, present: false }, new PerspectiveCamera())

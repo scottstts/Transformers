@@ -1,4 +1,5 @@
 import { Matrix4, Object3D, RedFormat, ShadowBaseNode, ShadowNode, UnsignedByteType, UnsignedShortType, Vector3, Vector4, type DirectionalLight, type DirectionalLightShadow, type Mesh, type Node } from 'three/webgpu'
+import { adoptReversedDepth } from './depth'
 import { Fn, If, abs, float, min, mix, reference, renderGroup, shadowPositionWorld, smoothstep, uniform, vec4 } from 'three/tsl'
 import type { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js'
 import { staticShadowFilter } from './shadow-filter'
@@ -219,6 +220,8 @@ export class SunShadowNode extends ShadowBaseNode {
       cam.bottom = -cam.top
       cam.near = 1
       cam.far = options.margin + (options.casterHeight + HEIGHT_PAD * 2) / sinElevation + 2 * cam.top * this.cotElevation
+      // drawn once and kept: its matrix must be reversed from the first draw
+      adoptReversedDepth(cam)
       cam.updateProjectionMatrix()
       shadow.autoUpdate = false
       shadow.needsUpdate = false

@@ -2,6 +2,7 @@ import { create, globals } from 'webgpu'
 import { deflateSync } from 'node:zlib'
 import { writeFileSync } from 'node:fs'
 import { WebGPURenderer } from 'three/webgpu'
+import { DEPTH_OPTIONS } from '../../src/rendering/depth'
 
 /**
  * A WebGPURenderer on Dawn with a stand-in canvas: the "swap chain" texture is
@@ -32,7 +33,7 @@ export async function createHeadlessRenderer(width: number, height: number, trac
     getBoundingClientRect: () => ({ left: 0, top: 0, width, height }),
   }
   ;(gpu as unknown as { getPreferredCanvasFormat: () => string }).getPreferredCanvasFormat ??= () => 'rgba8unorm'
-  const renderer = new WebGPURenderer({ canvas: canvas as unknown as HTMLCanvasElement, antialias: false, trackTimestamp })
+  const renderer = new WebGPURenderer({ canvas: canvas as unknown as HTMLCanvasElement, antialias: false, trackTimestamp, ...DEPTH_OPTIONS })
   Object.assign(renderer, { _getFallback: null })
   const onError = renderer.onError.bind(renderer), onDeviceLost = renderer.onDeviceLost.bind(renderer)
   renderer.onError = (info) => {

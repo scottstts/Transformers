@@ -3,6 +3,7 @@
 import math
 
 from ..geom.polygon import ccw, difference, inset, rectangle, subtract_all, transform
+from ..geom.writer import toward
 from ..plan import broken_line, intersect_convex, unit
 from .shells import block, radial, rounded_profile
 from .paving import emit as emit_paving
@@ -115,7 +116,8 @@ def shield(w, plan, wall):
             if 1e-7 < t < 1 - 1e-7:
                 ring = rings[end]
                 face = [v[0] for v in ring] + [v[1] for v in ring[::-1]]
-                w.polygon(face if end == 0 else face[::-1], "ceramicBand", bucket=bucket)
+                # each faces into its opening
+                w.polygon(face[::-1] if end == 0 else face, "ceramicBand", bucket=bucket)
         # Fins establish the intended skyline rhythm even in the massing pass.
         count = max(1, int(math.dist(p, q) / 3))
         for k in range(count):
@@ -145,11 +147,16 @@ def plinth(w, plan, wall):
     bottom_y, top_y = wall["y"], wall["top"]
     lower = inset(p, -(top_y - bottom_y) / 6) if name in ("M", "I") else p
     low_a, low_b = lower[j], lower[k]
+    # Out of the outline (away from its centre); the lower ground is outside M and I, inside the chasm's C.
+    cx, cz = sum(q[0] for q in p) / len(p), sum(q[1] for q in p) / len(p)
+    tangent = unit((b[0] - a[0], b[1] - a[1]))
+    out = (-tangent[1], 0, tangent[0])
+    if out[0] * ((a[0] + b[0]) / 2 - cx) + out[2] * ((a[1] + b[1]) / 2 - cz) < 0:
+        out = tuple(-x for x in out)
+    lower_side = tuple(-x for x in out) if name == "C" else out
     face = [(low_a[0], bottom_y, low_a[1]), (a[0], top_y, a[1]),
             (b[0], top_y, b[1]), (low_b[0], bottom_y, low_b[1])]
-    if name == "C":
-        face.reverse()
-    w.polygon(face, "ceramicBand", bucket=bucket)
+    w.polygon(toward(face, lower_side), "ceramicBand", bucket=bucket)
     # Seam is proud by 2 cm and fixed into the retaining face.
     middle_y = (top_y + bottom_y) / 2
     w.beam(((a[0] + low_a[0]) / 2, middle_y, (a[1] + low_a[1]) / 2),
@@ -169,15 +176,18 @@ def plinth(w, plan, wall):
         ia, oa = rings[0]
         ib, ob = rings[1]
         v = lambda q, y: (q[0], y, q[1])
-        for face in ([v(oa, top_y), v(oa, top_y + 1.4), v(ob, top_y + 1.4), v(ob, top_y)],
-                     [v(ia, top_y), v(ib, top_y), v(ib, top_y + 1.4), v(ia, top_y + 1.4)],
-                     [v(ia, top_y + 1.4), v(ib, top_y + 1.4), v(ob, top_y + 1.4), v(oa, top_y + 1.4)]):
-            w.polygon(face, "ceramic", bucket=bucket)
+        # each parapet face looks out of the parapet: its outline side, its other side, up, and its ends
+        across = (oa[0] - ia[0], 0, oa[1] - ia[1])
+        for face, d in (([v(oa, top_y), v(oa, top_y + 1.4), v(ob, top_y + 1.4), v(ob, top_y)], across),
+                        ([v(ia, top_y), v(ib, top_y), v(ib, top_y + 1.4), v(ia, top_y + 1.4)], tuple(-x for x in across)),
+                        ([v(ia, top_y + 1.4), v(ib, top_y + 1.4), v(ob, top_y + 1.4), v(oa, top_y + 1.4)], (0, 1, 0))):
+            w.polygon(toward(face, d), "ceramic", bucket=bucket)
         for end, t in enumerate(ts):
             if 1e-7 < t < 1 - 1e-7:
                 i, o = rings[end]
                 f = [v(i, top_y), v(i, top_y + 1.4), v(o, top_y + 1.4), v(o, top_y)]
-                w.polygon(f if end == 0 else f[::-1], "ceramic", bucket=bucket)
+                d = (tangent[0], 0, tangent[1]) if end == 1 else (-tangent[0], 0, -tangent[1])
+                w.polygon(toward(f, d), "ceramic", bucket=bucket)
         w.beam(v(ia, top_y + 1.24), v(ib, top_y + 1.24), 0.08, 0.12, "light", "artic", bucket)
 
 

@@ -95,8 +95,8 @@ interface Stronghold {
   citadel: Citadel
   nav: CitadelNav
   garrisons: Garrison[]
-  /** its commander, if the commander's asset was given */
-  post: CommanderPost | null
+  /** each district's commander (by district), if the commander's asset was given */
+  posts: CommanderPost[]
 }
 
 /**
@@ -146,7 +146,7 @@ export class Horde {
   private readonly billows = new Billows()
   private readonly contact: ContactEffects
   private readonly strongholds: Stronghold[] = []
-  /** the citadel's commander (none without its asset) */
+  /** every district's commander (none without its asset) */
   private readonly posts: CommanderPost[] = []
   private readonly commanders: HordeRenderer | null = null
   private readonly commanderList: Soldier[] = []
@@ -178,7 +178,7 @@ export class Horde {
     {
       const nav = new CitadelNav(citadel.plan, SOLDIER.radius)
       const garrisons = citadel.plan.sectors.map((sector) => createGarrison(citadel, nav, sector))
-      const stronghold: Stronghold = { citadel, nav, garrisons, post: null }
+      const stronghold: Stronghold = { citadel, nav, garrisons, posts: [] }
       this.strongholds.push(stronghold)
       for (const g of garrisons) {
         this.garrisons.push(g)
@@ -186,12 +186,16 @@ export class Horde {
         for (let i = 0; i < g.sector.garrison; i++) station(g, this.soldier(), i, this.serial++, this.clock)
       }
       if (commander) {
-        // its distances are the soldiers' at its size
-        const post = new CommanderPost(citadel, commander.manifest, mix, commander.manifest.dims.height / asset.manifest.dims.height)
-        post.onEffect = (cue, p) => this.commanderEffect(cue, p)
-        this.object.add(post.trail.mesh)
-        stronghold.post = post
-        this.posts.push(post)
+        // one way-finding at the commanders' radius for all of them; their distances are the soldiers' at their size
+        const commanderNav = new CitadelNav(citadel.plan, COMMANDER.radius)
+        const scale = commander.manifest.dims.height / asset.manifest.dims.height
+        for (const sector of citadel.plan.sectors) {
+          const post = new CommanderPost(citadel, commanderNav, sector, commander.manifest, mix, scale)
+          post.onEffect = (cue, p) => this.commanderEffect(cue, p)
+          this.object.add(post.trail.mesh)
+          stronghold.posts.push(post)
+          this.posts.push(post)
+        }
       }
     }
     if (commander) {
@@ -235,7 +239,7 @@ export class Horde {
     stepped.length = 0
     steppedFort.length = 0
     let rolling = 0, lit = 0
-    for (const { citadel, nav, garrisons, post } of this.strongholds) {
+    for (const { citadel, nav, garrisons, posts } of this.strongholds) {
       const targetSector = citadel.sector(target.x, target.z)
       this.targetFloor = citadel.floorAt(target.x, target.z)
       const fighters = this.fighters
@@ -286,7 +290,14 @@ export class Horde {
       for (let i = 0; i < fighters.length; i++) if (fighters[i].mode !== 'attack') fighters[k++] = fighters[i]
       fighters.length = k
       engage(citadel, nav, fighters, target, targetSector, this.clock, swinging, (s) => this.audio.swing(this.listener.distanceTo(_v.set(s.x, s.floor + 1.5, s.z))))
-      if (post) this.command(post, dt, target, targetSector)
+      for (let pi = 0; pi < posts.length; pi++) {
+        // a calm commander far from the camera is stepped less often, as its garrison is
+        const post = posts[pi], u = post.unit
+        const garrison = garrisons[post.home.index]
+        const camDist = Math.hypot(camera.position.x - u.x, camera.position.z - u.z)
+        const rate = garrison.alert || camDist < SIM_NEAR ? 1 : camDist < SIM_MID ? 2 : 6
+        if (this.frame % rate === pi % rate) this.command(post, garrison, dt * rate, target, targetSector)
+      }
     }
     this.collide(target)
     this.strikes(target)
@@ -738,11 +749,9 @@ export class Horde {
     }
   }
 
-  /** The citadel's commander for this step: alerted with any of its garrisons; its parts' landings heard once it is destroyed. */
-  private command(post: CommanderPost, dt: number, target: EnemyTarget, targetSector: number): void {
-    let alert = false
-    for (const g of this.garrisons) if (g.alert && g.citadel === post.citadel) alert = true
-    post.update(dt, this.clock, target, targetSector, alert, this.listener)
+  /** A district's commander for this step: alerted with its district's garrison while the fight is in its district; its parts' landings heard once it is destroyed. */
+  private command(post: CommanderPost, garrison: Garrison, dt: number, target: EnemyTarget, targetSector: number): void {
+    post.update(dt, this.clock, target, targetSector, garrison.alert, this.listener)
     const c = post.unit
     if (c.alive) {
       // only while it can be fought: in a special's cutscene or a jump nothing reaches the robot
@@ -836,7 +845,7 @@ export class Horde {
   drawFor(camera: PerspectiveCamera): void {
     camera.updateMatrixWorld()
     this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
-    this.frustum.setFromProjectionMatrix(this.projScreen)
+    this.frustum.setFromProjectionMatrix(this.projScreen, camera.coordinateSystem, camera.reversedDepth)
     const list = this.drawList
     const extra = this.shadowList
     list.length = 0

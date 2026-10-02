@@ -6,6 +6,37 @@ import { STRIKE_TAKES, strikeTake } from './strike-bank'
 /** Swings: level of a take at strength 1, and the rate a 7 m lance plays the fitted spear at (bigger and slower is lower and longer). */
 const SWING_LEVEL: Record<SpearSound, number> = { poke: 0.5, slash: 0.55 }
 const SWING_RATE = 0.8
+
+interface CommanderBank {
+  strikes: { light: AudioBuffer[]; heavy: AudioBuffer[] }
+  takes: Record<SpearSound, AudioBuffer[]>
+}
+const banks = new WeakMap<BaseAudioContext, CommanderBank>()
+
+/** The commanders' rendered takes for an audio context: its blows on plate and its lance's swings. */
+function commanderBank(ctx: BaseAudioContext): CommanderBank {
+  let bank = banks.get(ctx)
+  if (bank) return bank
+  bank = { strikes: { light: [], heavy: [] }, takes: { poke: [], slash: [] } }
+  for (let v = 0; v < STRIKE_TAKES; v++) {
+    for (const heavy of [false, true]) {
+      const data = strikeTake(v, heavy, ctx.sampleRate)
+      const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate)
+      buffer.copyToChannel(data, 0)
+      bank.strikes[heavy ? 'heavy' : 'light'].push(buffer)
+    }
+  }
+  for (const sound of ['poke', 'slash'] as const) {
+    for (let v = 0; v < SPEAR_TAKES[sound]; v++) {
+      const data = spearTake(sound, v, ctx.sampleRate)
+      const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate)
+      buffer.copyToChannel(data, 0)
+      bank.takes[sound].push(buffer)
+    }
+  }
+  banks.set(ctx, bank)
+  return bank
+}
 /** Its blow landing on the robot: level at strength 1, and on a raised shield (the shield's own sound carries it there). */
 const HIT_LEVEL = 0.75
 const HIT_GUARDED = 0.4
@@ -35,36 +66,23 @@ const WHEELS = { crunch: 0.05, body: 0.09, full: 7 }
  */
 export class CommanderAudio {
   private readonly mix: AudioMix
-  private readonly takes: Record<SpearSound, AudioBuffer[]> = { poke: [], slash: [] }
+  private takes: Record<SpearSound, AudioBuffer[]> = { poke: [], slash: [] }
   private readonly last: Record<SpearSound, number> = { poke: -1, slash: -1 }
   private wheels: { crunch: GainNode; body: GainNode } | null = null
-  private readonly strikes: { light: AudioBuffer[]; heavy: AudioBuffer[] } = { light: [], heavy: [] }
+  private strikes: { light: AudioBuffer[]; heavy: AudioBuffer[] } = { light: [], heavy: [] }
   private lastStrike = -1
 
   constructor(mix: AudioMix) {
     this.mix = mix
   }
 
-  /** Render the swing and strike takes and build the wheels' voice (under the loading cover). */
+  /** Render the swing and strike takes (once per audio context, shared by every commander) and build the wheels' voice (under the loading cover). */
   prepare(): void {
     const ctx = this.mix.ctx
     if (!ctx || this.wheels) return
-    for (let v = 0; v < STRIKE_TAKES; v++) {
-      for (const heavy of [false, true]) {
-        const data = strikeTake(v, heavy, ctx.sampleRate)
-        const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate)
-        buffer.copyToChannel(data, 0)
-        this.strikes[heavy ? 'heavy' : 'light'].push(buffer)
-      }
-    }
-    for (const sound of ['poke', 'slash'] as const) {
-      for (let v = 0; v < SPEAR_TAKES[sound]; v++) {
-        const data = spearTake(sound, v, ctx.sampleRate)
-        const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate)
-        buffer.copyToChannel(data, 0)
-        this.takes[sound].push(buffer)
-      }
-    }
+    const bank = commanderBank(ctx)
+    this.strikes = bank.strikes
+    this.takes = bank.takes
     const loop = (buffer: AudioBuffer, type: BiquadFilterType, f: number): GainNode => {
       const src = ctx.createBufferSource()
       src.buffer = buffer

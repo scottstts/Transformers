@@ -3,6 +3,7 @@
 import math
 
 from ..geom.detail import ribbon
+from ..geom.writer import toward
 from ..plan import unit
 
 
@@ -16,6 +17,17 @@ def build(w, plan):
                         ("R3 landing side", (334.4, 66), (334.4, 90))):
         bucket = "D0" if "R1" in ident else "D1" if "R2" in ident else "D2"
         w.beam((a[0], 8.7, a[1]), (b[0], 8.7, b[1]), 0.8, 1.4, "ceramic", bucket=bucket)
+        # The landing is solid below its open edges (its paving is a 3 cm skin): a face from the ground up, 0.4 m in under the beam.
+        landing = next(l for l in plan["landings"] if l["id"] == ident.split()[0] + "-landing")
+        cx = sum(x for x, _ in landing["polygon"]) / 4
+        cz = sum(z for _, z in landing["polygon"]) / 4
+        along = unit((b[0] - a[0], b[1] - a[1]))
+        out = (-along[1], along[0])
+        if out[0] * ((a[0] + b[0]) / 2 - cx) + out[1] * ((a[1] + b[1]) / 2 - cz) < 0:
+            out = (-out[0], -out[1])
+        p0, p1 = (a[0] - out[0] * 0.4, a[1] - out[1] * 0.4), (b[0] - out[0] * 0.4, b[1] - out[1] * 0.4)
+        face = [(p0[0], 0.03, p0[1]), (p1[0], 0.03, p1[1]), (p1[0], landing["y"], p1[1]), (p0[0], landing["y"], p0[1])]
+        w.polygon(toward(face, (out[0], 0, out[1])), "ceramicBand", bucket=bucket)
     crown_arch(w)
 
 
@@ -37,9 +49,10 @@ def ramp(w, r):
     for j in range(steps):
         lo, hi = j * length / steps, (j + 1) * length / steps
         height = y0 + (y1 - y0) * (j + 0.5) / steps
-        w.polygon([p(lo, -half, height), p(hi, -half, height), p(hi, half, height), p(lo, half, height)], slot, bucket=bucket)
+        # Every face is wound counter-clockwise seen from its outside: treads up, risers downhill.
+        w.polygon([p(lo, half, height), p(hi, half, height), p(hi, -half, height), p(lo, -half, height)], slot, bucket=bucket)
         previous = y0 if j == 0 else y0 + (y1 - y0) * (j - 0.5) / steps
-        w.polygon([p(lo, half, previous), p(lo, -half, previous), p(lo, -half, height), p(lo, half, height)], "ceramicBand", bucket=bucket)
+        w.polygon([p(lo, -half, previous), p(lo, half, previous), p(lo, half, height), p(lo, -half, height)], "ceramicBand", bucket=bucket)
         if j % 4 == 0:
             w.beam(p(lo + 0.025, -half, height + 0.015), p(lo + 0.025, half, height + 0.015),
                    0.05, 0.03, "alloyLight", "artic", bucket)
@@ -54,10 +67,10 @@ def ramp(w, r):
                 yl, yh = y0 + (y1 - y0) * lo / length, y0 + (y1 - y0) * hi / length
                 low0, low1 = (bottom, bottom) if bottom is not None else (yl - 2.4, yh - 2.4)
                 face = [p(lo, side, low0), p(hi, side, low1), p(hi, side, yh), p(lo, side, yl)]
-                w.polygon(face if sign == -1 else face[::-1], "ceramicBand", bucket=bucket)
+                w.polygon(face[::-1] if sign == -1 else face, "ceramicBand", bucket=bucket)
         else:
             face = [p(0, side, y0), p(length, side, y0), p(length, side, y1)]
-            w.polygon(face if sign == -1 else face[::-1], "ceramicBand", bucket=bucket)
+            w.polygon(face[::-1] if sign == -1 else face, "ceramicBand", bucket=bucket)
         w.beam(p(0, side + sign * 0.4, y0 + 0.7), p(length, side + sign * 0.4, y1 + 0.7),
                0.8, 1.4, "ceramic", bucket=bucket)
         w.beam(p(0, side + sign * 0.35, y0 + 1.23), p(length, side + sign * 0.35, y1 + 1.23),

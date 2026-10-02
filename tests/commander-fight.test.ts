@@ -207,7 +207,8 @@ describe('commander in the citadel', () => {
   const make = () => {
     const horde = new Horde(soldiers, citadel, NO_CONTACT, new AudioMix(), asset)
     const fort = citadel
-    const post = horde.commanderPosts[0]
+    const postOf = (role: string) => horde.commanderPosts.find((p) => p.home.role === role)!
+    const post = postOf('citadel')
     const camera = new PerspectiveCamera(42, 16 / 9, 0.1, 2000)
     const target: EnemyTarget = { x: 0, z: 0, radius: 1.5, vx: 0, vz: 0, height: 5.6, heading: 0, guard: 0, present: true }
     const at = (role: string): void => {
@@ -226,7 +227,7 @@ describe('commander in the citadel', () => {
         each?.()
       }
     }
-    return { horde, fort, post, target, at, run }
+    return { horde, fort, post, postOf, target, at, run }
   }
 
   it('fights at the soldiers\' distances scaled to its size, and its lance\'s reach beyond that', () => {
@@ -295,7 +296,8 @@ describe('commander in the citadel', () => {
   })
 
   it('takes its lance\'s trail with it when it is destroyed', () => {
-    const { horde, post, at, run } = make()
+    const { horde, postOf, at, run } = make()
+    const post = postOf('forecourt')
     at('forecourt')
     run(30)
     const c = post.unit
@@ -304,8 +306,9 @@ describe('commander in the citadel', () => {
     expect(post.trail.mesh.visible).toBe(false)
   })
 
-  it('comes for the robot from the citadel, holds its stand-off, and lands its blows: the pair and, about one time in three, the whole combo', () => {
-    const { horde, post, target, at, run } = make()
+  it('comes for the robot in its district, holds its stand-off, and lands its blows: the pair and, about one time in three, the whole combo', () => {
+    const { horde, postOf, target, at, run } = make()
+    const post = postOf('forecourt')
     at('forecourt')
     let struck = 0, knocks = 0
     horde.onStruck = () => { struck++ }
@@ -339,6 +342,41 @@ describe('commander in the citadel', () => {
     const settled = gaps.slice(-600).sort((a, b) => a - b)[300]
     expect(settled).toBeGreaterThan(post.stand * 0.7)
     expect(settled).toBeLessThan(post.attackGap + 0.5)
+  }, 30_000)
+
+  it('stands in every district: a walk round its own yard clear of the scenery, and its own spawn bay', () => {
+    const { horde, fort } = make()
+    const posts = horde.commanderPosts
+    expect(posts.length).toBe(fort.plan.sectors.length)
+    expect(new Set(posts.map((p) => p.home.index)).size).toBe(posts.length)
+    for (const post of posts) {
+      expect(post.beats.length, post.home.role).toBeGreaterThanOrEqual(3)
+      for (const b of post.beats) {
+        expect(fort.sector(b.x, b.z), post.home.role).toBe(post.home.index)
+        expect(Number.isFinite(fort.floor.height(b.x, b.z)), post.home.role).toBe(true)
+      }
+      expect(fort.plan.spawns.some((sp) => sp.sector === post.home.index), post.home.role).toBe(true)
+      expect(fort.sector(post.unit.x, post.unit.z)).toBe(post.home.index)
+    }
+  })
+
+  it('fights only in its own district: when the robot moves on, it goes home while its garrison follows', () => {
+    const { horde, fort, postOf, target, at, run } = make()
+    const inner = postOf('processional'), outer = postOf('forecourt')
+    at('processional')
+    run(4)
+    expect(inner.unit.goal.ready).toBe(true)
+    expect(outer.unit.goal.ready).toBe(false)
+    // the robot goes down into the forecourt: the processional's garrison follows it, its commander does not
+    at('forecourt')
+    target.present = true
+    run(6)
+    const yard = fort.toWorld(inner.home.yard.at[0], inner.home.yard.at[1])
+    expect(horde.status(yard.x, yard.z)!.alert).toBe(true)
+    expect(inner.unit.goal.ready).toBe(false)
+    expect(outer.unit.goal.ready).toBe(true)
+    run(20)
+    expect(inner.unit.sector).toBe(inner.home.index)
   })
 
   it('breaks apart when its health is gone and the next rolls out of the citadel after the respawn time', () => {

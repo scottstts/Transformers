@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { float, vec3, mix, positionWorld, cameraViewMatrix, cameraPosition, distance, smoothstep } from 'three/tsl';
 import { N } from '../../rendering/noise.ts';
+import { towardCamera } from '../../rendering/depth.ts';
 import { groundSurface } from './materials.ts';
 import type { GroundDecal } from './terrain.ts';
 
@@ -51,8 +52,8 @@ export function sandImprintMaterial( i: Imprint ): THREE.MeshStandardNodeMateria
 
 	const m = new THREE.MeshStandardNodeMaterial( { transparent: true, depthWrite: false } );
 	m.polygonOffset = true;
-	m.polygonOffsetFactor = - 2;
-	m.polygonOffsetUnits = - 2;
+	m.polygonOffsetFactor = towardCamera( 2 );
+	m.polygonOffsetUnits = towardCamera( 2 );
 
 	const h0 = i.height( i.x, i.y );
 	const gx = i.height( i.x.add( i.dx ), i.y ).sub( h0 ).div( float( i.metresX ).mul( i.dx ) );

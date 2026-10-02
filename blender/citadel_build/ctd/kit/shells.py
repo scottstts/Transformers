@@ -58,30 +58,31 @@ def block(w, m, height=None, slot="ceramic", radius=0.6, width=None, depth=None,
             intervals = sorted((q["x"] - q["width"] / 2, q["x"] + q["width"] / 2, q) for q in bays)
             cursor = lo
             for x0, x1, q in intervals:
+                # Faces are wound counter-clockwise seen from outside: the +z wall runs from +x to -x.
                 if x0 > cursor:
-                    local_face(w, m, [(cursor, y0, depth / 2), (cursor, y1, depth / 2),
-                                     (x0, y1, depth / 2), (x0, y0, depth / 2)], slot)
+                    local_face(w, m, [(x0, y0, depth / 2), (x0, y1, depth / 2),
+                                     (cursor, y1, depth / 2), (cursor, y0, depth / 2)], slot)
                 fy, ty = q["floor"], q["floor"] + q["height"]
                 if fy > y0:
-                    local_face(w, m, [(x0, y0, depth / 2), (x0, fy, depth / 2),
-                                     (x1, fy, depth / 2), (x1, y0, depth / 2)], slot)
+                    local_face(w, m, [(x1, y0, depth / 2), (x1, fy, depth / 2),
+                                     (x0, fy, depth / 2), (x0, y0, depth / 2)], slot)
                 if ty < y1:
-                    local_face(w, m, [(x0, ty, depth / 2), (x0, y1, depth / 2),
-                                     (x1, y1, depth / 2), (x1, ty, depth / 2)], slot)
+                    local_face(w, m, [(x1, ty, depth / 2), (x1, y1, depth / 2),
+                                     (x0, y1, depth / 2), (x0, ty, depth / 2)], slot)
                 back = depth / 2 - q["depth"]
                 # Cavity walls face into the recess; no boolean cuts or hidden internal boxes.
                 local_face(w, m, [(x0, fy, depth / 2), (x0, fy, back), (x0, ty, back), (x0, ty, depth / 2)], "alloyDark")
                 local_face(w, m, [(x1, fy, back), (x1, fy, depth / 2), (x1, ty, depth / 2), (x1, ty, back)], "alloyDark")
                 local_face(w, m, [(x0, ty, depth / 2), (x0, ty, back), (x1, ty, back), (x1, ty, depth / 2)], "alloyDark")
-                local_face(w, m, [(x0, fy, back), (x0, ty, back), (x1, ty, back), (x1, fy, back)], "glass")
+                local_face(w, m, [(x1, fy, back), (x1, ty, back), (x0, ty, back), (x0, fy, back)], "glass")
                 # The plan's paving owns the bay floor, so no coincident cavity cap is emitted.
                 for x in (x0 - 0.18, x1 + 0.18):
                     local_beam(w, m, (x, fy, depth / 2 + 0.04), (x, ty, depth / 2 + 0.04), 0.16, "light", "artic")
                 local_beam(w, m, (x0, ty + 0.15, depth / 2 + 0.04), (x1, ty + 0.15, depth / 2 + 0.04), 0.16, "light", "artic")
                 cursor = x1
             if cursor < hi:
-                local_face(w, m, [(cursor, y0, depth / 2), (cursor, y1, depth / 2),
-                                 (hi, y1, depth / 2), (hi, y0, depth / 2)], slot)
+                local_face(w, m, [(hi, y0, depth / 2), (hi, y1, depth / 2),
+                                 (cursor, y1, depth / 2), (cursor, y0, depth / 2)], slot)
         else:
             na, nb = p.normals[j], p.normals[(j + 1) % len(p)]
             local_face(w, m, [(a[0], y0, a[1]), (a[0], y1, a[1]),

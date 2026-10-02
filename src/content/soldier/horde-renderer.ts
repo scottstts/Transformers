@@ -4,7 +4,7 @@ import { createShadowMaterial, createSoldierMaterials, hordeNodes, type HordeNod
 import { SHADOW_ONLY_LAYER } from '../../rendering/layers'
 
 /** Soldiers drawn at most at once (the fortress's garrisons and their debris). */
-export const HORDE_CAPACITY = 160
+export const HORDE_CAPACITY = 320
 
 /** A renderer for another unit in the soldier's format (the commander): how many it draws at once, and its slot materials. */
 export interface HordeOptions {

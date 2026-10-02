@@ -1,5 +1,6 @@
 import { WebGPURenderer, type PerspectiveCamera } from 'three/webgpu'
 import { showBootError, setBootStage } from './boot-ui'
+import { DEPTH_OPTIONS } from '../rendering/depth'
 
 type BackendWithDevice = { isWebGPUBackend?: boolean; device?: GPUDevice }
 
@@ -24,7 +25,7 @@ export class GpuHost {
     this.camera = camera
     this.mount = mount
     if (!navigator.gpu) throw new Error('WebGPU is not supported by this browser')
-    const renderer = new WebGPURenderer({ antialias: false })
+    const renderer = new WebGPURenderer({ antialias: false, ...DEPTH_OPTIONS })
     // Three's default WebGPURenderer installs a WebGL fallback. This game is WebGPU only.
     Object.assign(renderer, { _getFallback: null })
     const originalLost = renderer.onDeviceLost.bind(renderer)

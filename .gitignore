@@ -32,4 +32,6 @@ renders
 preview-out
 tasks
 # local mirror of the CDN assets (tools/assets.mjs)
-assets/
+/assets/
+# disposable Blender build output (compiled geometry, reports)
+blender/**/out/

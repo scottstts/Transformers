@@ -1,6 +1,6 @@
 # The commander (in game)
 
-One commander holds the fortress (`game/enemies/commander-post.ts`, `commander.ts`; content in `src/content/commander/`; model: commander-model.md). It is the soldier's body plan at 7 m: `Commander` extends `Soldier` with its own tuning (`COMMANDER`), poses, rig and a combo, so wheels, falls, the special's hold and the break-up are the soldier's.
+Every district of the citadel has its own commander (`game/enemies/commander-post.ts`, `commander.ts`; content in `src/content/commander/`; model: commander-model.md). It is the soldier's body plan at 7 m: `Commander` extends `Soldier` with its own tuning (`COMMANDER`), poses, rig and a combo, so wheels, falls, the special's hold and the break-up are the soldier's.
 
 ## Rig and poses
 
@@ -42,8 +42,11 @@ The lance core's brightness is the `glow` channel. A move's effect cues (`flash`
 - **No reel:** soldiers don't swing for 1.2 s after a blow; the commander may start a combo as soon as a flinch or fall ends. The next combo after one of its own waits 0.7-1.3 s.
 - **Health:** 2000.
 - **Bodies:** it and the robot push each other apart (`Horde.shove`), and soldiers give way to it.
-- **Alert and respawn:** it is alerted with any garrison of its fortress, finds its way with its own nav, walks the parade ground at peace, and is replaced 30 s after it is destroyed, from the citadel's bay.
-- **Drawing:** its own `HordeRenderer` (detail tiers at 60 / 160 m) and a 1.7x health bar. `Horde.warm` covers the renderer and the trail. `tools/switch-probe.mjs` plays a forced whole combo and the break-up, and reports 0 pipelines built in play.
+- **Its district only:** it fights while its district's garrison is alerted and the robot is in its district, or left it under the garrisons' `CALL_OFF` (1 s) ago, so a step through a gate does not flicker it. It never follows the fight into a neighbouring district (its garrison does): a fight meets one commander at a time. Otherwise it goes home and walks its yard.
+- **Yard walk:** five points on a ring at 0.35 of the yard's radius, each pushed clear of the scenery at its radius, and dropped off the floor or out of the district (`beatPoints`, tested for every district).
+- **Respawn:** replaced 30 s after it is destroyed, from its own district's spawn bay.
+- **Cost of twelve:** they share one way-finding grid at their radius (one grid per post took seconds at boot) and one rendered take bank (`commanderBank`, per audio context). A calm commander far from the camera is stepped every 2nd or 6th frame, as garrisons are.
+- **Drawing:** one `HordeRenderer` for all of them, capacity one per district (detail tiers at 60 / 160 m), and a 1.7x health bar. `Horde.warm` covers the renderer and the trail. `tools/switch-probe.mjs` plays a forced whole combo and the break-up, and reports 0 pipelines built in play.
 
 ## Sound
 

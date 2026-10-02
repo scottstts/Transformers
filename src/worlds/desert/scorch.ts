@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { abs, atan, attribute, cameraViewMatrix, exp, float, floor, fract, length, max, min, mix, positionLocal, positionWorld, select, smoothstep, uniform, varying, vec2, vec3 } from 'three/tsl';
 import { N } from '../../rendering/noise.ts';
+import { towardCamera } from '../../rendering/depth.ts';
 import { blackbody } from '../../rendering/blackbody.ts';
 import { groundSurface } from './materials.ts';
 import type { CitadelFloor } from './citadel/floor.ts';
@@ -544,8 +545,8 @@ function floorMaterial( m: FloorMark ): THREE.MeshStandardNodeMaterial {
 
 	const material = new THREE.MeshStandardNodeMaterial( { transparent: true, depthWrite: false } );
 	material.polygonOffset = true;
-	material.polygonOffsetFactor = - 2;
-	material.polygonOffsetUnits = - 2;
+	material.polygonOffsetFactor = towardCamera( 2 );
+	material.polygonOffsetUnits = towardCamera( 2 );
 	const level = attribute( 'level', 'float' );
 	const under = m.floor.node( positionLocal.xz ).height;
 	const y = select( abs( under.sub( level ) ).lessThan( FOLLOW ), under, level );
@@ -609,8 +610,8 @@ function markMaterial( m: Mark ): THREE.MeshStandardNodeMaterial {
 
 	const material = new THREE.MeshStandardNodeMaterial( { transparent: true, depthWrite: false } );
 	material.polygonOffset = true;
-	material.polygonOffsetFactor = - 3;
-	material.polygonOffsetUnits = - 3;
+	material.polygonOffsetFactor = towardCamera( 3 );
+	material.polygonOffsetUnits = towardCamera( 3 );
 	const e = 0.03;
 	const h0 = m.height( m.x, m.y );
 	const gx = m.height( m.x.add( e ), m.y ).sub( h0 ).div( e );

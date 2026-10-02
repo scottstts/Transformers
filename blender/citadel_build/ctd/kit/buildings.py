@@ -91,7 +91,8 @@ def build(w, m):
             local_face(w, m, roof[::-1], "ceramicBand")
             local_face(w, m, [(x1 - 2, y + 14, z0), (x1 - 2, y + 17.8, z0),
                              (x1 - 2, y + 17.8, z1), (x1 - 2, y + 14, z1)], "glass")
-            for z, reverse in ((z0, False), (z1, True)):
+            for z, reverse in ((z0, True), (z1, False)):
+                # the sloping end profiles face out of each end
                 end = [(x0, y + 14, z), (x1 - 2, y + 14, z), (x1 - 2, y + 17.8, z)]
                 local_face(w, m, end[::-1] if reverse else end, "ceramic")
             for z in range(-int(depth / 2) + 1, int(depth / 2), 3):

@@ -97,7 +97,7 @@ export class TerrainMesh {
   update(camera: PerspectiveCamera): void {
     camera.updateMatrixWorld()
     this.projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
-    this.frustum.setFromProjectionMatrix(this.projection, camera.coordinateSystem)
+    this.frustum.setFromProjectionMatrix(this.projection, camera.coordinateSystem, camera.reversedDepth)
     this.cx = camera.position.x
     this.cz = camera.position.z
     this.centre.value.copy(camera.position)

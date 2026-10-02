@@ -32,10 +32,16 @@ def dish(w, m):
                 a, b = a0 + col * (a1 - a0) / 6, a0 + (col + 1) * (a1 - a0) / 6
                 local_face(w, m, [p(r0, a), p(r0, b), p(r1, b), p(r1, a)], "ceramic",
                            normals=[norm(r0, a), norm(r0, b), norm(r1, b), norm(r1, a)])
-        for a in (a0, a1):
+                # The shell is 0.12 m thick: its back skin, and the reveals at its sides and rim, each facing out.
+                local_face(w, m, [p(r1, a, -0.12), p(r1, b, -0.12), p(r0, b, -0.12), p(r0, a, -0.12)], "ceramic",
+                           normals=[tuple(-x for x in norm(r, s)) for r, s in ((r1, a), (r1, b), (r0, b), (r0, a))])
+                if row == 5:
+                    local_face(w, m, [p(r1, a), p(r1, b), p(r1, b, -0.12), p(r1, a, -0.12)], "ceramicBand")
+        for a, side in ((a0, -1), (a1, 1)):
             for row in range(6):
                 r0, r1 = 0.5 + row * 12.5 / 6, 0.5 + (row + 1) * 12.5 / 6
-                local_face(w, m, [p(r0, a), p(r0, a, -0.12), p(r1, a, -0.12), p(r1, a)], "ceramicBand")
+                face = [p(r0, a), p(r0, a, -0.12), p(r1, a, -0.12), p(r1, a)]
+                local_face(w, m, face if side > 0 else face[::-1], "ceramicBand")
         path = [point(m, *p(0.5 + j * 12.5 / 24, petal * math.tau / 12, -0.18)) for j in range(25)]
         ribbon(w, path, 0.38, 0.4, "alloyDark", "artic", bucket)
     for r in (3.8, 8.0, 12.85):

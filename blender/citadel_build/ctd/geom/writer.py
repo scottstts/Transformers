@@ -19,6 +19,12 @@ def normal(vertices):
     return tuple(x / length for x in n)
 
 
+def toward(face, direction):
+    """The face wound so its normal points along `direction` (an outline's own order says nothing about its sides)."""
+    n = normal(face)
+    return face if sum(n[i] * direction[i] for i in range(3)) >= 0 else face[::-1]
+
+
 # Helpers that only forward geometry: an origin names the generator above them.
 FORWARDING = {"polygon", "local_face", "local_beam", "block", "panel", "grid", "ribbon", "tube", "ring", "beam",
               "box", "loft", "radial", "annulus", "label", "oriented_ring", "facing", "<listcomp>", "<lambda>"}

@@ -154,7 +154,7 @@ export async function probeSwitch(from: string, to: string): Promise<void> {
   const citadel = fort.plan.sectors.find((s) => s.role === 'citadel')!
   const c = fort.toWorld(citadel.yard.at[0], citadel.yard.at[1])
   const target: EnemyTarget = { x: c.x + 9, z: c.z + 9, radius: second.profile.robotRadius, vx: 0, vz: 0, height: 5, heading: 0, guard: 0, present: true }
-  const commander = horde.commanderPosts[0].unit
+  const commander = horde.commanderPosts.find((p) => p.home.role === 'citadel')!.unit
   let full = false
   for (let i = 0; i < 660; i++) {
     const far = i < 60 ? 120 : i < 120 ? 45 : 14

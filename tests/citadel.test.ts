@@ -16,7 +16,7 @@ const citadel = new Citadel(new Scene(), asset)
 
 describe('published citadel', () => {
   it('preserves the exported triangle counts within every rendering budget', () => {
-    expect(citadel.triangles).toBe(1_570_697)
+    expect(citadel.triangles).toBe(1_573_888)
     expect(asset.parts.length).toBeLessThanOrEqual(260)
     const limits = { mass: 1_000_000, artic: 1_300_000, detail: 1_000_000 }
     for (const [lod, limit] of Object.entries(limits)) {
@@ -71,6 +71,68 @@ describe('published citadel', () => {
       if (!Number.isFinite(citadel.floor.height(p.x, p.z))) gaps.push(`D${post.sector} beat at ${at}: no floor`)
     }
     expect(gaps).toEqual([])
+  })
+
+  it('shows the walkable floor its upper faces everywhere, ramps included', () => {
+    // horizontal-ish triangles, binned over 2 m cells of the fort frame
+    const BIN = 2
+    const key = (x: number, z: number) => `${Math.floor(x / BIN)},${Math.floor(z / BIN)}`
+    const bins = new Map<string, number[]>()
+    const tris: number[] = [] // ax az bx bz cx cz y-plane coefficients: y = a + b x + c z, and +1/-1 facing
+    for (const part of asset.parts) {
+      const pos = part.geometry.getAttribute('position'), idx = part.geometry.getIndex()!
+      for (let t = 0; t < idx.count; t += 3) {
+        const i = idx.getX(t), j = idx.getX(t + 1), k = idx.getX(t + 2)
+        const ax = pos.getX(i), ay = pos.getY(i), az = pos.getZ(i)
+        const ux = pos.getX(j) - ax, uy = pos.getY(j) - ay, uz = pos.getZ(j) - az
+        const vx = pos.getX(k) - ax, vy = pos.getY(k) - ay, vz = pos.getZ(k) - az
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+        const length = Math.hypot(nx, ny, nz)
+        if (length < 1e-9 || Math.abs(ny) < 0.5 * length) continue
+        const n = tris.length / 10
+        tris.push(ax, az, ax + ux, az + uz, ax + vx, az + vz, ay, -nx / ny, -nz / ny, Math.sign(ny))
+        const x0 = Math.min(ax, ax + ux, ax + vx), x1 = Math.max(ax, ax + ux, ax + vx)
+        const z0 = Math.min(az, az + uz, az + vz), z1 = Math.max(az, az + uz, az + vz)
+        if ((x1 - x0) * (z1 - z0) > 40_000) continue
+        for (let bz = Math.floor(z0 / BIN); bz <= Math.floor(z1 / BIN); bz++) for (let bx = Math.floor(x0 / BIN); bx <= Math.floor(x1 / BIN); bx++) {
+          const b = `${bx},${bz}`
+          const list = bins.get(b)
+          if (list) list.push(n)
+          else bins.set(b, [n])
+        }
+      }
+    }
+    const { map } = citadel.floor
+    const p = { x: 0, z: 0 }
+    const wrong: string[] = []
+    let sampled = 0
+    for (let c = 0; c < map.nx * map.nz; c += 17) {
+      const x = map.x0 + ((c % map.nx) + 0.5) * map.cell, z = map.z0 + (Math.floor(c / map.nx) + 0.5) * map.cell
+      citadel.toWorld(x, z, p)
+      const floor = citadel.floor.height(p.x, p.z)
+      if (Number.isNaN(floor)) continue
+      sampled++
+      // an upward face within a cordonata's half riser of the floor; failing that, the highest face there
+      // must be the underside of something standing on it, which the next face above closes facing up
+      let top = -Infinity, facing = 0, above = Infinity, aboveFacing = 0, seen = false
+      const column: number[] = []
+      for (const n of bins.get(key(x, z)) ?? []) {
+        const o = n * 10
+        const d = (tris[o + 3] - tris[o + 5]) * (tris[o] - tris[o + 4]) + (tris[o + 4] - tris[o + 2]) * (tris[o + 1] - tris[o + 5])
+        const l1 = ((tris[o + 3] - tris[o + 5]) * (x - tris[o + 4]) + (tris[o + 4] - tris[o + 2]) * (z - tris[o + 5])) / d
+        const l2 = ((tris[o + 5] - tris[o + 1]) * (x - tris[o + 4]) + (tris[o] - tris[o + 4]) * (z - tris[o + 5])) / d
+        if (l1 < 0 || l2 < 0 || l1 + l2 > 1) continue
+        const y = tris[o + 6] + tris[o + 7] * (x - tris[o]) + tris[o + 8] * (z - tris[o + 1])
+        column.push(y, tris[o + 9])
+        if (Math.abs(y - floor) > 0.1) continue
+        if (tris[o + 9] > 0) seen = true
+        if (y > top) { top = y; facing = tris[o + 9] }
+      }
+      for (let i = 0; i < column.length; i += 2) if (column[i] > top + 1e-3 && column[i] < above) { above = column[i]; aboveFacing = column[i + 1] }
+      if (!seen && facing < 0 && aboveFacing <= 0 && wrong.length < 8) wrong.push(`(${x.toFixed(1)}, ${z.toFixed(1)}) at ${floor.toFixed(2)} m`)
+    }
+    expect(sampled).toBeGreaterThan(50_000)
+    expect(wrong).toEqual([])
   })
 })
 
@@ -139,7 +201,7 @@ describe('floor timing in combat', () => {
 
   it('lets the first blow after moving to the crown reach its commander before an enemy simulation step', () => {
     const horde = new Horde(readSoldier(), citadel, NO_CONTACT, new AudioMix(), readSoldier('commander'))
-    const commander = horde.commanderPosts[0].unit
+    const commander = horde.commanderPosts.find((p) => p.home.role === 'citadel')!.unit
     horde.targetAt(commander.x, commander.z)
     const health = commander.health
     expect(horde.hit({ shape: 'circle', kind: 'blunt', x: commander.x, z: commander.z, reach: 3, arc: Math.PI * 2, heading: 0, damage: 10, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true })).toBeGreaterThan(0)

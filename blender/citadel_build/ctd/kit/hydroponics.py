@@ -94,7 +94,8 @@ def build(w, m):
         ribbon(w, [point(m, *a), point(m, *b)], 0.35, 0.35, "alloyDark", "artic", f"D{m['district']}")
     # The base ring is generated from the geodesic's actual equator, so no rim cracks appear.
     for a, b in base_edges:
-        face = [(a[0], floor, a[2]), a, b, (b[0], floor, b[2])]
+        # wound to face out from the dome
+        face = [(b[0], floor, b[2]), b, a, (a[0], floor, a[2])]
         for p in remove_service(face, radius, floor) if m["bays"] else [face]:
             local_face(w, m, p, "ceramicBand")
     if m["bays"]:

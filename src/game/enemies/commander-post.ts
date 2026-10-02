@@ -3,6 +3,9 @@ import type { CommanderCue } from '../../content/commander/moves'
 import { CommanderAudio } from '../../content/commander/audio'
 import type { AudioMix } from '../../audio/mix'
 import type { Citadel, Sector, Spawn } from '../../worlds/desert/citadel'
+import { insidePolygon } from '../../worlds/desert/citadel/polygon'
+import { pushOut, type Contact } from '../collide'
+import { CALL_OFF } from './garrison'
 import { wrap } from '../math'
 import { Commander, COMMANDER } from './commander'
 import { DEBRIS_FADE, DEBRIS_LIE } from './debris'
@@ -47,20 +50,23 @@ export function comboLength(u: number): number {
 }
 
 /**
- * The citadel's commander and its post, the crown. One lives at a time.
+ * A district's commander and its post: every district has one, and one lives
+ * at a time in each.
  *
- * At peace it walks the parade ground, the lance at the slope. When any of
- * the citadel's garrisons is alerted it lights the lance, levels it and
- * makes for the robot through the gates (its own way-finding, built for its
- * radius), wherever in the citadel the fight is; it stands down with the
- * garrisons and goes back to the crown. In the fight it makes for a
+ * At peace it walks its yard, the lance at the slope. It fights only in its
+ * own district: while its district's garrison is alerted and the robot is in
+ * the district (or left it under CALL_OFF ago, so a body stepping through a
+ * gate doesn't flicker it) it lights the lance, levels it and makes for the
+ * robot; otherwise it stands down and goes back to its yard. It never
+ * follows the fight into a neighbouring district, so a fight meets one
+ * commander at a time. In the fight it makes for a
  * stand-off toward the robot's front and holds its side once in reach,
  * strafing to keep the distance with its lance on the robot; in reach and
  * facing it rolls a combo: moves 1-2, or the whole combo (its fourth move
  * knocks the robot back) one time in three. After a combo it waits COOLDOWN.
  *
  * Destroyed, it breaks apart like a soldier; COMMANDER_RESPAWN seconds later
- * the next rolls out of the crown's vehicle bay.
+ * the next rolls out of its district's spawn bay.
  */
 export class CommanderPost {
   readonly unit: Commander
@@ -75,10 +81,14 @@ export class CommanderPost {
   readonly citadel: Citadel
   readonly audio: CommanderAudio
   private readonly nav: CitadelNav
-  /** its home district, the crown */
-  private readonly home: Sector
+  /** its home district */
+  readonly home: Sector
   private readonly door: Spawn | null
+  /** its walk round the yard at peace (world points, clear of the scenery, on the yard's floor) */
+  readonly beats: Array<{ x: number; z: number }>
   private alert = false
+  /** the horde's clock when the robot was last in its district */
+  private seen = -Infinity
   /** seconds until the next one rolls out, while none lives */
   private respawn = 0
   private nextCombo = 0
@@ -87,32 +97,33 @@ export class CommanderPost {
   private listener = { x: 0, y: 0, z: 0 }
   private serial = 0
 
-  /** `scale`: its height over a soldier's */
-  constructor(citadel: Citadel, manifest: SoldierManifest, mix: AudioMix, scale: number) {
+  /** `nav`: way-finding at its radius (shared by every post); `scale`: its height over a soldier's */
+  constructor(citadel: Citadel, nav: CitadelNav, home: Sector, manifest: SoldierManifest, mix: AudioMix, scale: number) {
     this.citadel = citadel
     this.stand = ENGAGE_GAP * scale * RANGE
     this.attackGap = (ENGAGE_GAP + ATTACK_WINDOW) * scale * RANGE
     this.reachGap = SLASH_REACH * scale * RANGE
-    this.nav = new CitadelNav(citadel.plan, COMMANDER.radius)
-    const home = citadel.plan.sectors.find((s) => s.role === 'citadel')
-    if (!home) throw new Error('The citadel has no crown district for its commander')
+    this.nav = nav
     this.home = home
     this.door = citadel.plan.spawns.find((s) => s.sector === home.index) ?? null
+    this.beats = beatPoints(citadel, home)
     this.unit = new Commander(manifest)
     this.unit.onCue = (cue) => this.cue(cue)
     this.audio = new CommanderAudio(mix)
-    // the first stands on the crown's parade ground facing the main gate
+    // the first stands in its yard facing the main gate
     const p = citadel.toWorld(home.yard.at[0], home.yard.at[1])
     this.unit.reset(p.x, p.z, citadel.plan.site.yaw, this.serial++, citadel.floorAt(p.x, p.z))
     this.unit.sector = home.index
   }
 
   /**
-   * Per step: `alert` while any of the citadel's garrisons fights, `clock`
+   * Per step: `garrisonAlert` while its district's garrison fights, `clock`
    * the horde's; `listener` the camera (for its sound).
    */
-  update(dt: number, clock: number, t: EnemyTarget, targetSector: number, alert: boolean, listener: { x: number; y: number; z: number }): void {
+  update(dt: number, clock: number, t: EnemyTarget, targetSector: number, garrisonAlert: boolean, listener: { x: number; y: number; z: number }): void {
     this.listener = listener
+    if (targetSector === this.home.index) this.seen = clock
+    const alert = garrisonAlert && clock - this.seen <= CALL_OFF
     const u = this.unit
     if (!u.alive) {
       // its trail goes with it (and the next one's never stretches back to where this one fell)
@@ -171,7 +182,7 @@ export class CommanderPost {
     }
   }
 
-  /** At peace: round the parade ground, stopping to look about; back through the gates first if the fight carried it off. */
+  /** At peace: round its yard, stopping to look about; back through the gates first if the fight carried it off. */
   private patrol(clock: number): void {
     const u = this.unit
     const citadel = this.citadel
@@ -186,13 +197,12 @@ export class CommanderPost {
     }
     const yard = this.home.yard
     const b = this.beat
-    const point = (k: number): { x: number; z: number } => {
-      const a = (k / BEAT_POINTS) * Math.PI * 2
-      return citadel.toWorld(yard.at[0] + Math.sin(a) * yard.r * BEAT_RING, yard.at[1] + Math.cos(a) * yard.r * BEAT_RING, _p)
-    }
+    const beats = this.beats
+    if (!beats.length) return
+    const point = (k: number): { x: number; z: number } => beats[k]
     if (b.k < 0) {
       let best = Infinity
-      for (let k = 0; k < BEAT_POINTS; k++) {
+      for (let k = 0; k < beats.length; k++) {
         const p = point(k)
         const d = Math.hypot(p.x - u.x, p.z - u.z)
         if (d < best) { best = d; b.k = k }
@@ -220,12 +230,12 @@ export class CommanderPost {
     }
     u.goal.face = b.look
     if (clock >= b.wait) {
-      b.k = (b.k + 1) % BEAT_POINTS
+      b.k = (b.k + 1) % beats.length
       b.wait = 0
     }
   }
 
-  /** Its parts lie and burn away; COMMANDER_RESPAWN after it fell, the next rolls out of the crown's bay. */
+  /** Its parts lie and burn away; COMMANDER_RESPAWN after it fell, the next rolls out of its district's bay. */
   private decay(dt: number): void {
     const u = this.unit
     const debris = u.debris
@@ -304,8 +314,31 @@ export class CommanderPost {
   }
 }
 
+/**
+ * Its walk round the yard: BEAT_POINTS on a ring BEAT_RING of the yard's
+ * radius out, each pushed clear of the scenery at its radius, and dropped if
+ * that takes it off the floor or out of the district (a yard's ring may
+ * cross a building). Deterministic.
+ */
+export function beatPoints(citadel: Citadel, home: Sector): Array<{ x: number; z: number }> {
+  const plan = citadel.plan
+  const contact: Contact = { nx: 0, nz: 0, depth: 0 }
+  const out: Array<{ x: number; z: number }> = []
+  const { at, r } = home.yard
+  for (let k = 0; k < BEAT_POINTS; k++) {
+    const a = (k / BEAT_POINTS) * Math.PI * 2
+    const q = { x: at[0] + Math.sin(a) * r * BEAT_RING, z: at[1] + Math.cos(a) * r * BEAT_RING }
+    for (let i = 0; i < 4 && pushOut(q, COMMANDER.radius + 0.3, plan.segments, plan.circles, contact); i++) { /* pushed clear */ }
+    if (pushOut({ x: q.x, z: q.z }, COMMANDER.radius, plan.segments, plan.circles, contact)) continue
+    if (!plan.floor.some((f) => insidePolygon(f.polygon, q.x, q.z))) continue
+    const p = citadel.toWorld(q.x, q.z)
+    if (citadel.sector(p.x, p.z) !== home.index) continue
+    out.push(p)
+  }
+  return out
+}
+
 const _w = { x: 0, z: 0 }
 const _base = new Vector3()
 const _tip = new Vector3()
-const _p = { x: 0, z: 0 }
 const _c = { x: 0, z: 0 }

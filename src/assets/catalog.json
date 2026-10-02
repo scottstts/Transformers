@@ -1,0 +1,93 @@
+{
+  "base": "https://pub-52701a67003746d8b32409d0afec1b98.r2.dev",
+  "files": {
+    "bat-spear.bin": {
+      "bytes": 332136,
+      "sha256": "93eebd57284d9b4e89a49b342e7bb036adf0bd155e68d8bda0e6cdae5923775d"
+    },
+    "bat-spear.json": {
+      "bytes": 1227,
+      "sha256": "8a64c93f8b02a48b090894dbf172717dc97a87bcf75af4b48ead38a2753b9939"
+    },
+    "bat.bin": {
+      "bytes": 6084360,
+      "sha256": "26dc260eafaf484eab612b684f6ce258f3fb5ad97854fcdc12b25304c454bf38"
+    },
+    "bat.json": {
+      "bytes": 127793,
+      "sha256": "d9f3c10acd53407b6ed7c8cde7deef542de0d351bc240de9893cb66bbe37d3fc"
+    },
+    "citadel.glb": {
+      "bytes": 32109832,
+      "sha256": "2e4c66ab0141d5354ab45c93c09c00f4812070490da37079c1cb1f5615d2e77f"
+    },
+    "citadel.plan.json": {
+      "bytes": 735380,
+      "sha256": "211f9d94529f66195556662b209465df39ac07fad8a637defd8c154bf238b192"
+    },
+    "commander.bin": {
+      "bytes": 2554852,
+      "sha256": "a10e46cd8ff239be6bf9d35de20e6313694f7ab8b618e70e9daf8784200f8161"
+    },
+    "commander.json": {
+      "bytes": 19070,
+      "sha256": "8909ca208801a263e551913e2567f577fab6543dc51460c69b8a85bcf535eb61"
+    },
+    "cybertruck-axe.bin": {
+      "bytes": 190852,
+      "sha256": "e3ce589388c345dad90c13e142d676eddde2914c28e97ab076540f0284426c1c"
+    },
+    "cybertruck-axe.json": {
+      "bytes": 1714,
+      "sha256": "25cd0abd74313e2d752b10018edad031a9d34acc0f5aa740afffaa58f737cf5d"
+    },
+    "cybertruck.bin": {
+      "bytes": 10648256,
+      "sha256": "fbd7c031caef06e12dcc0e8d7acb4f7091ff8e89ad66205226c5753b62d8717a"
+    },
+    "cybertruck.json": {
+      "bytes": 191867,
+      "sha256": "6e4eef781dbaa9afa9ce685445aa26bd0ba269d747fd4fa243562fdbc50a9ff9"
+    },
+    "ferrari-f1-sword.bin": {
+      "bytes": 117656,
+      "sha256": "aff9e9868461ec37ba546ae694b5a2e63de284e74cb6b126bd895ddd7da740ad"
+    },
+    "ferrari-f1-sword.json": {
+      "bytes": 2230,
+      "sha256": "efc40aa652a3ae67dae628d6f8b7cdb4f37d2c5ccd6a86c2ec3ca53b1fddb6e4"
+    },
+    "ferrari-f1.bin": {
+      "bytes": 11071112,
+      "sha256": "de23d1ae8b98cf5976f251bc0c6d11148ed5c2211851702ccf8aba57f05ef0ca"
+    },
+    "ferrari-f1.json": {
+      "bytes": 152541,
+      "sha256": "db79615b9e9aee74594c559ecced2171a79f49974fb18fe0467ea06470a8ed68"
+    },
+    "semi-gun.bin": {
+      "bytes": 1194696,
+      "sha256": "3a1926b052512d660927dfa8871fb33f78eceee88d69f137c6d6a92391725d9d"
+    },
+    "semi-gun.json": {
+      "bytes": 3030,
+      "sha256": "be2edfa0b1ef92cc9137a7413fa99d1b65c7050e82365a4d648bb271a46b3371"
+    },
+    "semi.bin": {
+      "bytes": 12450148,
+      "sha256": "9f5d44e9dd0a3c3b8866278c9af412c60c114f3baa635b2eb197afaff815b26a"
+    },
+    "semi.json": {
+      "bytes": 146905,
+      "sha256": "115755b48b0c4c989f60231e217482dd6a444b48863be865d62ed449bd1c49e1"
+    },
+    "soldier.bin": {
+      "bytes": 1673380,
+      "sha256": "2fa96182d7e29b9e7bc074c99ff32d817b5bc486fbb7cfb5647d7fa2a91b92a0"
+    },
+    "soldier.json": {
+      "bytes": 14441,
+      "sha256": "c38f508fdde9e656ce610f55f2e7b3e2e0e5aa51fbb76910cdca343a36b2dc90"
+    }
+  }
+}

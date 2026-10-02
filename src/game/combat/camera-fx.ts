@@ -171,8 +171,10 @@ export class CameraFx implements CombatCamera {
       _c.copy(this.shockAt).setY(this.shockAt.y + radius * 0.35)
       camera.updateMatrixWorld()
       const distance = _c.distanceTo(camera.position)
+      // in front of the camera: view-space z, which holds under either depth convention (NDC z does not)
+      const ahead = _v.copy(_c).applyMatrix4(camera.matrixWorldInverse).z < 0
       _c.project(camera)
-      if (_c.z < 1 && distance > radius * 0.6) {
+      if (ahead && distance > radius * 0.6) {
         const halfHeight = distance * Math.tan(camera.fov * Math.PI / 360)
         lens.shockCenter.value.set(_c.x * 0.5 + 0.5, 0.5 - _c.y * 0.5)
         lens.shockRadius.value = radius / halfHeight * 0.5
@@ -196,3 +198,4 @@ export class CameraFx implements CombatCamera {
 }
 
 const _c = new Vector3()
+const _v = new Vector3()
