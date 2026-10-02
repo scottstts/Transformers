@@ -16,7 +16,10 @@ import type { GaitLeg } from '../model/rig'
  *    + outward, - across the body), `el` (deg, -90 hanging, 0 level, 90 up),
  *    `reach` (share of the arm's full length), `elbow` (deg, roll of the elbow
  *    about the shoulder-hand line, + outward and up), `wx / wy / wz` (wrist,
- *    deg) and `grip` (0 the stand's open hand, 1 a closed fist);
+ *    deg), `grip` (0 the stand's open hand, 1 a closed fist) and `out` (0..1: the
+ *    elbow's side, from which `elbow` rolls, handed from the stand's (out, back,
+ *    down) to straight outward, for an arm raised overhead, where the stand's
+ *    side is undefined and spins the upper arm round its socket);
  *  - weapon, for the main hand, in the body frame (the robot's heading, at
  *    the pelvis; the torso's twist and lean do not turn it): the grip point
  *    from the main shoulder's rest place in arm lengths (`w.x` + outward,
@@ -39,8 +42,8 @@ import type { GaitLeg } from '../model/rig'
 export const CHANNEL_NAMES = [
   'hipX', 'hipDrop', 'hipPitch', 'hipRoll', 'hipYaw',
   'spineX', 'spineY', 'spineZ', 'chestX', 'chestY', 'chestZ', 'headX', 'headY', 'headZ',
-  'R.az', 'R.el', 'R.reach', 'R.elbow', 'R.wx', 'R.wy', 'R.wz', 'R.grip',
-  'L.az', 'L.el', 'L.reach', 'L.elbow', 'L.wx', 'L.wy', 'L.wz', 'L.grip',
+  'R.az', 'R.el', 'R.reach', 'R.elbow', 'R.wx', 'R.wy', 'R.wz', 'R.grip', 'R.out',
+  'L.az', 'L.el', 'L.reach', 'L.elbow', 'L.wx', 'L.wy', 'L.wz', 'L.grip', 'L.out',
   'w.x', 'w.y', 'w.z', 'w.yaw', 'w.pitch', 'w.roll', 'w.wield', 'w.two', 'w.slide',
   'R.heel', 'L.heel', 'advance', 'strafe', 'turn', 'air',
   'R.free', 'R.lx', 'R.ly', 'R.lz', 'R.lp', 'L.free', 'L.lx', 'L.ly', 'L.lz', 'L.lp',
@@ -50,7 +53,7 @@ export type Channel = typeof CHANNEL_NAMES[number]
 export const CHANNELS = CHANNEL_NAMES.length
 export const CH = Object.fromEntries(CHANNEL_NAMES.map((name, i) => [name, i])) as Record<Channel, number>
 
-/** Per-side offset of the eight arm channels: az, el, reach, elbow, wx, wy, wz, grip. */
+/** Per-side offset of the nine arm channels: az, el, reach, elbow, wx, wy, wz, grip, out. */
 export const ARM = { R: CH['R.az'], L: CH['L.az'] } as const
 export const WEAPON = CH['w.x']
 /** Per-side offset of the five free-leg channels: free, lx, ly, lz, lp. */

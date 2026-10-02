@@ -4,8 +4,9 @@ import type { SpecialMove } from '../../transformer/combat/special'
  * Skyfall: the truck robot's special. It looks up, forms the axe and sinks
  * into the sand; the lift jets light straight down and blast it thirty metres
  * into the sky. At the top the jets cut out and the world goes quiet and slow
- * while it hangs there, the axe raised beside its helmet and running with
- * plasma. Then the jets fire again, upward, and drive it down like a meteor.
+ * while it hangs there, the axe raised over its helmet in both hands and
+ * running with plasma. Then the jets fire again, upward, and drive it down
+ * like a meteor.
  * The axe goes into the sand, which is blasted into a crater of glass around
  * it as it lands kneeling, three points down. It rises, pulls the axe free
  * and lets it go.
@@ -13,8 +14,8 @@ import type { SpecialMove } from '../../transformer/combat/special'
  * Special time (s): gather 0-0.55, load 0.55-1.25 (jets at 0.72), launch
  * 1.25-1.45, climb to 28.6 m at 3.3 (slow motion from 2.8), the dive from
  * 3.55, impact at 4.45 (12 m ahead), the kneel to 5.6, rise to 6.9, then
- * the camera hands back. The weapon's poses reuse the thruster charge's raise
- * and slam (combat.md), which are proven clear of the body.
+ * the camera hands back. The slam reuses the thruster charge's (combat.md);
+ * the two-handed hang is kept clear of the body with tools/clash-probe.mjs.
  */
 const IMPACT = 4.45
 const LANDING = 12
@@ -44,29 +45,38 @@ export const CYBERTRUCK_SPECIAL: SpecialMove = {
       headX: [[0.35, -24], [0.6, -26], [0.95, 6], [1.4, -12], [2.6, -6], [3.1, 34], [3.45, 36], [3.75, 18], [4.2, 20], [IMPACT, 14], [4.8, 26], [5.5, 22], [5.95, -6], [6.8, -4], [8, 0]],
       headZ: [[0.9, 6], [1.4, 0], [3.2, -6], [4.7, 0]],
 
-      // the axe hand: down to the carry, the raise beside the helmet, the strike, low in front, released
+      // the axe hand: down to the carry, raised over the helmet in both hands, the strike, low in front, released
       'R.grip': [[0.12, 1], [7.4, 1], [7.85, 0]],
-      'R.elbow': [[0.3, 20], [1.4, 26], [2.4, 30], [2.75, 60], [3.4, 62], [4.33, 60], [4.6, 10], [6.2, 10], [7.0, 30]],
+      // raised overhead from the carry to the bite, the elbow on the outward side (pose.ts `out`), so the shoulder never turns over
+      'R.out': [[2.3, 0], [2.5, 1], [4.41, 1], [4.5, 0]],
+      'R.elbow': [[0.3, 20], [1.4, 26], [2.3, 30], [2.5, 0], [4.41, 0], [4.5, 10], [6.2, 10], [7.0, 30]],
       'R.az': [[0.3, -3]],
       'R.el': [[0.3, -22]],
       'R.reach': [[0.3, 0.5]],
       'R.wx': [[6.9, 0], [7.9, 172]],
       'R.wy': [[6.9, 0], [7.9, -63]],
       'R.wz': [[6.9, 0], [7.9, 27]],
-      'w.x': [[0.3, 0.25], [2.3, 0.25], [2.5, -0.1], [2.75, -0.2], [3.5, -0.2], [4.22, -0.2], [4.35, -0.2], [IMPACT, -0.4], [5.7, -0.4], [6.25, -0.3], [6.8, -0.2]],
-      'w.y': [[0.3, 0.25], [2.3, 0.3], [2.5, 0.42], [2.75, 0.6], [3.5, 0.55], [4.22, 0.6], [4.35, 0.9], [IMPACT, 0.75], [5.7, 0.78], [6.25, 0.85], [6.8, 0.7]],
-      'w.z': [[0.3, -0.45], [2.3, -0.45], [2.5, 0.35], [2.75, 0.8], [3.5, 0.82], [4.22, 0.8], [4.35, 0.4], [IMPACT, -0.3], [5.7, -0.3], [6.25, -0.2], [6.8, -0.35]],
-      'w.yaw': [[0.3, 15], [2.3, 15], [2.75, 0], [5.7, 0], [6.8, -10]],
-      'w.pitch': [[0.3, 115], [2.3, 115], [2.5, 30], [2.75, -25], [3.5, -28], [4.22, -25], [4.35, 65], [IMPACT, 170], [5.7, 172], [6.25, 165], [6.8, 160]],
-      'w.roll': [[0.3, 0], [5.7, 0], [6.8, -20]],
+      'w.x': [[0.3, 0.25], [2.3, 0.25], [2.5, -0.15], [2.75, -0.24], [3.45, -0.24], [3.75, -0.2], [4.22, -0.2], [4.35, -0.2], [IMPACT, -0.4], [5.7, -0.4], [6.25, -0.3], [6.8, -0.2]],
+      'w.y': [[0.3, 0.25], [2.3, 0.3], [2.5, 0.42], [2.75, 0.34], [3.45, 0.27], [3.6, 0.5], [3.75, 0.55], [4.22, 0.6], [4.35, 0.9], [IMPACT, 0.75], [5.7, 0.78], [6.25, 0.85], [6.8, 0.7]],
+      'w.z': [[0.3, -0.45], [2.3, -0.45], [2.5, 0.35], [2.75, 0.58], [3.45, 0.6], [3.6, 0.85], [3.75, 0.82], [4.22, 0.8], [4.35, 0.4], [IMPACT, -0.3], [5.7, -0.3], [6.25, -0.2], [6.8, -0.35]],
+      'w.yaw': [[0.3, 15], [2.3, 15], [2.5, 12], [2.75, 84], [3.45, 74], [3.75, 0], [5.7, 0], [6.8, -10]],
+      'w.pitch': [[0.3, 115], [2.3, 115], [2.5, 30], [2.75, -68], [3.45, -64], [3.75, -28], [4.22, -25], [4.35, 65], [IMPACT, 170], [5.7, 172], [6.25, 165], [6.8, 160]],
+      'w.roll': [[0.3, 0], [2.5, 0], [2.75, -90], [3.45, -90], [3.75, 0], [5.7, 0], [6.8, -20]],
       'w.wield': [[0.18, 0], [0.32, 1], [7.4, 1], [7.85, 0]],
+      // Both hands on the haft through the hang: the fists over the brow, the haft laid up across to the
+      // left, the blade high over the left shoulder with its edge to the front. Each arm stays on its own
+      // side (the forearms carry the door and roof slabs, the chest the vault). The off hand lets go for
+      // balance as the dive tips the body over.
+      'w.two': [[2.55, 0], [2.76, 1], [3.52, 1], [3.7, 0]],
 
-      // the free arm: back for the load, out for balance, pointing at the mark, flung back at the landing
+      // the free arm: back for the load, up onto the haft for the hang, out for balance in the dive, flung back at the landing
       'L.grip': [[0.12, 1], [6.9, 1], [7.7, 0.3]],
-      'L.az': [[0.3, -4], [0.9, 18], [1.4, 30], [2.2, 62], [3.0, 16], [3.45, 10], [3.8, 40], [4.1, 36], [IMPACT, 70], [5.6, 72], [6.4, 20], [7.4, 6]],
-      'L.el': [[0.3, -24], [0.9, -48], [1.4, -40], [2.2, -8], [3.0, -30], [3.45, -38], [3.8, -30], [4.1, -26], [IMPACT, -36], [5.6, -34], [6.4, -40], [7.4, -30]],
+      // up the side and over the top onto the haft, the elbow on the outward side until it lets go
+      'L.out': [[2.25, 0], [2.45, 1], [3.52, 1], [3.72, 0]],
+      'L.az': [[0.3, -4], [0.9, 18], [1.4, 30], [2.2, 40], [2.45, 50], [2.6, 0], [2.75, -80], [3.45, 60], [3.8, 40], [4.1, 36], [IMPACT, 70], [5.6, 72], [6.4, 20], [7.4, 6]],
+      'L.el': [[0.3, -24], [0.9, -48], [1.4, -40], [2.2, 10], [2.45, 50], [2.6, 75], [2.75, 53], [3.45, 35], [3.8, -30], [4.1, -26], [IMPACT, -36], [5.6, -34], [6.4, -40], [7.4, -30]],
       'L.reach': [[0.3, 0.55], [0.9, 0.85], [2.2, 0.9], [3.5, 0.96], [4.1, 0.9], [IMPACT, 0.95], [5.6, 0.95], [6.4, 0.6], [7.4, 0.52]],
-      'L.elbow': [[0.3, 16], [2.2, 30], [3.5, 10], [IMPACT, 20], [6.4, 24]],
+      'L.elbow': [[0.3, 16], [2.25, 30], [2.45, 0], [3.52, 0], [3.72, 10], [IMPACT, 20], [6.4, 24]],
 
       // stance widened for the launch; carried with the body in the air; kneeling on the left
       'R.free': [[1.24, 0], [1.34, 1], [IMPACT - 0.01, 1], [IMPACT + 0.09, 0]],

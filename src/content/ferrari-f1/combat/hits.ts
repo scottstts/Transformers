@@ -1,4 +1,5 @@
 import type { CombatHits, SweepHit } from '../../transformer/combat/hits'
+import { F1_MOVES } from './moves'
 import { RED_LINE } from './special'
 
 /**
@@ -13,10 +14,10 @@ const hairpins: SweepHit[] = RED_LINE.hairpins.map(([t0, t1]) => ({ t0, t1, kind
 
 export const F1_HITS: CombatHits = {
   moves: [
-    { strikes: [{ t: 0.2, kind: 'blunt', reach: 3.5, arc: 95, damage: 50, knock: 8, lift: 0.5 }] },
-    { strikes: [{ t: 0.4, kind: 'blunt', reach: 4.0, arc: 170, aim: 20, damage: 65, knock: 11.5, lift: 2.6 }] },
-    { strikes: [{ t: 0.42, kind: 'cut', reach: 5.0, arc: 180, damage: 130, knock: 8, lift: 2 }] },
-    { sweeps: [{ t0: 0.36, t1: 0.68, kind: 'cut', radius: 3.2, ahead: 0.8, damage: 130, knock: 13, lift: 2.6 }] },
+    { strikes: [{ t: F1_MOVES.moves[0].strike!, kind: 'blunt', reach: 3.5, arc: 95, damage: 50, knock: 8, lift: 0.5 }] },
+    { strikes: [{ t: F1_MOVES.moves[1].strike!, kind: 'blunt', reach: 4.0, arc: 170, aim: 20, damage: 65, knock: 11.5, lift: 2.6 }] },
+    { strikes: [{ t: F1_MOVES.moves[2].strike!, kind: 'cut', reach: 5.0, arc: 180, damage: 130, knock: 8, lift: 2 }] },
+    { sweeps: [{ t0: 0.22, t1: 0.45, kind: 'cut', radius: 3.2, ahead: 0.8, damage: 130, knock: 13, lift: 2.6 }] },
   ],
   special: {
     sweeps: [...cuts, ...hairpins],

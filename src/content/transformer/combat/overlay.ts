@@ -167,7 +167,7 @@ export class CombatOverlay implements RigOverlay {
       n[o] = MathUtils.radToDeg(Math.atan2(sgn * d.x, -d.y))
       n[o + 1] = MathUtils.radToDeg(Math.asin(MathUtils.clamp(d.z, -1, 1)))
       n[o + 2] = reach / (L1 + L2)
-      const p0 = basePole(d, sgn, _v3)
+      const p0 = basePole(d, sgn, 0, _v3)
       const pa = E.addScaledVector(d, -E.dot(d)).normalize()
       n[o + 3] = sgn * MathUtils.radToDeg(Math.atan2(_v4.crossVectors(p0, pa).dot(d), p0.dot(pa)))
     }
@@ -258,7 +258,7 @@ export class CombatOverlay implements RigOverlay {
           // the forearm the arm will take to this wrist, and the roll that runs the knuckles (weapon +x) on along it
           // (the pole as the solve below builds it, the elbow channel's roll included)
           const toWrist = _vd.copy(at).sub(S).normalize().applyQuaternion(_q0.copy(chestQ).invert())
-          const pole = basePole(toWrist, sgn, _vp).applyAxisAngle(toWrist, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
+          const pole = basePole(toWrist, sgn, v[o + 8], _vp).applyAxisAngle(toWrist, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
           const forearm = forearmTo(S, at, L1, L2, pole, _v3)
           const haft = _v4.set(0, 0, 1).applyQuaternion(weaponQ)
           forearm.addScaledVector(haft, -forearm.dot(haft))
@@ -278,7 +278,8 @@ export class CombatOverlay implements RigOverlay {
           const off: Side = side === 'R' ? 'L' : 'R'
           const lengths = this.armLength[off]
           const radius = (lengths[0] + lengths[1]) * 0.98
-          _offDelta.copy(this.offGrip).applyQuaternion(weaponQ)
+          // the off grip from the main hand's grip, which `w.slide` has moved along the haft
+          _offDelta.copy(this.offGrip).setZ(this.offGrip.z - v[CH['w.slide']]).applyQuaternion(weaponQ)
             .add(_v0.copy(this.gripOffset[side]).sub(this.gripOffset[off]).applyQuaternion(handQ))
           _offCenter.setFromMatrixPosition(rig.world[this.idx.arm[off].upper]).sub(_offDelta)
           _shared.copy(at)
@@ -301,7 +302,7 @@ export class CombatOverlay implements RigOverlay {
     // from the unused fist target can become parallel to a weapon arm and
     // flip the elbow when its projection crosses zero during release.
     dir.copy(target).sub(S).normalize().applyQuaternion(_q0.copy(chestQ).invert())
-    const pole = basePole(dir, sgn, _vp).applyAxisAngle(dir, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
+    const pole = basePole(dir, sgn, v[o + 8], _vp).applyAxisAngle(dir, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
 
     // two-bone IK (+Y of the upper arm faces the elbow)
     const parentQ = _qp.setFromRotationMatrix(rig.world[a.parent])
@@ -404,12 +405,23 @@ export function toePivot(step: number, up: number, pitch: number, phi: number, s
   return out
 }
 
-/** Default elbow direction for a hand direction `d` (chest frame), perpendicular to it. */
-function basePole(d: Vector3, sgn: number, out: Vector3): Vector3 {
-  out.set(POLE.x * sgn, POLE.y, POLE.z)
-  out.addScaledVector(d, -out.dot(d))
-  if (out.lengthSq() < 1e-6) out.set(sgn, 0, 0).addScaledVector(d, -d.x * sgn)
-  return out.normalize()
+/**
+ * Default elbow direction for a hand direction `d` (chest frame), perpendicular to it,
+ * handed toward the arm's outward side by `out` (0..1). A hand raised overhead points
+ * nearly straight away from POLE, whose projection then shrinks and spins; outward
+ * is defined there.
+ */
+function basePole(d: Vector3, sgn: number, out: number, result: Vector3): Vector3 {
+  result.set(POLE.x * sgn, POLE.y, POLE.z)
+  result.addScaledVector(d, -result.dot(d))
+  if (result.lengthSq() < 1e-6) result.set(sgn, 0, 0).addScaledVector(d, -d.x * sgn)
+  result.normalize()
+  if (out > 0) {
+    _outward.set(sgn, 0, 0).addScaledVector(d, -d.x * sgn)
+    if (_outward.lengthSq() > 1e-6) result.lerp(_outward.normalize(), Math.min(1, out))
+    if (result.lengthSq() < 1e-6) result.copy(_outward)
+  }
+  return result.normalize()
 }
 
 /** The unit forearm direction of a two-bone arm from shoulder `S` to wrist `W`, its elbow toward `pole` (as solveArm places it). */
@@ -481,6 +493,7 @@ const _vp = new Vector3()
 const _vt = new Vector3()
 const _vw = new Vector3()
 const _offDelta = new Vector3()
+const _outward = new Vector3()
 const _offCenter = new Vector3()
 const _shared = new Vector3()
 const _reach = new Vector3()

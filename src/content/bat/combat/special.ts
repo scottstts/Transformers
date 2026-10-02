@@ -13,11 +13,11 @@ import type { SpecialMove } from '../../transformer/combat/special'
  * cutting through everything there, and the air goes round with it: a vortex
  * drawing the whole crowd in to the centre. Then the jet bursts to full and it
  * pulls up, standing on the flame, the spear hanging at its side, and climbs
- * over the centre; at the top, hung in slow motion, it somersaults forward
- * and drops, feet first, the spear held point down before it in both hands,
- * and drives it into the ground where the vortex drew them all. The sand goes
- * up in a crater of glass. It kneels in it, rises, pulls the spear out and
- * lets it go.
+ * over the centre; over the top, in slow motion, it throws a forward
+ * somersault still rising and comes out of it already falling, feet first,
+ * the spear held point down before it in its right hand, and drives it into
+ * the ground where the vortex drew them all. The sand goes up in a crater of
+ * glass. It kneels in it, rises, pulls the spear out and lets it go.
  *
  * Special time (s): gather 0-0.55, jump and flip 0.55-1.06, the ring
  * 1.12-4.46 (two laps, clockwise seen from above: the centre on its right),
@@ -46,9 +46,34 @@ const BURST = RING[1]
 const CLIMB_TOP = BURST + 1.39
 const SOMERSAULT: [number, number] = [BURST + 1.5, BURST + 2.12]
 const PLUNGE = BURST + 2.76
-/** Flight height (m, the lowest foot) round the ring, the apex of the climb. */
+/** Flight height (m, the lowest foot) round the ring, and where the somersault starts and ends on the way over the top. */
 const CRUISE = 3.1
-const APEX = 24
+const APEX = 25
+/**
+ * Still climbing as it throws the somersault (m/s): the body rides over the
+ * top of a ballistic arc through the turn, rising RISE * half / 2 m to a peak
+ * at its middle and falling back through APEX at the same speed as it comes
+ * out, then accelerating down at FALL_ACCEL m/s^2 into the plunge.
+ */
+const RISE = 13
+const FALL_ACCEL = 2 * (APEX - RISE * (PLUNGE - SOMERSAULT[1])) / (PLUNGE - SOMERSAULT[1]) ** 2
+
+/**
+ * A foot's outline about its free-leg target (forward, up; m), in its own
+ * plane: the gait's sole (heel and toe edges at the ankle's depth, BAT_GAIT),
+ * the back of the heel, the top of the ankle and the instep, as the model's
+ * support points have them. Turned with the body, a different part of it is
+ * lowest, and the lift (`air`) is measured from the lowest.
+ */
+const FOOT: ReadonlyArray<readonly [number, number]> = [[-0.33, -0.4], [0.86, -0.4], [-0.45, -0.15], [0, 0.17], [0.25, 0.1]]
+const ANKLE = 0.4
+/** How far a foot pitched `lp` degrees (+ toe down) reaches below its flat sole (m, negative): the toe tipped down, the heel back, the top turned under. */
+function soleDrop(lp: number): number {
+  const a = lp * Math.PI / 180
+  let low = Infinity
+  for (const [f, u] of FOOT) low = Math.min(low, u * Math.cos(a) - f * Math.sin(a))
+  return ANKLE + low
+}
 
 type V3 = readonly [number, number, number]
 type Point = readonly [number, number]
@@ -272,7 +297,7 @@ function keys(): Partial<Record<Channel, Key[]>> {
   }
 
   // ---- the burst: it pulls up onto the flame and climbs over the centre, turning to face out along the heading it began on
-  const climb: Array<[number, number, number]> = [[BURST + 0.34, 1.2, 5.2], [BURST + 0.74, 3.4, 12], [BURST + 1.09, 5.4, 19], [CLIMB_TOP, 6.2, APEX - 0.6], [SOMERSAULT[0], CENTER, APEX]]
+  const climb: Array<[number, number, number]> = [[BURST + 0.34, 1.2, 5.2], [BURST + 0.74, 3.4, 12], [BURST + 1.09, 5.4, 19], [CLIMB_TOP, 6.2, APEX - 1.45], [SOMERSAULT[0], CENTER, APEX]]
   for (const [t, fwd, air] of climb) {
     put('advance', t, fwd)
     put('strafe', t, 0)
@@ -287,26 +312,33 @@ function keys(): Partial<Record<Channel, Key[]>> {
   grip(BURST + 0.2, -320, HANG_GRIP)
   grip(BURST + 0.44, -360, HANG_GRIP)
 
-  // ---- the apex: hung in slow motion, a somersault forward, the spear hanging at the side turning with it
+  // ---- the apex: in slow motion, a somersault forward over the top of the arc, the spear hanging at the side turning with it.
+  // A beat of lean back gathers it; it is thrown (already turning), fastest tucked, and comes out upright, feet down
+  put('hipPitch', SOMERSAULT[0] - 0.12, -367)
   put('hipPitch', SOMERSAULT[0], -360)
-  for (let i = 1; i <= 4; i++) {
-    const u = i / 4
+  const turn = (u: number): number => u * (0.6 + u * (1.8 - 1.4 * u))
+  const half = (SOMERSAULT[1] - SOMERSAULT[0]) / 2
+  const over = (t: number): number => APEX + RISE * half / 2 - (RISE / half) * (t - SOMERSAULT[0] - half) ** 2 / 2
+  const steps = 12
+  for (let i = 1; i <= steps; i++) {
+    const u = i / steps
     const t = SOMERSAULT[0] + (SOMERSAULT[1] - SOMERSAULT[0]) * u
-    const pitch = -360 + 360 * (u * u * (3 - 2 * u))
+    const pitch = -360 + 360 * turn(u)
     put('hipPitch', t, pitch)
     const tuck = Math.sin(Math.PI * u)
     const reach = 1.3 + 0.9 * (1 - tuck)
     const a = rad(pitch)
     const ly = -reach * Math.sin(a)
     const lz = 2.3 - reach * Math.cos(a)
-    // hung at the top: the pelvis holds its height while the body turns about it
-    put('air', t, Math.max(0, APEX + 2.2 - 2.3 + lz))
-    if (i < 4) grip(t, pitch, HANG_GRIP)
+    const lp = 25 * tuck - pitch
+    // over the top: the pelvis rides the arc while the body turns about it (the lift is the lowest point's, wherever on the foot that is)
+    put('air', t, Math.max(0, over(t) - 0.1 + lz + soleDrop(lp)))
+    if (i < steps) grip(t, pitch, HANG_GRIP)
     for (const [side, dx] of [['L', -0.25], ['R', -0.35]] as const) {
       put(`${side}.lx`, t, dx)
       put(`${side}.ly`, t, ly)
       put(`${side}.lz`, t, lz)
-      put(`${side}.lp`, t, 25 * tuck - pitch)
+      put(`${side}.lp`, t, lp)
     }
   }
   put('spineX', SOMERSAULT[0] + 0.3, 14)
@@ -320,9 +352,8 @@ function keys(): Partial<Record<Channel, Key[]>> {
   // ---- the drop: feet first, the spear point down before it, straight onto the centre
   put('advance', PLUNGE - 0.01, CENTER)
   put('strafe', PLUNGE - 0.01, 0)
-  put('air', SOMERSAULT[1] + 0.1, APEX - 1.2)
-  put('air', SOMERSAULT[1] + 0.3, APEX * 0.62)
-  put('air', SOMERSAULT[1] + 0.48, APEX * 0.26)
+  // falling on from the arc, driven down harder and harder
+  for (const dt of [0.1, 0.3, 0.48]) put('air', SOMERSAULT[1] + dt, APEX - RISE * dt - FALL_ACCEL * dt * dt / 2)
   put('air', PLUNGE - 0.02, 0)
   leg(SOMERSAULT[1] + 0.2, DROP)
   grip(PLUNGE - 0.3, 0, DOWN)
@@ -461,8 +492,8 @@ export const BAT_SPECIAL: SpecialMove = {
     { at: 2.8, eye: [[2.8, 0.6, CENTER, 5.6], [3.9, -0.6, CENTER, 5.0]], lookFrame: 'body', look: [[2.8, 0, 0, 0], [3.9, 0, 0, 0]], lag: 10, fov: [[2.8, 56], [3.9, 54]] },
     // behind it as it pulls up onto the flame and climbs
     { at: 3.9, eye: [[3.9, 12, -2, 2.5], [BURST + 1.04, 14, -4, 7]], lookFrame: 'body', look: [[3.9, 0, 0, 0], [BURST + 1.04, 0, 0, 0]], lag: 5, fov: [[3.9, 44], [BURST + 1.04, 38]] },
-    // below it at the apex, against the sky, as it somersaults
-    { at: BURST + 1.04, eyeFrame: 'body', eye: [[BURST + 1.04, 5, 6, -6], [SOMERSAULT[1], 3.5, 7, -4.5]], lookFrame: 'body', look: [[BURST + 1.04, 0, 0, 1], [SOMERSAULT[1], 0, 0, 0.5]], fov: [[BURST + 1.04, 46], [SOMERSAULT[1], 42]], roll: [[BURST + 1.04, -6], [SOMERSAULT[1], 4]] },
+    // from a point hung in the sky below the top, panning after it: it rises past the lens, turns over the top and is already falling as it comes out
+    { at: BURST + 1.04, eye: [[BURST + 1.04, 5.5, CENTER + 5.5, 21], [SOMERSAULT[1], 4.5, CENTER + 4.5, 23]], lookFrame: 'body', look: [[BURST + 1.04, 0, 0, 1], [SOMERSAULT[1], 0, 0, 0.5]], lag: 5, fov: [[BURST + 1.04, 46], [SOMERSAULT[1], 42]], roll: [[BURST + 1.04, -6], [SOMERSAULT[1], 4]] },
     // from the ground at the centre, looking up: it comes down on the lens
     { at: SOMERSAULT[1], eye: [[SOMERSAULT[1], -9, CENTER + 8, 1.4], [PLUNGE, -8.5, CENTER + 7.5, 1.6]], lookFrame: 'body', look: [[SOMERSAULT[1], 0, 0, 0], [PLUNGE, 0, 0, 0.5]], lag: 14, fov: [[SOMERSAULT[1], 40], [PLUNGE, 48]] },
     // the plunge, wide and low as the wave and the surge roll out

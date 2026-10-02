@@ -28,13 +28,13 @@ const FIGHTERS: Fighter[] = [
   {
     name: 'cybertruck',
     make: () => createCybertruck({ ...readAsset('cybertruck'), weapon: readWeapon('cybertruck-axe') }, NO_CONTACT, new AudioMix()),
-    clicks: [0, 0.6, 1.35, 2.5],
+    clicks: [0, 0.6, 1.35, 2.1],
     travel: [0.4, 0.5, 0.85, 8],
   },
   {
     name: 'ferrari-f1',
     make: () => createF1({ ...readAsset('ferrari-f1'), weapon: readWeapon('ferrari-f1-sword') }, NO_CONTACT, new AudioMix()),
-    clicks: [0, 0.45, 1.3, 2.4],
+    clicks: [0, 0.35, 1.0, 1.7],
     travel: [0.4, 0.5, 0.85, 8],
   },
   {

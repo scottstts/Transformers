@@ -54,6 +54,9 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   const weapon = node('bone:hand.R').children.find((c) => c.name.startsWith('weapon:'))
   const extent = asset.weapon.manifest.extent
 
+  const has = (name: string): boolean => { try { node(name); return true } catch { return false } }
+  // the leg chain as far as this robot has it (not every foot carries a toe bone)
+  const chain = ['thigh', 'shin', 'foot', 'toe'].filter((b) => has(`bone:${b}.R`) && has(`bone:${b}.L`))
   const bodies = surfaces(model.root.children[0].children)
   const armOf = (side: 'R' | 'L'): RegExp => new RegExp(`(clav|upperarm|forearm|hand|index|middle|ring|pinky|thumb)\\d?\\.${side}|wheelArm\\.${side}|frontWheel\\.${side}|wheel:wheelF\\.${side}`)
   const hand = /(hand|index\d|middle\d|ring\d|pinky\d|thumb\d)\.R$/
@@ -126,8 +129,7 @@ export async function probeClash(car: string, tokens: string[], until: number): 
     // each leg's bones (thigh, shin, foot) against the other leg's parts
     for (const side of ['R', 'L'] as const) {
       const other = new RegExp(`(hip|thigh|shin|foot|toe)\\.${side === 'R' ? 'L' : 'R'}|(shinPlate|thighPlate|corner|cornerArm)\\.${side === 'R' ? 'L' : 'R'}|wheelR[io]\\.${side === 'R' ? 'L' : 'R'}`)
-      const chain = ['thigh', 'shin', 'foot', 'toe']
-      for (let j = 0; j < 3; j++) {
+      for (let j = 0; j < chain.length - 1; j++) {
         pos(`bone:${chain[j]}.${side}`, a)
         pos(`bone:${chain[j + 1]}.${side}`, b)
         for (const body of bodies) {
