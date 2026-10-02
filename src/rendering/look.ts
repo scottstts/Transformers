@@ -1,9 +1,10 @@
-import { ACESFilmicToneMapping, PCFShadowMap, PMREMGenerator, RenderPipeline, type Camera, type Node, type Scene, type WebGPURenderer } from 'three/webgpu'
-import { Fn, clamp, luminance, max, pass, renderOutput, screenUV, texture, vec3, vec4 } from 'three/tsl'
+import { ACESFilmicToneMapping, PCFShadowMap, PMREMGenerator, type Camera, type Node, type Scene, type WebGPURenderer } from 'three/webgpu'
+import { Fn, clamp, luminance, max, renderOutput, screenUV, texture, vec3, vec4 } from 'three/tsl'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { filmicGrade } from './grade'
 import type { Lens } from './lens'
 import { heatShimmer } from './heat-shimmer'
+import { antialiasScene, GamePostPipeline } from './antialias'
 
 /** Width of the bloom threshold's knee (luminance). */
 const KNEE = 0.5
@@ -49,19 +50,21 @@ export function bakeEnvironment(renderer: WebGPURenderer, scene: Scene, environm
  * exposure before tone mapping (so it blows out as film does, through the
  * shoulder) and its zone drains the grade.
  */
-export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camera: Camera, lens?: Lens): RenderPipeline {
-  const scenePass = pass(scene, camera)
-  const color = scenePass.getTextureNode('output')
+export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camera: Camera, lens?: Lens): GamePostPipeline {
+  const { scenePass, antialias: aa } = antialiasScene(scene, camera)
+  const color = aa.getTextureNode()
   const glow = bloom(color, 0.32, 0.45, 0.92)
   glow.highPassFn = softKnee
   // the distorted read is its own texture node: the bloom keeps reading the pass as it is
   const shimmer = heatShimmer(scenePass.getTextureNode('depth').r, camera)
-  const read = texture(scenePass.getTexture('output'), (lens ? lens.sampleUV() : screenUV).add(shimmer))
+  const read = texture(color.value, (lens ? lens.sampleUV() : screenUV).add(shimmer))
   const hdr = lens
     ? read.add(glow).mul(lens.flash.mul(2.5).add(1)).add(vec3(1, 0.96, 0.9).mul(lens.flash.mul(lens.flash).mul(3)))
     : read.add(glow)
-  const pipeline = new RenderPipeline(renderer)
+  const pipeline = new GamePostPipeline(renderer, aa, scenePass, glow)
   pipeline.outputColorTransform = false
-  pipeline.outputNode = vec4(filmicGrade(renderOutput(hdr), lens?.zone), 1)
+  // AA's history alpha is a reactive mask, not image opacity. Restore opaque
+  // scene alpha before RenderOutput's premultiplied colour conversion.
+  pipeline.outputNode = vec4(filmicGrade(renderOutput(vec4(hdr.rgb, 1)), lens?.zone), 1)
   return pipeline
 }

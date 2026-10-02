@@ -17,6 +17,7 @@ import { dissolve, forge, slam, type ForgeTuning } from './audio/shots'
 import type { Weapon } from './weapon'
 import { Shield } from './fx/shield'
 import { armourStruck, guardBlocked, guardDrop, guardRaise } from './audio/guard'
+import { footScuff } from '../audio/footfall'
 
 /** A character's fighting look and sound. */
 export interface FighterStyle {
@@ -153,10 +154,12 @@ export class Fighter implements CombatEffects {
 
   step(side: Side, strength: number): void {
     this.character.plantFoot(side, this.style.step * strength)
-    this.character.audio.footstep(strength)
+    const p = this.model.contacts().feet[side]
+    this.character.audio.footstep(strength, this.contact.surface(p.x, p.z))
   }
 
   skid(_side: Side, at: Vector3, speed: number, dt: number): void {
+    footScuff(this.mix, this.contact.surface(at.x, at.z), speed * 0.1)
     // a dragged foot ploughs the sand: a spray at the heel of it
     if (Math.random() < Math.min(1, speed * dt * 2)) this.contact.burst(at, Math.min(1, speed * 0.15), 3)
   }

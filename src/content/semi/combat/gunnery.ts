@@ -87,7 +87,7 @@ export class Gunnery {
   readonly object = new Group()
   readonly flashes = new MuzzleFlashes()
   readonly tracers = new Tracers()
-  readonly casings = new Casings()
+  readonly casings: Casings
   readonly audio: GunAudio
   /** 0..1 the coils' glow, for the gun's `glow` material */
   charge = 0
@@ -112,6 +112,7 @@ export class Gunnery {
 
   constructor(parts: GunneryParts) {
     this.p = parts
+    this.casings = new Casings(parts.contact)
     this.audio = new GunAudio(parts.mix)
     const muzzles = parts.weapon.asset.manifest.muzzles ?? {}
     this.rotary = new Vector3(...(muzzles.rotary ?? [0, 0, parts.weapon.asset.manifest.extent[1]]))

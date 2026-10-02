@@ -9,12 +9,14 @@ Every file the game downloads (models, weapons, the soldiers, the citadel) lives
 - A file's URL carries the first 16 hex digits of its hash (`?v=`), so no cache serves an old version after an upload. The bytes must match the catalogued size: a stale upload or a cut-off transfer fails at boot with that reason, never as a decode error later.
 - Downloads are not kept after they resolve. Callers keep what they decode (the roster caches each car's promise).
 - The bucket's CORS policy must allow every origin that runs the game (the site and `http://localhost:5173`). It only needs `GET`: the loader sends simple requests, so there is no preflight.
+- The entry screen says “Loading assets.” Transport names, URLs, filenames and byte counts belong in failure diagnostics, not normal player-facing loading text. Download progress must not advance the boot stage counter repeatedly.
 
 ## The local mirror (`assets/`, gitignored)
 
 - Blender exports write into `assets/`. Tests and tools read from it (`tools/mirror.ts`), never from the network.
 - `node tools/assets.mjs pull` fills it from the CDN, downloading only missing or stale files, and checks each hash. The test run's global setup (`tests/support/pull-assets.ts`) does this first, so a fresh clone tests without setup.
 - `VITE_ASSET_BASE=/local-assets npm run dev` plays the mirror instead of the CDN (a dev-server route, `vite.config.js`).
+- Citadel decoding uses the exported GLB directly with MeshoptDecoder; materials, floor queries and navigation consume its slot metadata and companion plan. The mirror shares its decoded promise across tests/tools; production still uses the CDN loader.
 
 ## Publishing an export
 

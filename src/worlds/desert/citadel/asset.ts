@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { fetchAssetBytes, fetchAssetJson, type AssetProgress } from '../../../assets'
 import type { CitadelPlanData } from './plan'
+import { splitHalo } from './halo'
 
 /** The citadel's material slots and detail classes (blender/citadel_build, tasks/citadel.md sections 7 and 10). */
 export const CITADEL_SLOTS = ['ceramic', 'ceramicBand', 'alloyDark', 'alloyLight', 'glass', 'glassGreen', 'light', 'paving', 'deck'] as const
@@ -16,6 +17,7 @@ export interface CitadelPart {
   slot: CitadelSlot
   lod: CitadelLod
   geometry: BufferGeometry
+  motion?: 'halo'
 }
 
 export interface CitadelAsset {
@@ -56,8 +58,10 @@ export async function decodeCitadel(plan: CitadelPlanData, glb: ArrayBuffer): Pr
     }
     const geometry = mesh.geometry
     if (!geometry.getAttribute('normal') || !geometry.getIndex()) throw new Error(`Citadel geometry: ${bucket}.${slot}.${lod} lacks normals or an index`)
-    parts.push({ bucket, slot: slot as CitadelSlot, lod: lod as CitadelLod, geometry })
+    parts.push(...splitHalo({ bucket, slot: slot as CitadelSlot, lod: lod as CitadelLod, geometry }))
   })
   if (!parts.length) throw new Error('Citadel geometry: no meshes')
+  const haloTriangles = parts.filter((p) => p.motion === 'halo').reduce((sum, p) => sum + p.geometry.getIndex()!.count / 3, 0)
+  if (haloTriangles !== 2048) throw new Error(`Citadel geometry: incomplete halo shell (${haloTriangles} triangles)`)
   return { plan, parts }
 }

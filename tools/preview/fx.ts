@@ -4,6 +4,7 @@ import { bakeEnvironment, configureRenderer, createPostPipeline } from '../../sr
 import { createDesertWorld } from '../../src/worlds/desert'
 import { Billows } from '../../src/content/transformer/combat/fx/billows'
 import { Lens } from '../../src/rendering/lens'
+import { mirrorCitadel } from '../mirror'
 
 const W = 640
 const H = 360
@@ -20,13 +21,12 @@ interface Sample {
 
 const UP = new Vector3(0, 1, 0)
 
-/** A point on the long edge of the fortress's longest paved strip (its main road), in the world. */
-function roadEdge(world: ReturnType<typeof createDesertWorld>['world']): Vector3 {
-  const road = [...world.forts.paving.shapes].filter((s) => !s.round).sort((a, b) => b.hz - a.hz)[0]
-  // its +x edge in its own frame, a third of the way along
-  const x = road.hx, z = road.hz * 0.3
-  const c = Math.cos(road.yaw), s = Math.sin(road.yaw)
-  return new Vector3(road.x + x * c + z * s, 0, road.z - x * s + z * c)
+/** A ceramic yard or the middle of the rising metal crown bridge. */
+function floorPoint(world: ReturnType<typeof createDesertWorld>['world'], deck = false): Vector3 {
+  const citadel = world.citadel
+  const local = deck ? [0, 110] : citadel.plan.sectors[0].yard.at
+  const p = citadel.toWorld(local[0], local[1])
+  return new Vector3(p.x, citadel.floorAt(p.x, p.z), p.z)
 }
 
 const SAMPLES: Record<string, Sample> = {
@@ -52,22 +52,22 @@ const SAMPLES: Record<string, Sample> = {
     eye: [0, 11, 9], look: [0, 0, 0], at: 25,
     setup: (_scene, surface) => surface.crater(new Vector3(), 4.4, 1),
   },
-  // a crater straddling the edge of the fortress's main road: concrete's marks on the slabs, sand's beside them
-  ...Object.fromEntries([['crater-paved', 0.8], ['crater-paved-cold', 25]].map(([name, at]) => [name, {
+  // ceramic scars and tempered dents on the rising deck, hot and cold
+  ...Object.fromEntries([['crater-paved', 0.8], ['crater-paved-cold', 25], ['crater-deck', 0.8], ['crater-deck-cold', 25]].map(([name, at]) => [name, {
     eye: [0, 0, 0], look: [0, 0, 0], at: at as number,
     setup: (_scene, surface, _b, world) => {
-      const c = roadEdge(world)
+      const c = floorPoint(world, String(name).includes('deck'))
       surface.crater(c, 4.4, 1)
-      return { eye: [c.x + 2, 11, c.z + 9], look: [c.x, 0, c.z] }
+      return { eye: [c.x + 2, c.y + 11, c.z + 9], look: [c.x, c.y, c.z] }
     },
   } satisfies Sample])),
   // furrows cut across the road's edge, hot
   'furrows-paved': {
     eye: [0, 0, 0], look: [0, 0, 0], at: 0.6,
     setup: (_scene, surface, _b, world) => {
-      const c = roadEdge(world)
-      for (const a of [0, 0.8, 1.6, 2.4]) surface.furrow(new Vector3(c.x + Math.sin(a) * 6, 0, c.z + Math.cos(a) * 6), c.clone(), 0.4, 1)
-      return { eye: [c.x + 2, 9, c.z + 10], look: [c.x, 0, c.z] }
+      const c = floorPoint(world)
+      for (const a of [0, 0.8, 1.6, 2.4]) surface.furrow(new Vector3(c.x + Math.sin(a) * 6, c.y, c.z + Math.cos(a) * 6), c.clone(), 0.4, 1)
+      return { eye: [c.x + 2, c.y + 9, c.z + 10], look: [c.x, c.y, c.z] }
     },
   },
   // four furrows meeting, just cut and reignited from their ends
@@ -89,7 +89,7 @@ export async function renderFx(out: string, names: string[]): Promise<void> {
     const sample = SAMPLES[name]
     if (!sample) throw new Error(`no fx sample ${name}; have ${Object.keys(SAMPLES).join(', ')}`)
     const scene = new Scene()
-    const world = createDesertWorld(scene)
+    const world = createDesertWorld(scene, await mirrorCitadel())
     configureRenderer(renderer)
     bakeEnvironment(renderer, scene, world.environmentScene())
     world.world.prepare(renderer)

@@ -5,6 +5,7 @@ import { TransformationSound } from '../../transformer/audio/transformation'
 import { HEAVY_FOOT, footfall } from '../../transformer/audio/footfall'
 import { HEAVY_TYRES, TyreVoice } from '../../transformer/audio/tyres'
 import type { CharacterAudio } from '../../transformer/character'
+import type { ContactSurface } from '../../../game/contact-effects'
 import { RocketVoice } from './rocket'
 
 /**
@@ -84,8 +85,8 @@ export class CybertruckAudio implements CharacterAudio {
     this.rocketVoice?.update(this.mix.enabled ? power : 0, ground)
   }
 
-  footstep(strength = 1): void {
-    footfall(this.mix, HEAVY_FOOT, strength)
+  footstep(strength = 1, surface: ContactSurface = 'sand'): void {
+    footfall(this.mix, HEAVY_FOOT, strength, surface)
   }
 
   /* --------------------------------------------------------------- drive */

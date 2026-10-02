@@ -87,6 +87,7 @@ export class Debris {
 		};
 		const alive = age.greaterThanEqual( 0 ).and( age.lessThan( REST + SINK ) );
 		const m = new THREE.MeshStandardNodeMaterial();
+		m.userData.temporalReactive = true;
 		m.positionNode = select( alive, rotate( positionLocal.mul( size ) ).add( centre ), vec3( 0, - 1000, 0 ) );
 		const normal = rotate( normalLocal );
 		m.normalNode = normal.transformDirection( cameraViewMatrix );

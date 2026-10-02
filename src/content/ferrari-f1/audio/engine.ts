@@ -3,6 +3,7 @@ import type { MechanismEvent } from '../../transformer/asset/format'
 import type { MachineTuning } from '../../transformer/audio/machine'
 import { TransformationSound } from '../../transformer/audio/transformation'
 import { footfall, type FootfallTuning } from '../../transformer/audio/footfall'
+import type { ContactSurface } from '../../../game/contact-effects'
 import { TyreVoice, type TyreTuning } from '../../transformer/audio/tyres'
 import type { CharacterAudio } from '../../transformer/character'
 import { PowerUnit } from './power-unit'
@@ -78,8 +79,8 @@ export class F1Audio implements CharacterAudio {
     this.machine.stroke(event, seconds)
   }
 
-  footstep(strength = 1): void {
-    footfall(this.mix, RACER_FOOT, strength)
+  footstep(strength = 1, surface: ContactSurface = 'sand'): void {
+    footfall(this.mix, RACER_FOOT, strength, surface)
   }
 
   /**

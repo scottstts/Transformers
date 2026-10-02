@@ -132,7 +132,14 @@ export class Soldier implements HordeInstance {
   x = 0
   z = 0
   y = 0
-  floor = 0
+  private floorLevel = 0
+  get floor(): number { return this.floorLevel }
+  set floor(value: number) {
+    if (value === this.floorLevel) return
+    this.place.y += value - this.floorLevel
+    this.floorLevel = value
+    this.posed = false
+  }
   vx = 0
   vz = 0
   vy = 0

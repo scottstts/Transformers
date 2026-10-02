@@ -7,7 +7,7 @@ globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()
 globalThis.cancelAnimationFrame = (id) => clearTimeout(id)
 
 const [out = 'fx', names = 'billows'] = process.argv.slice(2)
-const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
+const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { renderFx } = await server.ssrLoadModule('/tools/preview/fx.ts')
   await renderFx(out, names.split(','))

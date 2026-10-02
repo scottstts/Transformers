@@ -25,8 +25,15 @@ const counter = (n: number): string => String(n).padStart(2, '0')
 
 export function setBootStage(next: string): void {
   stage = next
-  step = Math.min(BOOT_STEPS, step + 1)
-  element('boot-status').textContent = next
+  // Keep technical stages for failure diagnostics; the entry screen speaks to players.
+  const assets = next.startsWith('Loading')
+  const phase = assets ? (next === 'Loading game modules' ? 1 : 3)
+    : next === 'Initializing WebGPU' ? 2
+    : next === 'Building game world' ? 4
+    : next === 'Preparing audio' ? 5
+    : next === 'Compiling shaders' ? 6 : 7
+  step = Math.max(step, phase)
+  element('boot-status').textContent = assets ? 'Loading assets' : next === 'Running' ? 'Ready' : phase === 7 ? 'Starting game' : 'Preparing game'
   element('boot-count').textContent = `${counter(step)}/${counter(BOOT_STEPS)}`
   veil().style.setProperty('--progress', String(step / BOOT_STEPS))
 }

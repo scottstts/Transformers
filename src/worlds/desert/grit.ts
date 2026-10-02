@@ -42,6 +42,7 @@ export class Grit {
 		const p = instancedDynamicBufferAttribute( this.aPos, 'vec3' );
 		const d = instancedDynamicBufferAttribute( this.aSize, 'vec2' ) as any;
 		const m = new THREE.SpriteNodeMaterial( { alphaTest: 0.5 } );
+		m.userData.temporalReactive = true;
 		m.positionNode = p;
 		m.scaleNode = d.x;
 		m.rotationNode = d.y.mul( 6.283 );

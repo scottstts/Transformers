@@ -2,10 +2,10 @@
 import { createServer } from 'vite'
 globalThis.self = globalThis
 const [car = 'cybertruck', clicks = '0', until = '1', every = '0.1'] = process.argv.slice(2)
-const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
+const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { probeFight } = await server.ssrLoadModule('/tools/preview/fight-probe.ts')
-  probeFight(car, clicks.split(',').filter(Boolean), Number(until), Number(every))
+  await probeFight(car, clicks.split(',').filter(Boolean), Number(until), Number(every))
 } finally {
   await server.close()
 }

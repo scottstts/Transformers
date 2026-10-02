@@ -2,6 +2,8 @@ import type { Vector3 } from 'three/webgpu'
 
 /** Whose dust is being raised (ContactEffects.fight). */
 export type FightDust = 'none' | 'combo' | 'special'
+/** The material under a contact, shared by world effects and footstep audio. */
+export type ContactSurface = 'sand' | 'ceramic' | 'deck'
 
 /** One tyre on the ground this frame, in world space. */
 export interface TyreContact {
@@ -21,6 +23,7 @@ export interface TyreContact {
 export interface ContactEffects {
   /** the ground's height (m) at a world point: effects that meet the ground meet it there */
   height(x: number, z: number): number
+  surface(x: number, z: number): ContactSurface
   /** a tyre rolling or sliding over the surface this frame (`wheel` identifies its track) */
   tyre(wheel: number, contact: TyreContact, dt: number): void
   /** a foot planted at `center` (ground), heading `forward` (unit), sole length and width in m, load 0..1+ */

@@ -80,7 +80,7 @@ export class BatEffects implements CharacterEffects {
   }
 
   addFootstep(side: Side, running: number): void {
-    this.audio.footstep(0.8 + running * 0.7)
+    this.footstep(0.8 + running * 0.7, side)
     this.plantFoot(side, running)
   }
 
@@ -91,7 +91,7 @@ export class BatEffects implements CharacterEffects {
   }
 
   takeoff(): void {
-    this.audio.footstep(1.1)
+    this.footstep(1.1)
     this.shake = Math.max(this.shake, 0.12)
     this.dustBurst('feet', 0.9, 16)
   }
@@ -100,13 +100,13 @@ export class BatEffects implements CharacterEffects {
   land(lead: Side | null): void {
     if (lead) {
       this.addFootstep(lead, 1)
-      this.audio.footstep(1.3)
+      this.footstep(1.3, lead)
       this.shake = Math.max(this.shake, LEAP_SHAKE)
       return
     }
     this.addFootstep('L', 1)
     this.addFootstep('R', 1)
-    this.audio.footstep(1.6)
+    this.footstep(1.6)
     this.shake = 0.45
     this.dustBurst('feet', 1.4, 24)
   }
@@ -181,6 +181,11 @@ export class BatEffects implements CharacterEffects {
         this.addFootstep(side, 0.3)
       }
     }
+  }
+
+  private footstep(strength: number, side: Side = 'R'): void {
+    const p = this.bot.contacts().feet[side]
+    this.audio.footstep(strength, this.contactEffects.surface(p.x, p.z))
   }
 
   private dustBurst(where: 'feet' | 'wheels', strength: number, count: number): void {

@@ -6,7 +6,7 @@ globalThis.self = globalThis
 globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16)
 globalThis.cancelAnimationFrame = (id) => clearTimeout(id)
 
-const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
+const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { benchBatFx } = await server.ssrLoadModule('/tools/preview/bat-fx-bench.ts')
   await benchBatFx()

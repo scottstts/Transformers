@@ -1,5 +1,5 @@
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, type Material, type Node } from 'three/webgpu'
-import { abs, color, cross, dFdx, dFdy, dot, float, floor, fract, fwidth, max, min, mix, normalView, normalWorld, normalize, positionView, positionWorld, sign, sin, smoothstep, time, uniform, vec2, vec3 } from 'three/tsl'
+import { abs, color, cross, dFdx, dFdy, dot, float, floor, fract, fwidth, max, min, mix, normalView, normalWorld, normalize, positionLocal, positionView, positionWorld, select, sign, sin, smoothstep, time, uniform, vec2, vec3 } from 'three/tsl'
 import { N } from '../../../rendering/noise'
 import { DUNE_WIND } from '../terrain'
 import type { CitadelSlot } from './asset'
@@ -21,7 +21,7 @@ import type { CitadelSlot } from './asset'
 
 const SAND = color(0xc3a57c)
 const SUBSTRATE = color(0x8e8a84)
-/** emissive level of the light lines (linear HDR) and their slow pulse's depth (0..1) */
+/** hero emission (linear HDR) and slow pulse depth; ordinary lines stay below the bloom knee */
 export const LIGHT_LEVEL = uniform(3.2)
 export const LIGHT_PULSE = uniform(0.12)
 
@@ -146,7 +146,8 @@ function glass(dome: boolean): Material {
 function light(): Material {
   const m = new MeshBasicNodeMaterial()
   const pulse = sin(time.mul(1.1).add(positionWorld.y.mul(0.08))).mul(LIGHT_PULSE).add(1)
-  m.colorNode = color(0xbfe9ff).mul(LIGHT_LEVEL).mul(pulse)
+  const hero = positionLocal.y.greaterThanEqual(104).or(positionLocal.y.lessThan(4).and(positionLocal.xz.length().lessThan(115)))
+  m.colorNode = color(0xbfe9ff).mul(LIGHT_LEVEL).mul(select(hero, float(1), float(0.18))).mul(pulse)
   m.userData.emissive = true
   return m
 }

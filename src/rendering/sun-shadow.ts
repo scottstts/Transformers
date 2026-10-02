@@ -1,19 +1,20 @@
 import { Matrix4, Object3D, RedFormat, ShadowBaseNode, ShadowNode, UnsignedByteType, UnsignedShortType, Vector3, Vector4, type DirectionalLight, type DirectionalLightShadow, type Mesh, type Node } from 'three/webgpu'
-import { Fn, abs, float, min, reference, renderGroup, shadowPositionWorld, smoothstep, uniform, vec4 } from 'three/tsl'
+import { Fn, If, abs, float, min, mix, reference, renderGroup, shadowPositionWorld, smoothstep, uniform, vec4 } from 'three/tsl'
 import type { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js'
+import { staticShadowFilter } from './shadow-filter'
 
 /**
  * The sun's shadows in two classes of caster:
  *
  * - moving things (the characters, the soldiers' proxies, debris, rocks)
  *   in the cascades (`CSMShadowNode`), drawn every frame as before;
- * - static scenery (the fortress, ~0.9 M triangles) in a cached clipmap:
+ * - static scenery (the citadel) in a cached clipmap:
  *   square-ish light-space levels round the camera, each rendered only when
  *   the camera has moved its snap step (a tenth of the level), when told to
- *   (`invalidate`: detail shown or hidden) or on the first frame. The
- *   fortress used to be redrawn into every cascade every frame; now each
+ *   (`invalidate`: caster geometry changed) or on the first frame. The
+ *   scenery used to be redrawn into every cascade every frame; now each
  *   level redraws a few times a second at most while moving, and never
- *   standing still. Its far level also shadows the fortress seen from
+ *   standing still. Its far level also shadows the citadel seen from
  *   outside the cascades' range (from the start, a few hundred metres off).
  *
  * A pixel takes the darker of the two (`min`: either caster blocks the sun).
@@ -21,7 +22,7 @@ import type { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js'
  * pass draws only them. Levels are rectangles in light space (the sun is
  * low: the ground they must cover is foreshortened along its azimuth), their
  * centres snapped to their own texel grid, cross-faded finest to coarsest in
- * uniform control flow (every level is sampled every time), their normal
+ * explicit level-zero PCF comparisons only for contributing levels, their normal
  * bias scaled by their texel size and their filter radius by its inverse
  * (one penumbra width in metres throughout).
  */
@@ -45,13 +46,12 @@ interface Options {
 const SNAP = 0.1
 const GUARD = 0.16
 /**
- * Depth (along the sun) a level covers beyond its half-width, either side of
- * its centre (m). Its receivers lie up to its half-width off the camera
- * across the ground plus the camera's height over them, and its centre's
- * depth snaps in half-width steps: a window of only the half-width left the
- * far side of the finest levels out of it (unshadowed), popping as the camera moved.
+ * Vertical room around the scenery's [0, casterHeight] range. Light-space
+ * depth is derived from this range and the level's committed Y rectangle,
+ * so upstream casters and ground receivers cannot leave its depth window
+ * as the view camera moves along the sun.
  */
-const DEPTH_PAD = 60
+const HEIGHT_PAD = 16
 const BLEND = 0.12
 /** coarse levels redrawn per frame at most (the finest always, when it must) */
 const BUDGET = 1
@@ -72,16 +72,46 @@ export interface StaticCaster {
   coarsest: number
 }
 
+export interface ShadowLevelDiagnostic {
+  centre: Vector3
+  halfX: number
+  halfY: number
+  texel: number
+  near: number
+  far: number
+  bias: number
+  normalBias: number
+  worldToLight: Matrix4
+  empty: boolean
+}
+
 /** A level's shadow pass: only the static casters it carries, and nothing outside its rectangle shadows. */
 class StaticLevelNode extends ShadowNode {
   private readonly statics: ReadonlyMap<Object3D, number>
   private readonly index: number
   private filter: ((object: Mesh, ...rest: unknown[]) => void) | null = null
+  private readonly casters: Object3D[]
+  private readonly visible: boolean[]
 
   constructor(light: LevelLight, shadow: DirectionalLightShadow, statics: ReadonlyMap<Object3D, number>, index: number) {
     super(light as never, shadow)
     this.statics = statics
     this.index = index
+    this.casters = [...statics.keys()]
+    this.visible = this.casters.map(() => false)
+  }
+
+  /** Shadow LOD belongs to the light's texel footprint, independently of view LOD. */
+  renderShadow(frame: any): void {
+    for (let i = 0; i < this.casters.length; i++) {
+      const caster = this.casters[i]
+      this.visible[i] = caster.visible
+      caster.visible = this.statics.get(caster)! >= this.index
+    }
+    try { (ShadowNode.prototype as unknown as { renderShadow(f: unknown): void }).renderShadow.call(this, frame) }
+    finally {
+      for (let i = 0; i < this.casters.length; i++) this.casters[i].visible = this.visible[i]
+    }
   }
 
   getShadowRenderObjectFunction(renderer: any, shadow?: any): any {
@@ -97,8 +127,7 @@ class StaticLevelNode extends ShadowNode {
   }
 
   /**
-   * A 16-bit depth map (the levels' depth windows are at most ~1.7 km:
-   * under 3 cm steps, far inside the bias) and an 8-bit colour buffer that
+   * A 16-bit depth map and an 8-bit colour buffer that
    * a shadow pass never uses but a render target must have: 3 bytes a texel
    * instead of 8, which pays for the levels' resolution.
    */
@@ -111,12 +140,11 @@ class StaticLevelNode extends ShadowNode {
   }
 
   setupShadowFilter(_builder: any, args: any): any {
-    const { filterFn, depthTexture, shadowCoord, shadow, depthLayer } = args
+    const { depthTexture, shadowCoord, shadow } = args
     const inside = shadowCoord.x.greaterThanEqual(0).and(shadowCoord.x.lessThanEqual(1))
       .and(shadowCoord.y.greaterThanEqual(0)).and(shadowCoord.y.lessThanEqual(1))
       .and(shadowCoord.z.greaterThanEqual(0)).and(shadowCoord.z.lessThanEqual(1))
-    // filtered unconditionally, then selected: the comparison sample stays in uniform control flow
-    const value = filterFn({ depthTexture, shadowCoord, shadow, depthLayer })
+    const value = staticShadowFilter({ depthTexture, shadowCoord, shadow })
     return inside.select(value, float(1))
   }
 }
@@ -156,6 +184,11 @@ export class SunShadowNode extends ShadowBaseNode {
   private readonly orientation = new Matrix4()
   private readonly worldToLight = new Matrix4()
   private readonly worldToLightUniform = uniform(this.worldToLight)
+  private readonly sinElevation: number
+  private readonly cotElevation: number
+  /** Diagnostic isolation without changing node graphs or pipeline identity. */
+  readonly staticStrength = uniform(1)
+  readonly dynamicStrength = uniform(1)
   private camera: Object3D | null = null
   private first = true
   /** levels redrawn on the last frame (diagnostics) */
@@ -169,6 +202,8 @@ export class SunShadowNode extends ShadowBaseNode {
     this.options = options
     const sinElevation = Math.max(0.05, _direction.copy(sun.position).sub(sun.target.position).normalize().y)
     const cosElevation = Math.sqrt(1 - sinElevation * sinElevation)
+    this.sinElevation = sinElevation
+    this.cotElevation = cosElevation / sinElevation
     let finest: number | undefined
     for (const level of options.levels) {
       const halfX = level.halfWidth
@@ -183,11 +218,14 @@ export class SunShadowNode extends ShadowBaseNode {
       cam.top = shadow.mapSize.y * texel / 2
       cam.bottom = -cam.top
       cam.near = 1
-      cam.far = options.margin + 2 * (halfX + DEPTH_PAD)
+      cam.far = options.margin + (options.casterHeight + HEIGHT_PAD * 2) / sinElevation + 2 * cam.top * this.cotElevation
       cam.updateProjectionMatrix()
       shadow.autoUpdate = false
       shadow.needsUpdate = false
-      shadow.normalBias = Math.max(sun.shadow.normalBias, 1.4 * texel)
+      shadow.normalBias = Math.max(sun.shadow.normalBias, 0.5 * texel)
+      // Bias is a distance, including two depth quantization steps. Reusing
+      // one normalized bias made coarse shadows detach by about 0.8 m.
+      shadow.bias = -(0.004 + 2 * (cam.far - cam.near) / 65535) / (cam.far - cam.near)
       // the same penumbra in metres at every level: a coarse level filtering over as many texels as the
       // finest smeared a thin caster's shadow (a tower's lattice) to nothing until the camera came close
       finest ??= texel
@@ -202,7 +240,7 @@ export class SunShadowNode extends ShadowBaseNode {
   }
 
   /**
-   * A static caster appeared or vanished (detail shown or hidden): redraw the
+   * A static caster's geometry changed: redraw the
    * levels it is drawn into whose rectangle it touches (coarse levels within
    * the frame budget).
    */
@@ -215,12 +253,29 @@ export class SunShadowNode extends ShadowBaseNode {
     }
   }
 
-  /** Redraw every level (the casters' visibility was overridden, as for a warm-up draw). */
+  /** Redraw every level after a change to the static scene. */
   invalidateAll(): void {
     for (const s of this.states) {
       s.dirty = true
       s.empty = false
     }
+  }
+
+  /** The active view, independent of which material first builds this node. */
+  follow(camera: Object3D): void { this.camera = camera }
+
+  /** Committed maps, allocated only on explicit diagnostic requests. */
+  inspect(): ShadowLevelDiagnostic[] {
+    return this.states.map((s, i) => {
+      const shadow = this.lights[i].shadow
+      return {
+        centre: new Vector3(s.cx, s.cy, s.cz + this.options.margin),
+        halfX: s.halfX, halfY: s.halfY, texel: s.texel,
+        near: shadow.camera.near, far: shadow.camera.far,
+        bias: shadow.bias, normalBias: shadow.normalBias,
+        worldToLight: this.worldToLight.clone(), empty: s.empty,
+      }
+    })
   }
 
   /** Whether any caster drawn into level `i` reaches its rectangle centred at (cx, cy). */
@@ -264,12 +319,15 @@ export class SunShadowNode extends ShadowBaseNode {
         const fx = float(1).sub(smoothstep(level.z.mul(1 - BLEND), level.z, abs(p.x.sub(level.x))))
         const fy = float(1).sub(smoothstep(level.w.mul(1 - BLEND), level.w, abs(p.y.sub(level.y))))
         const fade = fx.mul(fy)
-        sum.addAssign(vec4(this.nodes[i] as unknown as Node<'vec4'>).mul(fade.mul(remaining)))
+        const weight = fade.mul(remaining).toVar()
+        If(weight.greaterThan(0), () => {
+          sum.addAssign(vec4(this.nodes[i] as unknown as Node<'vec4'>).mul(weight))
+        })
         remaining.mulAssign(float(1).sub(fade))
       }
       return sum.add(vec4(remaining))
     })()
-    return min(vec4(this.csm as unknown as Node<'vec4'>), statics) as Node<'vec4'>
+    return min(mix(vec4(1), vec4(this.csm as unknown as Node<'vec4'>), this.dynamicStrength), mix(vec4(1), statics, this.staticStrength)) as Node<'vec4'>
   }
 
   updateBefore(): boolean {
@@ -291,7 +349,9 @@ export class SunShadowNode extends ShadowBaseNode {
       const step = Math.max(s.texel, Math.round((s.halfX * SNAP) / s.texel) * s.texel)
       const cx = Math.round(_camera.x / step) * step
       const cy = Math.round(_camera.y / step) * step
-      const cz = Math.round(_camera.z / (s.halfX * 0.5)) * (s.halfX * 0.5)
+      // worldY = lightY*cos(elevation) + lightZ*sin(elevation). This is
+      // the closest caster at the rectangle's low lightY and highest y.
+      const cz = (this.options.casterHeight + HEIGHT_PAD) / this.sinElevation - (cy - s.halfY) * this.cotElevation
       if (cx !== s.cx || cy !== s.cy || cz !== s.cz) s.dirty = true
       if (!s.dirty) continue
       const occupied = this.occupied(i, cx, cy)
@@ -308,7 +368,7 @@ export class SunShadowNode extends ShadowBaseNode {
       this._levels[i].set(cx, cy, s.halfX * (1 - GUARD), s.halfY * (1 - GUARD))
       if (!draw) continue
       const light = this.lights[i]
-      _centre.set(cx, cy, cz + s.halfX + DEPTH_PAD + this.options.margin).applyMatrix4(this.orientation)
+      _centre.set(cx, cy, cz + this.options.margin).applyMatrix4(this.orientation)
       light.position.copy(_centre)
       light.target.position.copy(_centre).add(_direction)
       light.updateMatrixWorld(true)

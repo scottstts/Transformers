@@ -7,7 +7,7 @@ import { WebGPURenderer } from 'three/webgpu'
  * A WebGPURenderer on Dawn with a stand-in canvas: the "swap chain" texture is
  * an ordinary GPU texture that can be read back after a frame.
  */
-export async function createHeadlessRenderer(width: number, height: number) {
+export async function createHeadlessRenderer(width: number, height: number, trackTimestamp = false) {
   Object.assign(globalThis, globals)
   const gpu = create([])
   Object.defineProperty(globalThis.navigator, 'gpu', { value: gpu, configurable: true })
@@ -32,11 +32,21 @@ export async function createHeadlessRenderer(width: number, height: number) {
     getBoundingClientRect: () => ({ left: 0, top: 0, width, height }),
   }
   ;(gpu as unknown as { getPreferredCanvasFormat: () => string }).getPreferredCanvasFormat ??= () => 'rgba8unorm'
-  const renderer = new WebGPURenderer({ canvas: canvas as unknown as HTMLCanvasElement, antialias: true })
+  const renderer = new WebGPURenderer({ canvas: canvas as unknown as HTMLCanvasElement, antialias: false, trackTimestamp })
   Object.assign(renderer, { _getFallback: null })
-  renderer.onError = (info) => { throw new Error(`GPU error: ${(info as unknown as { message?: string }).message ?? String(info)}`) }
+  const onError = renderer.onError.bind(renderer), onDeviceLost = renderer.onDeviceLost.bind(renderer)
+  renderer.onError = (info) => {
+    onError(info)
+    throw new Error(`GPU error: ${(info as unknown as { message?: string }).message ?? String(info)}`)
+  }
+  renderer.onDeviceLost = (info) => {
+    onDeviceLost(info)
+    throw new Error(`GPU device lost: ${info.message}`)
+  }
   await renderer.init()
-  renderer.setSize(width, height, false)
+  const backend = renderer.backend as unknown as { device: GPUDevice }
+  backend.device.addEventListener('uncapturederror', (event) => { throw new Error(`Uncaptured GPU error: event ${event.error.message}`) })
+  renderer.setDrawingBufferSize(width, height, 1)
 
   /** The last frame as tightly packed RGBA rows. */
   async function grab(): Promise<Uint8Array> {
@@ -90,6 +100,7 @@ export async function createHeadlessRenderer(width: number, height: number) {
       }
     }
     buffer.unmap()
+    buffer.destroy()
     writeFileSync(path, png(width, height, rows))
   }
 

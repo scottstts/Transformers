@@ -214,6 +214,11 @@ export class Horde {
     return null
   }
 
+  /** Observe the attacking robot's current ground point before combat emits blows, including the first frame after a switch. */
+  targetAt(x: number, z: number): void {
+    this.targetFloor = this.strongholds[0].citadel.floorAt(x, z)
+  }
+
   update(dt: number, target: EnemyTarget, camera: PerspectiveCamera): void {
     // the dust the horde raises (blows, break-ups, the commander's moves) is the fight's
     const fight = this.contact.fight
@@ -397,6 +402,7 @@ export class Horde {
    * `cone` rad of it, or the heading itself.
    */
   assist(x: number, z: number, heading: number, range = 7, cone = 0.9): number {
+    this.targetAt(x, z)
     let best = heading
     let bd = range
     for (const g of this.garrisons) {

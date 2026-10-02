@@ -1,4 +1,4 @@
-import { readMirror } from '../../tools/mirror.ts'
+import { mirrorModel } from '../../tools/mirror.ts'
 import { decodeTransformerAsset, type TransformerAsset } from '../../src/content/transformer/asset/loader.ts'
 import type { TransformerManifest } from '../../src/content/transformer/asset/format.ts'
 import type { ContactEffects } from '../../src/game/contact-effects.ts'
@@ -8,14 +8,14 @@ import { decodeSoldierAsset, type SoldierAsset, type SoldierManifest } from '../
 
 /** An exported model from the asset mirror, decoded as the game does. */
 export function readAsset(name: string): TransformerAsset {
-  const manifest = JSON.parse(readMirror(`${name}.json`, 'utf8')) as TransformerManifest
-  const binary = readMirror(`${name}.bin`)
-  return decodeTransformerAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength), name)
+  const { manifest, buffer } = mirrorModel<TransformerManifest>(name)
+  return decodeTransformerAsset(manifest, buffer, name)
 }
 
 /** A surface that ignores every contact. */
 export const NO_CONTACT: ContactEffects = {
   height: () => 0,
+  surface: () => 'sand',
   tyre: () => undefined,
   footprint: () => undefined,
   burst: () => undefined,
@@ -40,14 +40,12 @@ export const REST_GAIT: GaitPose = {
 
 /** An exported combat weapon from the asset mirror, decoded as the game does. */
 export function readWeapon(name: string): WeaponAsset {
-  const manifest = JSON.parse(readMirror(`${name}.json`, 'utf8')) as WeaponManifest
-  const binary = readMirror(`${name}.bin`)
-  return decodeWeaponAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength), name)
+  const { manifest, buffer } = mirrorModel<WeaponManifest>(name)
+  return decodeWeaponAsset(manifest, buffer, name)
 }
 
 /** The enemy soldier (or, by name, the commander) from the asset mirror, decoded as the game does. */
 export function readSoldier(name = 'soldier'): SoldierAsset {
-  const manifest = JSON.parse(readMirror(`${name}.json`, 'utf8')) as SoldierManifest
-  const binary = readMirror(`${name}.bin`)
-  return decodeSoldierAsset(manifest, binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength))
+  const { manifest, buffer } = mirrorModel<SoldierManifest>(name)
+  return decodeSoldierAsset(manifest, buffer)
 }

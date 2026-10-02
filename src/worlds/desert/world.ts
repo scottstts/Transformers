@@ -128,7 +128,7 @@ const SHADOW_CASCADES = 3;
  * as fine near the camera as the cascades were; 5 cm texels to ~90 m, so a
  * bracket or a bollard still shadows the paving across a yard; the last
  * covering the whole citadel (about 1.1 km across) from outside its walls.
- * At 3 bytes a texel (sun-shadow.ts) they take ~90 MB.
+ * At 3 bytes a texel (sun-shadow.ts) they take about 115 MiB.
  */
 const STATIC_SHADOW_LEVELS = [
 	{ halfWidth: 24, mapSize: 2048 },
@@ -313,8 +313,6 @@ export class DesertWorld {
 
 			detail();
 			terrain();
-			// the warm-up drew hidden detail into the shadow levels
-			this.shadows.invalidateAll();
 
 		};
 
@@ -330,11 +328,12 @@ export class DesertWorld {
 	/** Recentre tiled scatter + far scenery around the focus point. */
 	update( camera, focus, dt = 1 / 60 ) {
 
+		this.shadows.follow( camera );
+
 		this.sky.position.copy( camera.position );
 		this.terrainMesh.update( camera );
 		this.wind.update( camera, dt );
-		this.citadel.update( camera );
-		for ( const mesh of this.citadel.toggled ) this.shadows.invalidate( mesh );
+		this.citadel.update( camera, dt );
 		this.far.position.set( camera.position.x, 0, camera.position.z );
 
 		const m = this.instanceMatrix;

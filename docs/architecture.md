@@ -12,9 +12,9 @@ The container has optional parts a character may use (semi.md, bat.md): meshes w
 
 `src/content/roster.ts` lists the playable cars: label, menu tagline and accent, loader and factory. Adding a car means adding a package and a roster entry. Assets download once per session (the promise is shared; a failed download can be retried). The last choice is remembered in local storage and used at boot.
 
-## Enemies and the fortress
+## Enemies and the citadel
 
-The desert's fortress (`src/worlds/desert/fort/`, forts.md) is world scenery; its districts' garrisons are `src/game/enemies/` (enemies.md), with the soldier's asset, rig, rendering and health bars in `src/content/soldier/` (soldier-model.md). The session owns one `Horde` (every garrison) and one `CarBarrier`. It routes the fight's `onHit` events (and its vacuums, `onPull`) to the horde and the horde's blade strikes to the playing character's `struck`, tells the horde while a special plays (`Horde.special`: nothing is destroyed before its last blow) and settles the horde as the cutscene ends. The soldier asset loads at boot beside the car's, as its own observed stage.
+The desert's citadel (`src/worlds/desert/citadel/`, citadel.md) is exported world scenery; its districts' garrisons are `src/game/enemies/` (enemies.md), with the soldier's asset, rig, rendering and health bars in `src/content/soldier/` (soldier-model.md). The session owns one `Horde` (every garrison) and one `CarBarrier`. It updates the target's floor before routing the fight's `onHit` events and vacuums (`onPull`) to the horde, and routes the horde's blade strikes to the playing character's `struck`. It tells the horde while a special plays (`Horde.special`: nothing is destroyed before its last blow) and settles it as the cutscene ends. Vehicle, weapon, soldier, commander and citadel assets all load through the shared CDN catalog at boot (assets.md).
 
 ## Switching cars
 
@@ -44,9 +44,9 @@ The game is held through `GameSession.hold(reason, held)`, and it runs again onc
 
 ## World and motion
 
-Baked noise and the shared image setup (`rendering/look.ts`: tone mapping, shadows, environment bake, bloom) live outside the character packages. The session and the headless preview tool use the same setup.
+Baked noise and the shared image setup (`rendering/look.ts`: temporal AA, tone mapping, shadows, environment bake, bloom) live outside the character packages. The session and the headless preview tools use the same setup. Scene color, depth, motion and reactive coverage are resolved before bloom and presentation; history is reset on scene/camera discontinuities (rendering-and-boot.md).
 
-`src/worlds/desert/` owns scenery, lighting, ground materials, dust, tyre tracks, and collision circles. The ground's relief reaches the game through `Ground` (`game/ground.ts`: a height at any world point, plus a normal and a ray march built on it). The world's `DesertTerrain` is one, and `ContactEffects.height` exposes the same to effects. Car dynamics, the robot's footing (`game/ground-follow.ts`), the follow camera and the combat effects' ground contacts all ask it; nothing assumes y = 0. Its entry point supplies the world, environment lighting scene, and contact effects. Characters receive contact effects through a small interface, so another environment can provide different tyre and footfall feedback without changing character code.
+`src/worlds/desert/` owns scenery, lighting, ground materials, dust, tyre tracks, and collision shapes. `Ground` (`game/ground.ts`) supplies the exact citadel floor inside its walkable primitives and desert terrain outside. `ContactEffects.height` and `surface` expose that same height and material to effects. Car dynamics, robot footing (`game/ground-follow.ts`), camera clearance and combat contacts all ask it. Its entry point supplies the world, environment lighting scene, and contact effects; characters receive surface response through this small interface.
 
 The repeating rock field checks its tile positions as the camera moves, but only recomposes and uploads an instance when that rock actually wraps into a different tile. Its positions and collision footprints remain the same.
 

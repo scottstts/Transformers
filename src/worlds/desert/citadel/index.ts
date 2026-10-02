@@ -11,6 +11,7 @@ import { createCitadelMaterials } from './materials'
 import { SkyVisibility } from './sky-visibility'
 import { buildDrifts } from './drifts'
 import { cameraChunks } from './camera-chunks'
+import { HALO_SPEED, HALO_Z } from './halo'
 
 export { outsideSector, type CitadelPlan, type Gate, type Post, type Sector, type SectorRole, type Spawn, type Surface } from './plan'
 export { loadCitadelAsset, type CitadelAsset } from './asset'
@@ -56,8 +57,6 @@ export class Citadel {
    * cached shadow levels (not the cascades), detail not into the coarsest.
    */
   readonly staticCasters: StaticCaster[] = []
-  /** distance-shown meshes shown or hidden by the last `update` (their shadows change) */
-  readonly toggled: Mesh[] = []
   private readonly shown: Array<{ mesh: Mesh; centre: Vector3; reachSq: number }> = []
   /** world circles the tiled scatter keeps out of */
   readonly exclusions: Array<{ x: number; z: number; r: number }>
@@ -66,6 +65,8 @@ export class Citadel {
   private readonly materials: Record<CitadelSlot, Material>
   private readonly c: number
   private readonly s: number
+  readonly halo = new Group()
+  private clock = 0
 
   constructor(scene: Scene, asset: CitadelAsset) {
     const plan = this.plan = citadelPlan(asset.plan)
@@ -83,6 +84,12 @@ export class Citadel {
     this.group.matrixAutoUpdate = false
     let triangles = 0
     const buckets = new Map<string, Sphere>()
+    const meshes: Array<{ mesh: Mesh; part: CitadelAsset['parts'][number] }> = []
+    this.halo.name = 'halo'
+    this.halo.position.z = HALO_Z
+    this.halo.matrixAutoUpdate = false
+    this.halo.updateMatrix()
+    this.group.add(this.halo)
     for (const part of asset.parts) {
       const geometry = part.geometry
       geometry.computeBoundingSphere()
@@ -90,7 +97,12 @@ export class Citadel {
       mesh.name = `${part.bucket}:${part.slot}:${part.lod}`
       mesh.matrixAutoUpdate = false
       mesh.receiveShadow = part.slot !== 'light'
-      this.group.add(mesh)
+      if (part.motion === 'halo') {
+        mesh.position.z = -HALO_Z
+        mesh.updateMatrix()
+        this.halo.add(mesh)
+      } else this.group.add(mesh)
+      meshes.push({ mesh, part })
       mesh.updateMatrixWorld(true)
       triangles += geometry.getIndex()!.count / 3
       if (part.slot !== 'light') this.staticCasters.push({ object: mesh, coarsest: SHADOW_LEVELS[part.lod] })
@@ -100,10 +112,10 @@ export class Citadel {
       else buckets.set(part.bucket, sphere)
     }
     this.triangles = triangles
-    for (const mesh of this.group.children as Mesh[]) {
-      const lod = mesh.name.split(':')[2] as CitadelLod
+    for (const { mesh, part } of meshes) {
+      const lod = part.lod
       if (lod === 'mass') continue
-      const bucket = buckets.get(mesh.name.split(':')[0])!
+      const bucket = buckets.get(part.bucket)!
       this.shown.push({ mesh, centre: bucket.center, reachSq: (SHOWN[lod] + bucket.radius) ** 2 })
     }
     scene.add(this.group)
@@ -125,7 +137,7 @@ export class Citadel {
     // the ambient occlusion of its massing and articulation (detail is too slight to matter), on every lit material
     const { x0, z0, x1, z1 } = plan.bounds
     const half = Math.max(-x0, x1, -z0, z1) + 20
-    const occluders = (this.group.children as Mesh[]).filter((m) => !m.name.endsWith(':detail'))
+    const occluders = meshes.filter(({ part }) => part.lod !== 'detail').map(({ mesh }) => mesh)
     this.skyVisibility = new SkyVisibility(occluders, this.floor, site.x, site.z, half)
     for (const material of Object.values(this.materials)) {
       if (material instanceof MeshStandardNodeMaterial) material.aoNode = this.skyVisibility.node(positionWorld, normalWorld)
@@ -174,13 +186,15 @@ export class Citadel {
     this.skyVisibility.bake(renderer)
   }
 
-  /** Show each bucket's articulation and detail only while the camera is near it; the meshes that appeared or vanished are left in `toggled`. */
-  update(camera: Camera): void {
+  /** View LOD changes colour draws; shadow LOD is owned by the light's footprint. */
+  update(camera: Camera, dt = 0): void {
+    this.clock += dt
+    this.halo.rotation.y = this.clock * HALO_SPEED
+    this.halo.updateMatrix()
+    this.halo.updateMatrixWorld(true)
     const p = camera.position
-    this.toggled.length = 0
     for (const d of this.shown) {
       const visible = p.distanceToSquared(d.centre) < d.reachSq
-      if (visible !== d.mesh.visible) this.toggled.push(d.mesh)
       d.mesh.visible = visible
     }
   }

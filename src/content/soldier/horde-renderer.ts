@@ -59,6 +59,11 @@ export class HordeRenderer {
   readonly capacity: number
   private readonly lodDistance: readonly [number, number]
   private readonly rows: StorageBufferAttribute
+  private readonly previousRows: StorageBufferAttribute
+  private readonly previousState: StorageBufferAttribute
+  private readonly previousSlots: StorageBufferAttribute
+  private readonly previousInstances: Array<HordeInstance | null>
+  private previousCount = 0
   private readonly state: StorageBufferAttribute
   private readonly tiers: Array<{ meshes: Mesh[]; geometries: InstancedBufferGeometry[] }> = []
   /** the detailed shadow proxy (near) and the box proxy (the rest) */
@@ -70,8 +75,12 @@ export class HordeRenderer {
     this.capacity = options.capacity ?? HORDE_CAPACITY
     this.lodDistance = options.lodDistance ?? LOD_DISTANCE
     this.rows = new StorageBufferAttribute(new Float32Array(this.capacity * this.bones * 12), 4)
+    this.previousRows = new StorageBufferAttribute(new Float32Array(this.capacity * this.bones * 12), 4)
+    this.previousState = new StorageBufferAttribute(new Float32Array(this.capacity * 4), 4)
+    this.previousSlots = new StorageBufferAttribute(new Int32Array(this.capacity).fill(-1), 1)
+    this.previousInstances = new Array<HordeInstance | null>(this.capacity).fill(null)
     this.state = new StorageBufferAttribute(new Float32Array(this.capacity * 4), 4)
-    const nodes = hordeNodes({ rows: this.rows, state: this.state, bones: this.bones })
+    const nodes = hordeNodes({ rows: this.rows, state: this.state, bones: this.bones, previousRows: this.previousRows, previousState: this.previousState, previousSlots: this.previousSlots })
     const materials = (options.materials ?? createSoldierMaterials)(nodes)
     for (const lod of asset.lods) {
       const meshes: Mesh[] = []
@@ -119,13 +128,25 @@ export class HordeRenderer {
     const shown = Math.min(visible, n)
     const rows = this.rows.array as Float32Array
     const state = this.state.array as Float32Array
+    const previousSlots = this.previousSlots.array as Int32Array
     const stride = this.bones * 12
+    // The horde is sorted and changes LOD every frame: preserve identity,
+    // rather than reading whichever body occupied the current slot before.
+    ;(this.previousRows.array as Float32Array).set(rows)
+    ;(this.previousState.array as Float32Array).set(state)
+    if (this.previousCount > 0) {
+      this.previousRows.clearUpdateRanges()
+      this.previousRows.addUpdateRange(0, this.previousCount * stride)
+      this.previousRows.needsUpdate = true
+      this.previousState.needsUpdate = true
+    }
     const counts = this.counts
     counts[0] = counts[1] = counts[2] = 0
     let near = 0
     let far = 0
     for (let i = 0; i < n; i++) {
       const s = list[i]
+      previousSlots[i] = this.previousInstances.indexOf(s)
       rows.set(s.rows, i * stride)
       state[i * 4] = s.heat
       state[i * 4 + 1] = s.dissolve
@@ -139,6 +160,7 @@ export class HordeRenderer {
       if (s.distance < SHADOW_FAR) far = i + 1
     }
     if (n > 0) {
+      this.previousSlots.needsUpdate = true
       this.rows.clearUpdateRanges()
       this.rows.addUpdateRange(0, n * stride)
       this.rows.needsUpdate = true
@@ -146,6 +168,8 @@ export class HordeRenderer {
       this.state.addUpdateRange(0, n * 4)
       this.state.needsUpdate = true
     }
+    for (let i = 0; i < this.capacity; i++) this.previousInstances[i] = i < n ? list[i] : null
+    this.previousCount = n
     // tiers are consecutive runs: the list is sorted by distance and the tiers are distance bands
     let base = 0
     for (let t = 0; t < this.tiers.length; t++) {

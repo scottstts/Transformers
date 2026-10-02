@@ -380,7 +380,7 @@ describe('commander in the citadel', () => {
     const n = horde.hit({ shape: 'sector', kind: 'blunt', x: c.x, z: c.z - 4, heading: 0, reach: 3, arc: 1, damage: 60, knock: 9, lift: 0.8, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true })
     expect(n).toBeGreaterThanOrEqual(1)
     expect(c.health).toBe(health - 60)
-    expect(horde.ray(new Vector3(c.x, 3.8, c.z - 20), new Vector3(0, 0, 1), 40)).toBeLessThan(20)
+    expect(horde.ray(new Vector3(c.x, c.floor + 3.8, c.z - 20), new Vector3(0, 0, 1), 40)).toBeLessThan(20)
     expect(horde.assist(c.x, c.z - 6, 0.5, 8, 0.9)).toBeCloseTo(0, 1)
   })
 })

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { color, float, vec2, vec3, mix, smoothstep, positionLocal, positionWorld, normalWorld, abs, fract, fwidth, select, time, cameraViewMatrix } from 'three/tsl';
+import { Fn, color, float, vec2, vec3, mix, smoothstep, positionLocal, positionPrevious, positionWorld, normalWorld, abs, fract, fwidth, select, time, cameraViewMatrix } from 'three/tsl';
 import { SUN_COLOR, skyRadiance, sunward } from './atmosphere.ts';
 import { N } from '../../rendering/noise.ts';
 import type { TerrainVertex } from './terrain-mesh.ts';
@@ -108,7 +108,13 @@ export function groundSurface( xz, landSlope: any = null ) {
 export function groundMaterial( v: TerrainVertex ) {
 
 	const m = new THREE.MeshStandardNodeMaterial();
-	m.positionNode = v.position;
+	m.positionNode = Fn( () => {
+
+		// This is a static height field even when its patch slots change.
+		positionPrevious.assign( v.position );
+		return v.position;
+
+	} )();
 	const surface = groundSurface( positionWorld.xz, v.slope );
 	m.colorNode = surface.color;
 	m.roughnessNode = surface.roughness;
@@ -141,4 +147,3 @@ export function rockMaterial() {
 	return m;
 
 }
-

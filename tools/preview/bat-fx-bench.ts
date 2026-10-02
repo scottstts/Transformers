@@ -5,6 +5,7 @@ import { createDesertWorld } from '../../src/worlds/desert'
 import { Lens } from '../../src/rendering/lens'
 import { Vortex } from '../../src/content/bat/combat/fx/vortex'
 import { Afterburner } from '../../src/content/bat/fx/afterburner'
+import { mirrorCitadel } from '../mirror'
 
 const W = 1920
 const H = 1080
@@ -19,7 +20,7 @@ const FRAMES = 40
 export async function benchBatFx(): Promise<void> {
   const { renderer } = await createHeadlessRenderer(W, H)
   const scene = new Scene()
-  const world = createDesertWorld(scene)
+  const world = createDesertWorld(scene, await mirrorCitadel())
   configureRenderer(renderer)
   bakeEnvironment(renderer, scene, world.environmentScene())
   world.world.prepare(renderer)

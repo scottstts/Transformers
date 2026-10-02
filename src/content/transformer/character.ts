@@ -4,6 +4,7 @@ import type { MechanismEvent } from './asset/format'
 import type { TransformerModel } from './model/transformer'
 import type { RobotGait } from './animation/gait'
 import type { CharacterCombat } from './combat/effects'
+import type { ContactSurface } from '../../game/contact-effects'
 
 /** Car handling: the game's single-track model (game/car-dynamics.ts) takes its limits from here. */
 export interface DriveProfile {
@@ -114,7 +115,7 @@ export interface CharacterAudio {
   /** per frame: the transformation is running */
   transforming(on: boolean): void
   mechanism(event: MechanismEvent, seconds: number): void
-  footstep(strength?: number): void
+  footstep(strength?: number, surface?: ContactSurface): void
   /** stops every continuous voice (the character leaves the scene) */
   dispose(): void
 }

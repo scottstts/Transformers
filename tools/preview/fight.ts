@@ -1,4 +1,4 @@
-import { readMirror } from '../mirror.ts'
+import { mirrorCitadel, readMirror } from '../mirror.ts'
 import { PerspectiveCamera, Scene, Vector3 } from 'three/webgpu'
 import { createHeadlessRenderer, writePng } from './headless'
 import { bakeEnvironment, configureRenderer, createPostPipeline } from '../../src/rendering/look'
@@ -65,7 +65,7 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
   }
   const { renderer, grab } = await createHeadlessRenderer(CELL_W, CELL_H)
   const scene = new Scene()
-  const world = createDesertWorld(scene)
+  const world = createDesertWorld(scene, await mirrorCitadel())
   const player = entry.create(asset, world.contactEffects, new AudioMix())
   const camera = new PerspectiveCamera(42, CELL_W / CELL_H, 0.1, 6000)
   const aim = new PerspectiveCamera(42, 1, 0.1, 100)
@@ -87,14 +87,14 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
   const target: EnemyTarget = { x: 0, z: 0, radius: player.profile.robotRadius, vx: 0, vz: 0, height: player.model.dims.hipZ * 1.8, heading: 0, guard: 0, present: true }
   if (sheet.brawl !== undefined) {
     const [sm, sb] = read('soldier')
-    horde = new Horde(decodeSoldierAsset(sm as SoldierManifest, sb), world.world.forts, world.contactEffects, new AudioMix())
+    horde = new Horde(decodeSoldierAsset(sm as SoldierManifest, sb), world.world.citadel, world.contactEffects, new AudioMix())
     scene.add(horde.object)
-    const fort = world.world.forts.list[0]
+    const fort = world.world.citadel
     const yard = fort.plan.sectors[sheet.brawl].yard.at
     const c = fort.toWorld(yard[0], yard[1])
-    const h = fort.toWorld(fort.plan.centre[0], fort.plan.centre[1])
+    const h = fort.toWorld(0, 0)
     state.yaw = Math.atan2(h.x - c.x, h.z - c.z)
-    state.pos.set(c.x - Math.sin(state.yaw) * player.robotOffset, 0, c.z - Math.cos(state.yaw) * player.robotOffset)
+    state.pos.set(c.x - Math.sin(state.yaw) * player.robotOffset, fort.floorAt(c.x, c.z), c.z - Math.cos(state.yaw) * player.robotOffset)
   }
   const gaitMode = process.env.GAIT ?? ''
   const guards = sheet.clicks.filter((c) => c.startsWith('G')).map((c) => c.slice(1).split('-').map(Number) as [number, number])

@@ -2,11 +2,15 @@
 // which a car leaves the ground there) and the CPU cost of one height query.
 // Usage: node tools/terrain-stats.mjs
 import { createServer } from 'vite'
-const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
+import { readFileSync } from 'node:fs'
+import { URL } from 'node:url'
+const plan = JSON.parse(readFileSync(new URL('../assets/citadel.plan.json', import.meta.url), 'utf8'))
+const pads = [{ x: plan.site.x, z: plan.site.z, r0: plan.barrier + 10, r1: plan.barrier + 95 }]
+const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { DesertTerrain } = await server.ssrLoadModule('/src/worlds/desert/terrain.ts')
-  const t = new DesertTerrain([{ x: 0, z: 330, r0: 207.8, r1: 292.8 }])
-  console.log('start h', t.height(0, 0).toFixed(3), 'fort centre', t.height(0, 330))
+  const t = new DesertTerrain(pads)
+  console.log('start h', t.height(0, 0).toFixed(3), 'citadel centre', t.height(plan.site.x, plan.site.z))
   let maxS = 0, minH = 1e9, maxH = -1e9, maxK = 0
   const e = 0.5
   for (let i = 0; i < 200000; i++) {
@@ -29,7 +33,7 @@ try {
 } finally { await server.close() }
 
 // A drive across the dune seas at full throttle for each car: time in the air, longest flight, hardest landing.
-const server2 = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
+const server2 = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { DesertTerrain } = await server2.ssrLoadModule('/src/worlds/desert/terrain.ts')
   const { createMotionState } = await server2.ssrLoadModule('/src/game/types.ts')
@@ -39,7 +43,7 @@ try {
     'ferrari-f1': (await server2.ssrLoadModule('/src/content/ferrari-f1/index.ts')).F1_PROFILE.drive,
     semi: (await server2.ssrLoadModule('/src/content/semi/index.ts')).SEMI_PROFILE.drive,
   }
-  const t = new DesertTerrain([{ x: 0, z: 330, r0: 207.8, r1: 292.8 }])
+  const t = new DesertTerrain(pads)
   for (const [name, car] of Object.entries(cars)) {
     for (const boost of [false, true]) {
       const s = createMotionState()

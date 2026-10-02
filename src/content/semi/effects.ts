@@ -69,7 +69,7 @@ export class SemiEffects implements CharacterEffects {
   }
 
   addFootstep(side: Side, running: number): void {
-    this.audio.footstep(0.85 + running * 0.7)
+    this.footstep(0.85 + running * 0.7, side)
     this.plantFoot(side, running)
   }
 
@@ -80,7 +80,7 @@ export class SemiEffects implements CharacterEffects {
   }
 
   takeoff(): void {
-    this.audio.footstep(1.2)
+    this.footstep(1.2)
     this.shake = Math.max(this.shake, 0.14)
     this.dustBurst('feet', 1, 18)
   }
@@ -89,13 +89,13 @@ export class SemiEffects implements CharacterEffects {
   land(lead: Side | null): void {
     if (lead) {
       this.addFootstep(lead, 1)
-      this.audio.footstep(1.4)
+      this.footstep(1.4, lead)
       this.shake = Math.max(this.shake, LEAP_SHAKE)
       return
     }
     this.addFootstep('L', 1)
     this.addFootstep('R', 1)
-    this.audio.footstep(1.7)
+    this.footstep(1.7)
     this.shake = 0.5
     this.dustBurst('feet', 1.5, 26)
   }
@@ -167,6 +167,11 @@ export class SemiEffects implements CharacterEffects {
         this.addFootstep(side, 0.35)
       }
     }
+  }
+
+  private footstep(strength: number, side: Side = 'R'): void {
+    const p = this.bot.contacts().feet[side]
+    this.audio.footstep(strength, this.contactEffects.surface(p.x, p.z))
   }
 
   private dustBurst(where: 'feet' | 'wheels', strength: number, count: number): void {

@@ -1,4 +1,4 @@
-import { readMirror } from '../mirror.ts'
+import { mirrorCitadel, readMirror } from '../mirror.ts'
 import { Box3, Matrix4, PerspectiveCamera, Scene, Vector3, type Mesh } from 'three/webgpu'
 import { createDesertWorld } from '../../src/worlds/desert'
 import { rosterEntry } from '../../src/content/roster'
@@ -17,7 +17,7 @@ import { CameraFx } from '../../src/game/combat/camera-fx'
  * or edge is inside the chest, pelvis or head core the combat tests check,
  * with the point in that bone's frame and the core's bounds.
  */
-export function probeFight(car: string, tokens: string[], until: number, every: number): void {
+export async function probeFight(car: string, tokens: string[], until: number, every: number): Promise<void> {
   const clicks = tokens.filter((c) => !c.startsWith('F')).map(Number)
   const specials = tokens.filter((c) => c.startsWith('F')).map((c) => Number(c.slice(1)))
   const entry = rosterEntry(car)
@@ -30,10 +30,11 @@ export function probeFight(car: string, tokens: string[], until: number, every: 
   const [wm, wb] = read(entry.weapon)
   asset.weapon = decodeWeaponAsset(wm as WeaponManifest, wb, entry.label)
   const scene = new Scene()
-  const world = createDesertWorld(scene)
+  const world = createDesertWorld(scene, await mirrorCitadel())
   const player = entry.create(asset, world.contactEffects, new AudioMix())
   const state = createMotionState()
   state.mode = 'robot'; state.target = 1; state.progress = 1; state.yaw = 0
+  state.pos.y = world.world.ground.height(state.pos.x, state.pos.z + player.robotOffset)
   const fight = new RobotCombat(player.combat, player.model, player.robotOffset, state, new CameraFx())
   const aim = new PerspectiveCamera()
   const DT = 1 / 60

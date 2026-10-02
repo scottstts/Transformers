@@ -137,6 +137,7 @@ describe('citadel plan', () => {
 describe('citadel access', () => {
   const plan = citadel.plan
   const districts = new CitadelDistricts(plan)
+  const soldierNav = new CitadelNav(plan, SOLDIER.radius)
   const contact = { nx: 0, nz: 0, depth: 0 }
   // walk a body of `radius` from (x, z) to district `to`'s yard the way CitadelNav leads it
   const walk = (nav: CitadelNav, radius: number, x: number, z: number, to: number): boolean => {
@@ -161,13 +162,10 @@ describe('citadel access', () => {
     for (const s of plan.sectors) expect(walk(nav, CYBERTRUCK_PROFILE.robotRadius, main.at[0] + main.out[0] * 30, main.at[1] + main.out[1] * 30, s.index), `${s.role} yard`).toBe(true)
   })
 
-  it('leads a soldier from every district to every other round whatever stands in the way', () => {
-    const nav = new CitadelNav(plan, SOLDIER.radius)
-    for (const a of plan.sectors) {
-      for (const b of plan.sectors) {
-        if (a === b) continue
-        expect(walk(nav, SOLDIER.radius, a.yard.at[0], a.yard.at[1], b.index), `${a.role} -> ${b.role}`).toBe(true)
-      }
+  it.each(plan.sectors.map((sector) => ({ role: sector.role, sector })))('leads a soldier from $role to every other district round whatever stands in the way', ({ sector: a }) => {
+    for (const b of plan.sectors) {
+      if (a === b) continue
+      expect(walk(soldierNav, SOLDIER.radius, a.yard.at[0], a.yard.at[1], b.index), `${a.role} -> ${b.role}`).toBe(true)
     }
   })
 })

@@ -1,4 +1,4 @@
-import { Euler, Matrix4, PerspectiveCamera, PointLight, RenderPipeline, Scene, Timer, Vector3, WebGPURenderer } from 'three/webgpu'
+import { Euler, Matrix4, PerspectiveCamera, PointLight, Scene, Timer, Vector3, WebGPURenderer } from 'three/webgpu'
 import { bakeEnvironment, configureRenderer, createPostPipeline } from '../rendering/look'
 import { createDesertWorld } from '../worlds/desert'
 import type { CitadelAsset } from '../worlds/desert/citadel'
@@ -25,6 +25,7 @@ import type { SoldierAsset } from '../content/soldier/asset'
 import { Horde, type EnemyTarget } from './enemies/horde'
 import { CarBarrier } from './enemies/barrier'
 import type { FortHold } from '../ui/fort-hint'
+import type { GamePostPipeline } from '../rendering/antialias'
 
 /** What can hold the game still (`GameSession.hold`): the pause menu, or the vehicle menu while it is open and not switching. */
 export type GameHold = 'pause' | 'menu'
@@ -43,7 +44,7 @@ export class GameSession {
   readonly audio = new AudioMix()
   readonly cameraRig: FollowCamera
   readonly input: GameInput
-  readonly pipeline: RenderPipeline
+  readonly pipeline: GamePostPipeline
   /** the car being played; swapped by `switchCharacter` */
   character: Character
   private readonly renderer: WebGPURenderer
@@ -365,11 +366,15 @@ export class GameSession {
       fight.probe = (from, dir, range) => this.horde.ray(from, dir, range)
       fight.airborne = (at, range, out) => this.horde.airborne(at, range, out)
       fight.onHit = (hit) => {
+        this.horde.targetAt(this.state.pos.x + Math.sin(this.state.yaw) * character.robotOffset, this.state.pos.z + Math.cos(this.state.yaw) * character.robotOffset)
         const caught = this.horde.hit(hit)
         if (caught > 0) this.onHits?.(caught)
         if (caught > 0 && hit.shape === 'sector' && hit.bite) this.cameraFx.hitStop(0.05, 0.18)
       }
-      fight.onPull = (pull) => this.horde.pull(pull)
+      fight.onPull = (pull) => {
+        this.horde.targetAt(this.state.pos.x + Math.sin(this.state.yaw) * character.robotOffset, this.state.pos.z + Math.cos(this.state.yaw) * character.robotOffset)
+        this.horde.pull(pull)
+      }
       this.fights.set(character.id, fight)
     }
     return fight
@@ -397,6 +402,7 @@ export class GameSession {
 
   private setCinematic(on: boolean): void {
     if (on === this.cinematic) return
+    this.pipeline.resetHistory()
     this.cinematic = on
     this.handback = false
     this.cameraRig.cinematic = on
@@ -430,6 +436,7 @@ export class GameSession {
   }
 
   private swap(next: Character): void {
+    this.pipeline.resetHistory()
     const previous = this.character
     const state = this.state
     this.scene.remove(previous.model.root, previous.effects.object)

@@ -3,7 +3,7 @@ import {
   type Material, type Node,
 } from 'three/webgpu'
 import {
-  Fn, attribute, color, float, instanceIndex, max, mix, normalGeometry, normalLocal, positionGeometry, smoothstep, storage, uniform, varying, vec2, vec3, vec4,
+  Fn, attribute, color, float, instanceIndex, max, mix, normalGeometry, normalLocal, positionGeometry, positionPrevious, select, smoothstep, storage, uniform, varying, vec2, vec3, vec4,
 } from 'three/tsl'
 import { N } from '../../rendering/noise'
 import { blackbody } from '../../rendering/blackbody'
@@ -26,6 +26,9 @@ export interface HordeBuffers {
   rows: StorageBufferAttribute
   state: StorageBufferAttribute
   bones: number
+  previousRows: StorageBufferAttribute
+  previousState: StorageBufferAttribute
+  previousSlots: StorageBufferAttribute
 }
 
 export interface HordeNodes {
@@ -47,25 +50,34 @@ export function hordeNodes(buffers: HordeBuffers): HordeNodes {
   const base = uniform(0).onObjectUpdate(({ object }) => (object?.userData.base as number | undefined) ?? 0)
   const slot = instanceIndex.add(base.toUint())
   const state = states.element(slot)
+  const priorRows = storage(buffers.previousRows, 'vec4', buffers.previousRows.count).toReadOnly()
+  const priorStates = storage(buffers.previousState, 'vec4', buffers.previousState.count).toReadOnly()
+  const priorSlots = storage(buffers.previousSlots, 'int', buffers.previousSlots.count).toReadOnly()
+  const prior = priorSlots.element(slot)
+  const priorSlot = max(float(prior), 0).toUint()
   const bone = attribute('boneIndex', 'float').toUint()
   const row = slot.mul(buffers.bones).add(bone).mul(3)
   const r0 = rows.element(row)
   const r1 = rows.element(row.add(1))
   const r2 = rows.element(row.add(2))
+  const previousRow = priorSlot.mul(buffers.bones).add(bone).mul(3)
+  const p0 = priorRows.element(previousRow), p1 = priorRows.element(previousRow.add(1)), p2 = priorRows.element(previousRow.add(2))
   const apply = (p: Node<'vec3'>): Node<'vec3'> => {
     const h = vec4(p, 1)
     return vec3(r0.dot(h), r1.dot(h), r2.dot(h))
   }
-  const skin = (p: Node<'vec3'>): Node<'vec3'> => Fn(() => {
+  const skin = (p: Node<'vec3'>, previous = p): Node<'vec3'> => Fn(() => {
     const n = normalGeometry
     normalLocal.assign(vec3(r0.xyz.dot(n), r1.xyz.dot(n), r2.xyz.dot(n)))
+    const h = vec4(previous, 1)
+    positionPrevious.assign(select(prior.greaterThanEqual(0), vec3(p0.dot(h), p1.dot(h), p2.dot(h)), apply(p)))
     return apply(p)
   })()
   const dissolve = state.y
   return {
     position: skin(positionGeometry),
     shadowPosition: apply(positionGeometry.mul(float(1).sub(dissolve.mul(dissolve)))),
-    bladePosition: skin(vec3(positionGeometry.xy.mul(mix(float(0.5), float(1), state.w)), positionGeometry.z.mul(state.w))),
+    bladePosition: skin(vec3(positionGeometry.xy.mul(mix(float(0.5), float(1), state.w)), positionGeometry.z.mul(state.w)), vec3(positionGeometry.xy.mul(mix(float(0.5), float(1), priorStates.element(priorSlot).w)), positionGeometry.z.mul(priorStates.element(priorSlot).w))),
     state: varying(state, 'vSoldierState'),
     local: varying(positionGeometry, 'vSoldierLocal'),
   }

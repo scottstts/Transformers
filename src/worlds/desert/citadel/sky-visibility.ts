@@ -43,12 +43,12 @@ export class SkyVisibility {
   private readonly size: number
   private readonly heights: DataTexture
   private readonly top: Float32Array
-  /** per slice: the quarters' visibility (+x, +z, -x, -z) */
-  private readonly quarters: StorageTexture[]
-  /** the level visibility at each slice (r, g, b) and the cell's top height (a) */
-  private readonly level: StorageTexture
+  /** 2x2 atlas: three quarter slices and the level visibility/top height. One sampled texture binding. */
+  private readonly visibility: StorageTexture
   /** 0 until baked: an unbaked map reads as open sky */
   private readonly baked = uniform(0)
+  /** Diagnostic isolation without rebuilding materials. */
+  readonly strength = uniform(1)
   private readonly floor: CitadelFloor
 
   constructor(meshes: readonly Mesh[], floor: CitadelFloor, centreX: number, centreZ: number, half: number) {
@@ -61,15 +61,10 @@ export class SkyVisibility {
     this.heights.minFilter = this.heights.magFilter = NearestFilter
     this.heights.generateMipmaps = false
     this.heights.needsUpdate = true
-    const target = (): StorageTexture => {
-      const t = new StorageTexture(CELLS, CELLS)
-      t.type = HalfFloatType
-      t.minFilter = t.magFilter = LinearFilter
-      t.generateMipmaps = false
-      return t
-    }
-    this.quarters = SLICES.map(target)
-    this.level = target()
+    this.visibility = new StorageTexture(CELLS * 2, CELLS * 2)
+    this.visibility.type = HalfFloatType
+    this.visibility.minFilter = this.visibility.magFilter = LinearFilter
+    this.visibility.generateMipmaps = false
   }
 
   /** The citadel's highest surface over a world point (m; 0 open ground, or outside the map). */
@@ -101,10 +96,14 @@ export class SkyVisibility {
         const j1 = Math.min(CELLS - 1, Math.floor((Math.max(a.z, b.z, c.z) - this.z0) / cell))
         if (i1 < i0 || j1 < j0) continue
         const top = Math.max(a.y, b.y, c.y)
-        // a triangle within a couple of cells (or standing on edge: a wall) marks every cell it spans with its top
+        // A vertical/very thin projected triangle covers its edges, not its
+        // bounding rectangle. Filling a diagonal wall's rectangle invented
+        // solid masses across open courts and made rectangular AO stains.
         const area = Math.abs((b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z)) / 2
-        if ((i1 - i0 <= 1 && j1 - j0 <= 1) || area < cell * cell) {
-          for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (top > h[j * CELLS + i]) h[j * CELLS + i] = top
+        if (area < cell * cell) {
+          rasterEdge(h, CELLS, (a.x - this.x0) / cell, (a.z - this.z0) / cell, (b.x - this.x0) / cell, (b.z - this.z0) / cell, top)
+          rasterEdge(h, CELLS, (b.x - this.x0) / cell, (b.z - this.z0) / cell, (c.x - this.x0) / cell, (c.z - this.z0) / cell, top)
+          rasterEdge(h, CELLS, (c.x - this.x0) / cell, (c.z - this.z0) / cell, (a.x - this.x0) / cell, (a.z - this.z0) / cell, top)
           continue
         }
         // a broad one: its plane at every cell centre inside it
@@ -159,12 +158,12 @@ export class SkyVisibility {
           quarter.addAssign(vec4(max(dir.x, 0), max(dir.y, 0), max(dir.x.negate(), 0), max(dir.y.negate(), 0)).mul(wall))
         })
         // each quarter's weights sum to 16 / pi over the circle
-        textureStore(this.quarters[s], uvec2(out), quarter.mul(Math.PI / DIRECTIONS))
+        textureStore(this.visibility, uvec2(out).add(uvec2((s % 2) * CELLS, Math.floor(s / 2) * CELLS)), quarter.mul(Math.PI / DIRECTIONS))
         levels.push(up.div(DIRECTIONS))
       })
       // the cell's top over its floor (a roof over a floor, or a solid mass)
       const top = textureLoad(this.heights, out).r.sub(base)
-      textureStore(this.level, uvec2(out), vec4(levels[0], levels[1], levels[2], top))
+      textureStore(this.visibility, uvec2(out).add(uvec2(CELLS, CELLS)), vec4(levels[0], levels[1], levels[2], top))
     })().compute(CELLS * CELLS, [64])
     renderer.compute(kernel)
     this.baked.value = 1
@@ -178,13 +177,16 @@ export class SkyVisibility {
     const p = position.add(normal.mul(vec3(...OFFSET)))
     const uv = p.xz.sub(vec2(this.x0, this.z0)).div(this.size)
     const inside = smoothstep(0, 0.02, min(min(uv.x, uv.y), min(float(1).sub(uv.x), float(1).sub(uv.y))))
-    const level = texture(this.level, uv)
+    // Clamp to each tile's texel centres so bilinear filtering never crosses a slice boundary.
+    const tileUv = clamp(uv, vec2(0.5 / CELLS), vec2(1 - 0.5 / CELLS))
+    const sample = (x: number, y: number) => texture(this.visibility, tileUv.add(vec2(x, y)).mul(0.5))
+    const level = sample(1, 1)
     // the slice pair the height over the floor falls between
     const y = p.y.sub(this.floor.node(p.xz).height)
     const t01 = clamp(y.sub(SLICES[0]).div(SLICES[1] - SLICES[0]), 0, 1)
     const t12 = clamp(y.sub(SLICES[1]).div(SLICES[2] - SLICES[1]), 0, 1)
-    const low = mix(texture(this.quarters[0], uv), texture(this.quarters[1], uv), t01)
-    const high = texture(this.quarters[2], uv)
+    const low = mix(sample(0, 0), sample(1, 0), t01)
+    const high = sample(0, 1)
     const open = smoothstep(SLICES[2], 14, y)
     const quarters = mix(mix(low, high, t12), vec4(1), open)
     const levelSky = mix(mix(mix(level.r, level.g, t01), level.b, t12), float(1), open)
@@ -198,7 +200,32 @@ export class SkyVisibility {
     // under a roof a level surface sees only what comes in at the sides
     const roofed = smoothstep(0.2, 0.8, level.a.sub(y)).mul(wUp)
     sky = mix(sky, sky.min(side.mul(0.5)), roofed)
-    const visibility = mix(float(1), max(sky, FLOOR), inside.mul(this.baked))
+    const visibility = mix(float(1), max(sky, FLOOR), inside.mul(this.baked).mul(this.strength))
     return visibility as Node<'float'>
+  }
+}
+
+/** Supercover DDA in cell coordinates: visit only cells crossed by an edge. */
+export function rasterEdge(heights: Float32Array, cells: number, ax: number, az: number, bx: number, bz: number, height: number): void {
+  let i = Math.floor(ax), j = Math.floor(az)
+  const endI = Math.floor(bx), endJ = Math.floor(bz)
+  const dx = bx - ax, dz = bz - az, sx = Math.sign(dx), sz = Math.sign(dz)
+  const stepX = dx === 0 ? Infinity : 1 / Math.abs(dx), stepZ = dz === 0 ? Infinity : 1 / Math.abs(dz)
+  let nextX = dx === 0 ? Infinity : ((sx > 0 ? i + 1 : i) - ax) / dx
+  let nextZ = dz === 0 ? Infinity : ((sz > 0 ? j + 1 : j) - az) / dz
+  const write = (x: number, z: number): void => {
+    if (x >= 0 && z >= 0 && x < cells && z < cells) {
+      const at = z * cells + x
+      heights[at] = Math.max(heights[at], height)
+    }
+  }
+  write(i, j)
+  for (let left = Math.abs(endI - i) + Math.abs(endJ - j) + 1; (i !== endI || j !== endJ) && left-- > 0;) {
+    if (Math.abs(nextX - nextZ) < 1e-10) {
+      write(i + sx, j); write(i, j + sz)
+      i += sx; j += sz; nextX += stepX; nextZ += stepZ
+    } else if (nextX < nextZ) { i += sx; nextX += stepX }
+    else { j += sz; nextZ += stepZ }
+    write(i, j)
   }
 }

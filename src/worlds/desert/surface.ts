@@ -1,5 +1,5 @@
 import { Vector3, type Scene } from 'three/webgpu'
-import type { ContactEffects, FightDust, TyreContact } from '../../game/contact-effects'
+import type { ContactEffects, ContactSurface, FightDust, TyreContact } from '../../game/contact-effects'
 import { Dust } from './dust.ts'
 import { Grit } from './grit.ts'
 import { TyreTracks } from './tyre-tracks.ts'
@@ -9,6 +9,7 @@ import { Debris } from './debris.ts'
 import type { DesertTerrain } from './terrain.ts'
 import type { CitadelFloor } from './citadel/floor.ts'
 import type { Ground } from '../../game/ground'
+import { DeckImpacts } from './deck-impacts'
 
 /** Tread slide (m/s) at which a track reads as fully scraped. */
 const FULL_SCRAPE = 5
@@ -53,6 +54,7 @@ export class DesertSurface implements ContactEffects {
   readonly footprints: Footprints
   readonly scorch: ScorchMarks
   readonly debris: Debris
+  readonly deck: DeckImpacts
 
   private readonly floor: CitadelFloor | null
   private readonly ground: Ground
@@ -69,16 +71,21 @@ export class DesertSurface implements ContactEffects {
   constructor(scene: Scene, floor: CitadelFloor | null, terrain: DesertTerrain, ground: Ground = terrain) {
     this.floor = floor
     this.ground = ground
-    this.dust = new Dust(scene, ground)
+    this.dust = new Dust(scene, ground, floor)
     this.grit = new Grit(scene, ground)
     this.tracks = new TyreTracks(scene, terrain)
     this.footprints = new Footprints(scene, terrain)
     this.scorch = new ScorchMarks(scene, floor, terrain)
     this.debris = new Debris(scene, ground)
+    this.deck = new DeckImpacts(scene, ground)
   }
 
   height(x: number, z: number): number {
     return this.ground.height(x, z)
+  }
+
+  surface(x: number, z: number): ContactSurface {
+    return this.floor?.surface(x, z) ?? 'sand'
   }
 
   tyre(wheel: number, c: TyreContact, dt: number): void {
@@ -134,9 +141,11 @@ export class DesertSurface implements ContactEffects {
 
   crater(center: Vector3, radius: number, heat: number): void {
     this.scorch.addCrater(center, radius, heat)
+    if (this.surface(center.x, center.z) === 'deck') this.deck.strike(center, heat, 8 + radius * 2)
   }
 
   furrow(from: Vector3, to: Vector3, width: number, heat: number): number {
+    if (this.surface(to.x, to.z) === 'deck') this.deck.strike(to, heat + 0.2, 3 + width * 8)
     return this.scorch.addFurrow(from, to, width, heat)
   }
 
@@ -154,13 +163,14 @@ export class DesertSurface implements ContactEffects {
   eject(center: Vector3, speed: number, count: number, dir: Vector3, spread: number, size: number): void {
     // off the ceramic the chunks are its chips, off the sand its crust; a metal deck throws nothing
     const surface = this.floor?.surface(center.x, center.z) ?? null
-    if (surface === 'deck') return
+    if (surface === 'deck') { this.deck.strike(center, speed / 15, count); return }
     this.debris.burst(center, speed, count, dir, spread, size, surface === 'ceramic')
     this.grit.burst(center, speed * 0.8, count * 4, dir, spread)
   }
 
   warm(on: boolean): void {
     this.debris.warm(on)
+    this.deck.warm(on)
   }
 
   update(dt: number): void {
@@ -169,6 +179,7 @@ export class DesertSurface implements ContactEffects {
     this.footprints.update(dt)
     this.scorch.update(dt)
     this.debris.update(dt)
+    this.deck.update(dt)
     this.dust.update(dt)
     this.grit.update(dt)
   }

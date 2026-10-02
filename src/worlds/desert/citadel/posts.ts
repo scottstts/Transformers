@@ -1,13 +1,15 @@
 import { pushOut, type Contact } from '../../../game/collide'
 import { districtAt, type CitadelPlan, type Xz } from './plan'
+import { insidePolygon } from './polygon'
 
 /**
  * Where each district's garrison stands at peace and the beats it walks
  * (plan.ts `Post`): patrols circling the yard (alternate ones the other way
  * round), sentries pacing beside each of the district's gates, guards pacing
  * before each spawn door. Every beat point stands clear of every collider
- * and inside its own district: a point that lands in something is pushed
- * clear, or dropped if that takes it out of the district.
+ * on the exported walkable floor and inside its own district: a point that
+ * lands in something is pushed clear, or dropped if that leaves the floor
+ * or takes it out of the district.
  *
  * The export carries no posts: these are the fortress's rules, applied to
  * the citadel's gates, yards and doors. Deterministic: no randomness.
@@ -23,6 +25,7 @@ export function planPosts(plan: CitadelPlan): void {
     const q = { x: p[0], z: p[1] }
     for (let i = 0; i < 4 && pushOut(q, BODY + 0.05, plan.segments, plan.circles, contact); i++) { /* pushed clear */ }
     if (pushOut({ x: q.x, z: q.z }, BODY, plan.segments, plan.circles, contact)) return null
+    if (!plan.floor.some((f) => insidePolygon(f.polygon, q.x, q.z))) return null
     return districtAt(plan, outer, q.x, q.z) === sector ? [q.x, q.z] : null
   }
   const post = (sector: number, yaw: number, beat: Xz[]): boolean => {

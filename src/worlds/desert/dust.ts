@@ -5,6 +5,7 @@ import {
 import type { Ground } from '../../game/ground.ts';
 import { N } from '../../rendering/noise.ts';
 import { aerial } from './atmosphere.ts';
+import type { CitadelFloor } from './citadel/floor.ts';
 
 /**
  * Kicked-up desert dirt: soft, noisy, slowly expanding billboards.
@@ -47,6 +48,9 @@ export class Dust {
 	cursor = 0;
 	aPos: THREE.InstancedBufferAttribute;
 	aData: THREE.InstancedBufferAttribute;
+	/** birth material: 1 ceramic dust, 0 the sand film; carried with each puff */
+	readonly aTone: THREE.InstancedBufferAttribute;
+	private readonly surface: CitadelFloor | null;
 	mesh: THREE.Sprite;
 	wind: THREE.Vector3;
 	/** the air's dust after the last update (see FILL_CEILING) */
@@ -54,9 +58,10 @@ export class Dust {
 	/** the share of new puffs kept now */
 	private keep = 1;
 
-	constructor( scene, ground: Ground ) {
+	constructor( scene, ground: Ground, surface: CitadelFloor | null = null ) {
 
 		this.ground = ground;
+		this.surface = surface;
 		this.floor = new Float32Array( MAX );
 
 		this.pos = new Float32Array( MAX * 3 );
@@ -73,9 +78,12 @@ export class Dust {
 		this.aData = new THREE.InstancedBufferAttribute( new Float32Array( MAX * 4 ), 4 ); // size, alpha, seed, rot
 		this.aPos.setUsage( THREE.DynamicDrawUsage );
 		this.aData.setUsage( THREE.DynamicDrawUsage );
+		this.aTone = new THREE.InstancedBufferAttribute( new Float32Array( MAX ), 1 );
+		this.aTone.setUsage( THREE.DynamicDrawUsage );
 
 		const p = instancedDynamicBufferAttribute( this.aPos, 'vec3' );
 		const d = instancedDynamicBufferAttribute( this.aData, 'vec4' ) as any;
+		const tone = varying( instancedDynamicBufferAttribute( this.aTone, 'float' ) as THREE.Node<'float'>, 'vDustTone' );
 
 		// the scene's fog would run the aerial perspective for every one of the
 		// overlapping transparent fragments (two fifths of the dust's fill cost);
@@ -95,7 +103,8 @@ export class Dust {
 		const dens = clamp( shape.mul( n.mul( 1.1 ).add( 0.25 ) ), 0.0, 1.0 );
 
 		// fake lighting: sunlit top, shadowed underside
-		const lit = mix( color( 0x8f7a63 ), color( 0xe6d6c0 ), smoothstep( 0.0, 1.0, uv().y.add( n.sub( 0.5 ).mul( 0.6 ) ) ) );
+		const light = smoothstep( 0.0, 1.0, uv().y.add( n.sub( 0.5 ).mul( 0.6 ) ) );
+		const lit = mix( mix( color( 0x8f7a63 ), color( 0xe6d6c0 ), light ), mix( color( 0xa59f93 ), color( 0xece6da ), light ), tone );
 		const alpha = dens.mul( d.y );
 		const air = varying( aerial( p as THREE.Node<'vec3'> ), 'vDustAir' );
 		// as the fog node would: the puff's light dimmed by the air, the air's light added over its cover
@@ -120,6 +129,9 @@ export class Dust {
 		this.cursor = ( this.cursor + 1 ) % MAX;
 		const floor = this.ground.height( x, z );
 		this.floor[ i ] = floor;
+		this.aTone.array[ i ] = this.surface?.surface( x, z ) === 'ceramic' ? 1 : 0;
+		this.aTone.addUpdateRange( i, 1 );
+		this.aTone.needsUpdate = true;
 		this.pos.set( [ x, floor + y, z ], i * 3 );
 		this.vel.set( [ vx, vy, vz ], i * 3 );
 		this.age[ i ] = 0;

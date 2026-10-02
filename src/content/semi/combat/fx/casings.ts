@@ -1,6 +1,7 @@
 import { CylinderGeometry, DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshStandardNodeMaterial, type Vector3 } from 'three/webgpu'
 import { cameraViewMatrix, color, cos, cross, float, instancedBufferAttribute, max, min, mix, normalLocal, positionLocal, select, sin, smoothstep, sqrt, uniform, vec3 } from 'three/tsl'
 import { N } from '../../../../rendering/noise.ts'
+import { FLAT_GROUND, type Ground } from '../../../../game/ground'
 
 /** Pool size: new casings overwrite the oldest. */
 const MAX = 220
@@ -28,8 +29,10 @@ export class Casings {
   private readonly a0: InstancedBufferAttribute
   private readonly a1: InstancedBufferAttribute
   private readonly a2: InstancedBufferAttribute
+  private readonly ground: Ground
 
-  constructor() {
+  constructor(ground: Ground = FLAT_GROUND) {
+    this.ground = ground
     const shell = new CylinderGeometry(RADIUS, RADIUS * 1.08, LENGTH, 12, 1)
     const geometry = new InstancedBufferGeometry()
     geometry.index = shell.index
@@ -43,7 +46,7 @@ export class Casings {
     }
     this.a0 = make() // position, birth
     this.a1 = make() // velocity, seed
-    this.a2 = make() // tumble axis (unit), rate (rad/s)
+    this.a2 = make() // horizontal tumble axis x/z, landing floor y, rate (rad/s)
     for (let i = 0; i < MAX; i++) this.a0.array[i * 4 + 3] = -1e9
     const p0 = instancedBufferAttribute(this.a0, 'vec4') as any
     const v0 = instancedBufferAttribute(this.a1, 'vec4') as any
@@ -51,22 +54,24 @@ export class Casings {
     const age = this.time.sub(p0.w)
     // it lands when its centre comes down to its radius above the sand
     const b = v0.y
-    const land = b.add(sqrt(max(b.mul(b).add(float(2 * GRAVITY).mul(max(p0.y.sub(RADIUS), 0))), 0))).div(GRAVITY)
+    const floor = spin.y.add(RADIUS)
+    const land = b.add(sqrt(max(b.mul(b).add(float(2 * GRAVITY).mul(max(p0.y.sub(floor), 0))), 0))).div(GRAVITY)
     const flight = min(age, land)
     const flying = p0.y.add(b.mul(age)).sub(age.mul(age).mul(GRAVITY / 2))
     const settle = smoothstep(REST, REST + SINK, age)
-    const height = select(age.lessThan(land), flying, float(RADIUS)).sub(settle.mul(RADIUS * 2.2)) as any
+    const height = select(age.lessThan(land), flying, floor).sub(settle.mul(RADIUS * 2.2)) as any
     const centre = vec3(p0.x.add(v0.x.mul(flight)), height, p0.z.add(v0.z.mul(flight)))
     // tumbling end over end about its axis; on the sand it lies on its side (the tumble axis is kept horizontal)
     const angle = spin.w.mul(flight)
     const lying = select(age.lessThan(land), angle, float(Math.PI / 2).add(v0.w.mul(0.3)))
     const c = cos(lying), sn = sin(lying)
     const rotate = (v: any): any => {
-      const k = spin.xyz
+      const k = vec3(spin.x, 0, spin.z)
       return v.mul(c).add(cross(k, v).mul(sn)).add(k.mul(k.dot(v)).mul(float(1).sub(c)))
     }
     const alive = age.greaterThanEqual(0).and(age.lessThan(REST + SINK))
     const m = new MeshStandardNodeMaterial()
+    m.userData.temporalReactive = true
     m.positionNode = select(alive, rotate(positionLocal).add(centre), vec3(0, -1000, 0))
     m.normalNode = rotate(normalLocal).transformDirection(cameraViewMatrix)
     const mouth = smoothstep(LENGTH * 0.25, LENGTH * 0.5, positionLocal.y)
@@ -91,7 +96,14 @@ export class Casings {
     // tumble about a horizontal axis across its flight, so it lands on its side
     const hx = -v.z, hz = v.x
     const l = Math.hypot(hx, hz) || 1
-    A2.set([hx / l, 0, hz / l, (18 + Math.random() * 16) * (Math.random() < 0.5 ? -1 : 1)], i * 4)
+    // Solve the landing floor at the ballistic endpoint, including ramps.
+    // The flat-floor path retains the original trajectory exactly.
+    let floor = this.ground.height(at.x, at.z)
+    for (let k = 0; k < 3; k++) {
+      const land = (v.y + Math.sqrt(Math.max(v.y * v.y + 2 * GRAVITY * Math.max(at.y - floor - RADIUS, 0), 0))) / GRAVITY
+      floor = this.ground.height(at.x + v.x * land, at.z + v.z * land)
+    }
+    A2.set([hx / l, floor, hz / l, (18 + Math.random() * 16) * (Math.random() < 0.5 ? -1 : 1)], i * 4)
     for (const a of [this.a0, this.a1, this.a2]) {
       a.addUpdateRange(i * 4, 4)
       a.needsUpdate = true

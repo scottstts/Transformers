@@ -8,7 +8,7 @@ globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()
 globalThis.cancelAnimationFrame = (id) => clearTimeout(id)
 
 const [outDir = 'preview-out', ...shots] = process.argv.slice(2)
-const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
+const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { renderShots } = await server.ssrLoadModule('/tools/preview/shots.ts')
   await renderShots(outDir, shots, process.env.PREVIEW_CAR ?? null)

@@ -1,4 +1,4 @@
-import { readMirror } from '../mirror.ts'
+import { mirrorCitadel, readMirror } from '../mirror.ts'
 import { PerspectiveCamera, Scene, Vector3, type Object3D } from 'three/webgpu'
 import { createDesertWorld } from '../../src/worlds/desert'
 import { rosterEntry } from '../../src/content/roster'
@@ -25,7 +25,7 @@ const WRIST_BEND = 70
 /** CLASH_FRAMES=1 prints every frame on its own instead of merged spans. */
 const FRAMES = process.env.CLASH_FRAMES === '1'
 
-export function probeClash(car: string, tokens: string[], until: number): void {
+export async function probeClash(car: string, tokens: string[], until: number): Promise<void> {
   // `walk` or `run`: the gait alone at that pace, no fight
   const pace = tokens.find((c) => c === 'walk' || c === 'run')
   // `G`: the guard held throughout
@@ -41,10 +41,11 @@ export function probeClash(car: string, tokens: string[], until: number): void {
   const asset = decodeTransformerAsset(manifest as TransformerManifest, bin, entry.label)
   const [wm, wb] = read(entry.weapon)
   asset.weapon = decodeWeaponAsset(wm as WeaponManifest, wb, entry.label)
-  const world = createDesertWorld(new Scene())
+  const world = createDesertWorld(new Scene(), await mirrorCitadel())
   const player = entry.create(asset, world.contactEffects, new AudioMix())
   const state = createMotionState()
   state.mode = 'robot'; state.target = 1; state.progress = 1; state.yaw = 0
+  state.pos.y = world.world.ground.height(state.pos.x, state.pos.z + player.robotOffset)
   const fight = new RobotCombat(player.combat, player.model, player.robotOffset, state, new CameraFx())
   const aim = new PerspectiveCamera()
   const DT = 1 / 120

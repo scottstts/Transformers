@@ -18,7 +18,7 @@ const frames = span.includes(':')
       return Array.from({ length: n }, (_, i) => a + (b - a) * (n > 1 ? i / (n - 1) : 0))
     })()
   : span.split(',').map(Number)
-const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
+const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error' })
 try {
   const { renderFightSheet } = await server.ssrLoadModule('/tools/preview/fight.ts')
   await renderFightSheet(out, { car, clicks: clicks.split(',').filter(Boolean), frames, views: views.split(','), zoom: Number(zoom), brawl: process.env.BRAWL === undefined ? undefined : Number(process.env.BRAWL) })

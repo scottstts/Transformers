@@ -1,4 +1,4 @@
-import { readMirror } from '../mirror.ts'
+import { mirrorCitadel, readMirror } from '../mirror.ts'
 import { PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three/webgpu'
 import { createHeadlessRenderer, writePng } from './headless'
 import { bakeEnvironment, configureRenderer, createPostPipeline } from '../../src/rendering/look'
@@ -6,7 +6,7 @@ import { createDesertWorld } from '../../src/worlds/desert'
 import { decodeSoldierAsset, type SoldierAsset, type SoldierManifest } from '../../src/content/soldier/asset'
 import { HordeRenderer, type HordeInstance } from '../../src/content/soldier/horde-renderer'
 import { SoldierRig, createSoldierPose, type SoldierPose } from '../../src/content/soldier/rig'
-import type { Fort } from '../../src/worlds/desert/fort'
+import type { Citadel } from '../../src/worlds/desert/citadel'
 import { POSES, writePose } from '../../src/content/soldier/poses'
 import { Soldier, type SoldierImpact } from '../../src/game/enemies/soldier'
 
@@ -30,8 +30,8 @@ interface Sample {
   look: V3
   fov?: number
   figures: Figure[]
-  /** a view of a fort instead: eye and look from its plan */
-  fort?: (fort: Fort) => { eye: V3; look: V3 }
+  /** a view of the citadel: eye and look from its plan */
+  citadel?: (citadel: Citadel) => { eye: V3; look: V3 }
   /** simulated soldiers instead of posed figures: each takes `hit` and is shown `at` seconds later */
   sim?: Array<{ x: number; z: number; yaw: number; hit: SoldierImpact; at: number }>
 }
@@ -39,9 +39,9 @@ interface Sample {
 const blow = (knock: number, lift: number): SoldierImpact => ({ dirX: 0, dirZ: -1, knock, lift, damage: 10, kind: 'blunt', special: false })
 
 /** A point in a fort's frame, lifted to height y, in world space. */
-const fp = (f: Fort, x: number, z: number, y: number): V3 => {
+const fp = (f: Citadel, x: number, z: number, y: number): V3 => {
   const p = f.toWorld(x, z)
-  return [p.x, y, p.z]
+  return [p.x, f.floorAt(p.x, p.z) + y, p.z]
 }
 
 const SAMPLES: Record<string, Sample> = {
@@ -63,44 +63,43 @@ const SAMPLES: Record<string, Sample> = {
     ],
   },
   // the fortress from the air, in front of the main gate
-  'fort-air': {
+  'citadel-air': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 50, figures: [],
-    fort: (f) => ({ eye: fp(f, 150, 330, 230), look: fp(f, 0, -12, 0) }),
+    citadel: (f) => ({ eye: fp(f, 700, 900, 680), look: fp(f, 0, 0, 30) }),
   },
   // each district from its yard at a robot's eye height, looking out over its buildings
-  ...Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((k) => [`fort-d${k}`, {
+  ...Object.fromEntries(Array.from({ length: 12 }, (_, k) => k).map((k) => [`citadel-d${k}`, {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 60, figures: [],
-    fort: (f: Fort) => {
+    citadel: (f: Citadel) => {
       const s = f.plan.sectors[k]
-      const c = f.plan.centre
       const [x, z] = s.yard.at
-      const a = s.role === 'citadel' ? Math.PI : Math.atan2(x - c[0], z - c[1])
+      const a = s.role === 'citadel' ? Math.PI : Math.atan2(x, z)
       return { eye: fp(f, x - Math.sin(a) * 12, z - Math.cos(a) * 12, 7), look: fp(f, x + Math.sin(a) * 50, z + Math.cos(a) * 50, 4) }
     },
   } satisfies Sample])),
   // the citadel's bridged gatehouse from the main road
-  'fort-citadel': {
+  'citadel-crown': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 55, figures: [],
-    fort: (f) => {
-      const g = f.plan.gates.find((k) => k.kind === 'citadel' && k.out[1] > 0)!
+    citadel: (f) => {
+      const g = f.plan.gates.find((k) => k.kind === 'crown')!
       return { eye: fp(f, g.at[0] + 14, g.at[1] + 55, 6), look: fp(f, g.at[0], g.at[1], 8) }
     },
   },
   // the front gate as the robot comes up to it
-  'fort-gate': {
+  'citadel-gate': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 50, figures: [],
-    fort: (f) => {
+    citadel: (f) => {
       const g = f.plan.gates[0]
       const e = [g.at[0] + g.out[0] * 30 + g.out[1] * 8, g.at[1] + g.out[1] * 30 - g.out[0] * 8] as const
       return { eye: fp(f, e[0], e[1], 6), look: fp(f, g.at[0], g.at[1], 3) }
     },
   },
   // the gate court from inside the main gate: the road up to the citadel and the keep over it
-  'fort-yard': {
+  'citadel-yard': {
     eye: [0, 0, 0], look: [0, 0, 0], fov: 55, figures: [],
-    fort: (f) => {
-      const g = f.plan.gates[0]
-      return { eye: fp(f, g.inside[0], g.inside[1], 7), look: fp(f, f.plan.centre[0], f.plan.centre[1], 12) }
+    citadel: (f) => {
+      const yard = f.plan.sectors[0].yard.at
+      return { eye: fp(f, yard[0], yard[1], 7), look: fp(f, 0, -45, 110) }
     },
   },
   // the key poses side by side, three-quarter view
@@ -159,7 +158,7 @@ const SAMPLES: Record<string, Sample> = {
   },
 }
 
-/** Renders named soldier / fort samples headlessly with the game's image: `<out>-<name>.png`. */
+/** Renders named soldier / citadel samples headlessly with the game's image: `<out>-<name>.png`. */
 export async function renderEnemies(out: string, names: string[]): Promise<void> {
   const { renderer, grab } = await createHeadlessRenderer(W, H)
   const asset = readSoldier()
@@ -167,12 +166,12 @@ export async function renderEnemies(out: string, names: string[]): Promise<void>
     const sample = SAMPLES[name]
     if (!sample) throw new Error(`no enemy sample ${name}; have ${Object.keys(SAMPLES).join(', ')}`)
     const scene = new Scene()
-    const world = createDesertWorld(scene)
+    const world = createDesertWorld(scene, await mirrorCitadel())
     configureRenderer(renderer)
     bakeEnvironment(renderer, scene, world.environmentScene())
     world.world.prepare(renderer)
     const camera = new PerspectiveCamera(sample.fov ?? 42, W / H, 0.1, 6000)
-    const view = sample.fort ? sample.fort(world.world.forts.list[Number(process.env.FORT ?? 0)]) : sample
+    const view = sample.citadel ? sample.citadel(world.world.citadel) : sample
     camera.position.set(...view.eye)
     camera.lookAt(...view.look)
     const pipeline = createPostPipeline(renderer, scene, camera)
@@ -197,7 +196,7 @@ export async function renderEnemies(out: string, names: string[]): Promise<void>
     })].sort((a, b) => a.distance - b.distance)
     horde.draw(list)
     world.world.update(camera, new Vector3(...view.look))
-    if (sample.fort) console.log('fort triangles', world.world.forts.list.map((f) => f.triangles))
+    if (sample.citadel) console.log('citadel triangles', world.world.citadel.triangles)
     await renderer.compileAsync(scene, camera)
     pipeline.render()
     writePng(`${out}-${name}.png`, W, H, await grab())

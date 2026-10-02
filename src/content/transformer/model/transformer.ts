@@ -1,5 +1,5 @@
-import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material, type Node } from 'three/webgpu'
-import { Fn, attribute, mix, normalGeometry, normalLocal, normalize, positionGeometry, uniform } from 'three/tsl'
+import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material, type Node, type UniformNode } from 'three/webgpu'
+import { Fn, attribute, mix, normalGeometry, normalLocal, normalize, positionGeometry, positionPrevious, uniform } from 'three/tsl'
 import type { TransformerAsset } from '../asset/loader'
 import { supportPoints } from '../asset/loader'
 import type { NodeKind, RigDims } from '../asset/format'
@@ -418,11 +418,14 @@ export class TransformerModel {
  * `weight`: position and normal, in the vertex stage (shadows included, as
  * they draw with the material's position node).
  */
-function morphMaterial(base: Material, weight: Node<'float'>): Material {
+function morphMaterial(base: Material, weight: UniformNode<'float', number>): Material {
   const m = base.clone() as Material & { positionNode: Node | null }
   const shape = attribute('morphPosition', 'vec3')
   const bend = attribute('morphNormal', 'vec3')
+  let last = weight.value
+  const previous = uniform(last).onFrameUpdate(() => { const value = last; last = weight.value; return value })
   m.positionNode = Fn(() => {
+    positionPrevious.assign(mix(positionGeometry, shape, previous))
     normalLocal.assign(normalize(mix(normalGeometry, bend, weight)))
     return mix(positionGeometry, shape, weight)
   })()

@@ -1,4 +1,4 @@
-import { readMirror } from '../mirror.ts'
+import { mirrorCitadel, readMirror } from '../mirror.ts'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { PerspectiveCamera, Scene, Vector3 } from 'three/webgpu'
@@ -122,9 +122,12 @@ const SHOTS: Record<string, Shot> = {
   'drift-marks-low': drift(150, 200, [2.5, 1.5, -7], [0, 0, 2]),
   // the opening broadside (FollowCamera.showSide) at the Cybertruck framing: 7.875 m out, pitch 0.07, focus 1.1 m
   side: (s) => { s.look([-7.875 * Math.cos(0.07), 1.1 + 7.875 * Math.sin(0.07), 0], [0, 1.1, 0]) },
-  // inside the fortress's gate court, looking across the yard toward the citadel (shadow levels, ambient occlusion)
-  fort: (s) => { s.look([14, 5, 226], [-4, 3, 262], true) },
-  // the fortress from the start, across the swells (its far shadow level, the haze)
+  // Forecourt at its authored floor, looking up the processional axis.
+  citadel: (s) => {
+    const a = s.world.world.citadel.toWorld(14, 374), b = s.world.world.citadel.toWorld(-4, 263)
+    s.look([a.x, s.world.world.ground.height(a.x, a.z) + 5, a.z], [b.x, s.world.world.ground.height(b.x, b.z) + 3, b.z], true)
+  },
+  // the citadel from the start, across the swells (its far shadow level, the haze)
   approach: (s) => { s.look([6, 3, -8], [0, 4, 200], true) },
   boulder: (s) => {
     // the nearest large rock, from a low eye height on its sunlit side
@@ -148,7 +151,7 @@ export async function renderShots(outDir: string, names: string[], car: string |
     const shot = SHOTS[name]
     if (!shot) throw new Error(`unknown shot ${name}; known: ${Object.keys(SHOTS).join(', ')}`)
     const scene = new Scene()
-    const world = createDesertWorld(scene)
+    const world = createDesertWorld(scene, await mirrorCitadel())
     const player = entry.create(asset, world.contactEffects, new AudioMix())
     const camera = new PerspectiveCamera(42, WIDTH / HEIGHT, 0.1, 6000)
     configureRenderer(renderer)
