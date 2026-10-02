@@ -13,6 +13,20 @@ class Profile(list):
         self.normals = normals
 
 
+def rounded_profile(width, depth, radius=0.6, segments=4):
+    r = min(radius, width / 2, depth / 2)
+    out, normals = [], []
+    for x, z, angle in ((width / 2 - r, depth / 2 - r, 0),
+                         (-width / 2 + r, depth / 2 - r, math.pi / 2),
+                         (-width / 2 + r, -depth / 2 + r, math.pi),
+                         (width / 2 - r, -depth / 2 + r, math.pi * 1.5)):
+        for j in range(segments + 1):
+            a = angle + math.pi * 0.5 * j / segments
+            out.append((x + r * math.cos(a), z + r * math.sin(a)))
+            normals.append((math.cos(a), math.sin(a)))
+    return Profile(out, normals)
+
+
 def area(poly):
     return sum(a[0] * b[1] - b[0] * a[1]
                for a, b in zip(poly, poly[1:] + poly[:1])) * 0.5

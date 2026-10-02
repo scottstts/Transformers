@@ -2,21 +2,7 @@
 
 import math
 
-from ..geom.polygon import Profile, circle, ccw, subtract_all, transform
-
-
-def rounded_profile(width, depth, radius=0.6, segments=4):
-    r = min(radius, width / 2, depth / 2)
-    out, normals = [], []
-    for x, z, angle in ((width / 2 - r, depth / 2 - r, 0),
-                         (-width / 2 + r, depth / 2 - r, math.pi / 2),
-                         (-width / 2 + r, -depth / 2 + r, math.pi),
-                         (width / 2 - r, -depth / 2 + r, math.pi * 1.5)):
-        for j in range(segments + 1):
-            a = angle + math.pi * 0.5 * j / segments
-            out.append((x + r * math.cos(a), z + r * math.sin(a)))
-            normals.append((math.cos(a), math.sin(a)))
-    return Profile(out, normals)
+from ..geom.polygon import Profile, circle, ccw, rounded_profile, subtract_all, transform
 
 
 def annulus(w, outer, inner, y, up, slot="ceramicBand", lod="mass", bucket="D0"):
@@ -46,6 +32,9 @@ def block(w, m, height=None, slot="ceramic", radius=0.6, width=None, depth=None,
     y1 = y0 + (height or m["size"][1])
     p = rounded_profile(width, depth, radius)
     bays = m.get("bays", []) if height is None or m["kind"] == "spire" else []
+    # The module's base: the plan cut the floor round it with this corner (plan.py BLOCK_CORNERS).
+    if base is None and width is None and depth is None and m.get("corner") is not None and abs(radius - m["corner"]) > 1e-9:
+        raise ValueError(f"{m['kind']} {m['index']}: base corner {radius} m, its floor cutout {m['corner']} m")
     # Buried foundation faces are omitted; stepped roofs expose only their annulus.
     if bottom:
         local_face(w, m, [(x, y0, z) for x, z in p], slot)

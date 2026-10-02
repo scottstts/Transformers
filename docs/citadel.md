@@ -32,7 +32,7 @@ Footsteps and scuffs sample the material at the actual contact. Sand retains its
 
 ## Geometry and light
 
-The Blender preview sand slot is excluded: the game owns terrain under the citadel. The remaining asset contains 1,573,888 triangles. Geometry is grouped by district, material slot and mass/articulation/detail class. Articulation is visible within 450 m of a bucket's bounds; detail within 120 m. Entry warm-up exposes both classes, every surface response and all shadow passes.
+The Blender preview sand slot is excluded: the game owns terrain under the citadel. The remaining asset contains 1,605,901 triangles. Geometry is grouped by district, material slot and mass/articulation/detail class. Articulation is visible within 450 m of a bucket's bounds; detail within 120 m. Entry warm-up exposes both classes, every surface response and all shadow passes.
 
 The exported halo was merged into the spire's alloy and light meshes. Loading partitions its 2,048 ring-shell triangles into two meshes without duplicating vertices or changing triangle totals. Only the shell rotates, at 0.025 rad/s; support arms stay fixed. Its rotationally invariant shadow remains cached. Ordinary trim emission stays below the bloom knee, while the halo, beacon, spire lantern and chasm conduits carry the hero light.
 
@@ -44,9 +44,15 @@ Every face is wound counter-clockwise when seen from outside; the materials are 
 - the hydroponic domes' base ring;
 - the barracks' roof ends.
 
+A module whose base is a rounded block has its floor cutout follow the same outline: `BLOCK_CORNERS` in ctd/plan.py, which `block` enforces. Round modules (stacks included) get circular cutouts. With rectangular cutouts, sand showed at every rounded corner, up to 1.66 m deep at the spire.
+
 `node tools/citadel-backfaces.mjs` draws the asset double-sided from eye height over the whole walkable floor and names every triangle seen from behind. `tests/citadel.test.ts` requires the walkable floor to be seen from above.
 
-AO is baked world-space sky visibility, applied only to indirect light. Three floor-relative slices and the upward visibility/top height share a 2×2 half-float atlas: four 1536² tiles, one sampled-texture binding. Thin or vertical projected triangles rasterize their crossed cells rather than filling their bounding rectangles. Filling a diagonal wall's rectangle invented occluders in open courts. Atlas reads clamp inside each tile to prevent filtering between slices. T0 wall feet alone receive sand drifts.
+AO is baked world-space sky visibility, applied only to indirect light. Each slice keeps a wall's visibility as first-order Fourier terms over the azimuth. A face convolves them with its clamped cosine, so directions behind it weigh nothing and no object darkens itself. Four world-axis quarters each spanned 180 degrees, so every curved or diagonal face counted its own body, and every pillar and tower went dark at its foot on the shaded side. Two more adjustments keep the shaded faces from looking dirty:
+- An occluder's elevation is weighted by `1 - (d/16 m)²` (obscurance). Alcoves, alleys and inner corners darken; a hall across a court does not.
+- The result goes through the GTAO multi-bounce fit for 0.6 albedo surroundings. The citadel's occluders are sunlit ceramic, and they send light back.
+
+Counted at full strength and taken as black, the buildings across every court put a dark band up the shaded foot of each wall and pillar, fading out by 14 m. Three floor-relative slices and the upward visibility/top height share a 2×2 half-float atlas: four 1536² tiles, one sampled-texture binding. Thin or vertical projected triangles rasterize their crossed cells rather than filling their bounding rectangles. Filling a diagonal wall's rectangle invented occluders in open courts. Atlas reads clamp inside each tile to prevent filtering between slices. T0 wall feet alone receive sand drifts.
 
 Static shadows use cached light-space maps independent of view LOD. Their depth span follows the entire caster-height range and the committed map rectangle; camera movement cannot clip upstream towers or ground receivers. Bias is measured in world units, including depth quantization. See [rendering-and-boot.md](rendering-and-boot.md) for shadow filtering and the temporal image pipeline.
 

@@ -18,12 +18,12 @@
       "sha256": "d9f3c10acd53407b6ed7c8cde7deef542de0d351bc240de9893cb66bbe37d3fc"
     },
     "citadel.glb": {
-      "bytes": 32109832,
-      "sha256": "2e4c66ab0141d5354ab45c93c09c00f4812070490da37079c1cb1f5615d2e77f"
+      "bytes": 32515512,
+      "sha256": "f8973219d2c0cbff57e02ca905e49abd65a6bb008ff00e9d0cc9da5d57745384"
     },
     "citadel.plan.json": {
-      "bytes": 735380,
-      "sha256": "211f9d94529f66195556662b209465df39ac07fad8a637defd8c154bf238b192"
+      "bytes": 939412,
+      "sha256": "d9aa77c06afc3af87f6c40f9cd5aa8adc49f0a15d53c1b9caaf4ccf2220efdcd"
     },
     "commander.bin": {
       "bytes": 2554852,

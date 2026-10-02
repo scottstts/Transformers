@@ -16,7 +16,7 @@ const citadel = new Citadel(new Scene(), asset)
 
 describe('published citadel', () => {
   it('preserves the exported triangle counts within every rendering budget', () => {
-    expect(citadel.triangles).toBe(1_573_888)
+    expect(citadel.triangles).toBe(1_605_901)
     expect(asset.parts.length).toBeLessThanOrEqual(260)
     const limits = { mass: 1_000_000, artic: 1_300_000, detail: 1_000_000 }
     for (const [lod, limit] of Object.entries(limits)) {

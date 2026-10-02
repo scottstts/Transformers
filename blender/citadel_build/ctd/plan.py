@@ -5,7 +5,7 @@ import math
 from collections import deque
 from pathlib import Path
 
-from .geom.polygon import ccw, circle, clip_halfplane, inset, rectangle, subtract_all, transform, triangulate
+from .geom.polygon import ccw, circle, clip_halfplane, inset, rectangle, rounded_profile, subtract_all, transform, triangulate
 
 SEED = 0x48A1C70D
 O = [(110, 440), (330, 400), (490, 250), (520, 40), (480, -200), (360, -370),
@@ -68,13 +68,27 @@ def intersect_convex(poly, clip):
     return p
 
 
+# Corner radii (m) of the modules whose base is a rounded block (kit/shells.py `block`): their floor cutout
+# follows that outline exactly, so no sand shows at the corners. `block` refuses a base of another radius.
+BLOCK_CORNERS = {"spire": 4, "barracks": 2, "armoury": 1.5, "fabrication": 1.5, "lift": 1.5, "sally": 1.5,
+                 "bridge_service": 1.5, "barbican": 1.5, "hangar": 0.6, "control": 0.6, "annex": 0.6, "pump": 0.6,
+                 "guard": 0.25}
+
+
+def rounded_footprint(width, depth, corner, at, yaw):
+    return list(transform(rounded_profile(width, depth, corner), at, yaw))
+
+
 def module(plan, kind, at, size, district, y=0, yaw=0, variant=0, solid=True):
     m = {"index": len(plan["modules"]), "kind": kind, "at": list(at), "yaw": yaw,
          "size": list(size), "variant": variant, "y": y, "district": district,
          "seed": (SEED + len(plan["modules"]) * 0x9E3779B9) & 0xFFFFFFFF,
          "solid": solid, "bays": []}
-    if kind in ("condenser", "cistern", "dish", "dome", "tower", "lantern", "pinnacle", "mast", "sentinel"):
+    if kind in ("condenser", "cistern", "dish", "dome", "tower", "lantern", "pinnacle", "mast", "sentinel", "stack"):
         m["footprint"] = circle(*at, size[0] * 0.5, 32 if kind != "sentinel" else 8)
+    elif kind in BLOCK_CORNERS:
+        m["corner"] = BLOCK_CORNERS[kind]
+        m["footprint"] = rounded_footprint(size[0], size[2], m["corner"], at, yaw)
     else:
         m["footprint"] = transform(rectangle(-size[0] / 2, size[0] / 2, -size[2] / 2, size[2] / 2), at, yaw)
     plan["modules"].append(m)
@@ -313,7 +327,7 @@ def make_plan():
         m = module(plan, "barracks", at, (22, 18, 72), 7, y=8, yaw=math.pi / 2)
         # local width follows the hall's short end; orient to put service bays along its side.
         m["size"] = [72, 18, 22]
-        m["footprint"] = transform(rectangle(-36, 36, -11, 11), at, math.pi / 2)
+        m["footprint"] = rounded_footprint(72, 22, m["corner"], at, math.pi / 2)
         bay(plan, m, x=-18)
         if j == 1:
             bay(plan, m, x=18)
@@ -332,8 +346,8 @@ def make_plan():
         bay(plan, buttress, depth=6)
     spire = module(plan, "spire", (0, -45), (60, 116, 46), 11, y=24)
     bay(plan, spire, width=16, height=16, depth=10)
-    spire["additional_footprints"] = [transform(rectangle(-4, 4, -6.5, 6.5), (sign * 23, -20.5), 0)
-                                      for sign in (-1, 1)]
+    # its front buttresses (kit/spire.py), rounded as built
+    spire["additional_footprints"] = [rounded_footprint(8, 13, 1.5, (sign * 23, -20.5), 0) for sign in (-1, 1)]
     for district, points in (
             (0, [(-84, 372), (84, 372)]), (1, [(-451, 263)]), (2, [(440, 255)]),
             (3, [(-433, -175)]), (4, [(440, -158)]), (5, [(-85, -310), (85, -310)]),
@@ -346,7 +360,9 @@ def make_plan():
             module(plan, "guard", at, (4, 5, 4), district, y=floor, yaw=yaw)
     for m in plan["modules"]:
         if m["kind"] == "lantern" and m["bays"]:
-            m["footprint"] = transform(rectangle(-9, 9, -9, 9), m["at"], m["yaw"])
+            # its service block (kit/drums.py) carries the shaft
+            m["corner"] = 2
+            m["footprint"] = rounded_footprint(18, 18, m["corner"], m["at"], m["yaw"])
 
     # Colliders use perimeter recipes with the bay door spans omitted.
     round_kinds = {"tower", "lantern", "pinnacle", "condenser", "cistern", "dish", "dome", "mast", "sentinel", "stack", "guard"}
