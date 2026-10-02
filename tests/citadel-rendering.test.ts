@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BoxGeometry, DirectionalLight, Mesh, PerspectiveCamera, Scene, Vector3 } from 'three/webgpu'
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js'
-import { rasterEdge } from '../src/worlds/desert/citadel/sky-visibility'
+import { rasterEdge, rasterizeOccupancy } from '../src/worlds/desert/citadel/occupancy'
 import { SunShadowNode } from '../src/rendering/sun-shadow'
 import { Casings } from '../src/content/semi/combat/fx/casings'
 import { HordeRenderer, type HordeInstance } from '../src/content/soldier/horde-renderer'
@@ -28,6 +28,31 @@ describe('citadel AO coverage', () => {
       rasterEdge(a, 32, edge[0], edge[1], edge[2], edge[3], 8)
       rasterEdge(b, 32, edge[2], edge[3], edge[0], edge[1], 8)
       expect(a, String(edge)).toEqual(b)
+    }
+  })
+
+  it('resolves each column to the solid reaching its top', () => {
+    const box = (w: number, h: number, d: number, x: number, y: number, z: number): Mesh => {
+      const mesh = new Mesh(new BoxGeometry(w, h, d))
+      mesh.position.set(x, y, z)
+      return mesh
+    }
+    // 1 m cells over 64 m: a wall on the floor, a lintel with floor trim and an unpaired bevel strip under it
+    const wall = box(30, 24, 4, 0, 12, -20)
+    const lintel = box(20, 4, 8, 0, 22, 10)
+    const trim = box(20, 0.05, 0.4, 0, 0.025, 10)
+    const bevel = box(20, 0.4, 1, 0, 23.6, 12)
+    bevel.geometry.setIndex(bevel.geometry.getIndex()!.array.slice(12, 18) as unknown as number[])
+    for (const m of [wall, lintel, trim, bevel]) m.updateMatrixWorld()
+    const { top, bottom } = rasterizeOccupancy([wall, lintel, trim, bevel], 64, -32, -32, 64, new Float32Array(64 * 64))
+    const at = (x: number, z: number) => (z + 32) * 64 + x + 32
+    for (const x of [-10, 0, 10]) {
+      expect(top[at(x, -20)]).toBeCloseTo(24)
+      expect(bottom[at(x, -20)]).toBe(0)
+      for (const z of [8, 10, 12]) {
+        expect(top[at(x, z)], `lintel ${x},${z}`).toBeCloseTo(24)
+        expect(bottom[at(x, z)], `lintel ${x},${z}`).toBeCloseTo(20)
+      }
     }
   })
 })

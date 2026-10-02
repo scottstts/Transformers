@@ -46,11 +46,12 @@ describe('published citadel', () => {
     for (let k = 0; k < cells.length; k += 23) {
       citadel.toWorld(map.x0 + ((k % map.nx) + 0.5) * map.cell, map.z0 + (Math.floor(k / map.nx) + 0.5) * map.cell, p)
       const h = floor.height(p.x, p.z)
+      const baked = floor.rasterHeight(p.x, p.z)
       const surface = floor.surface(p.x, p.z)
       const code = Math.floor(cells[k] / 1000 + 1e-4)
       const expected = surface === null ? 0 : SURFACE_CODE[surface]
-      if (code !== expected || Math.abs((Number.isNaN(h) ? 0 : h) - (cells[k] - code * 1000)) > 0.0003) {
-        mismatches.push(`${p.x},${p.z}: CPU ${h}/${surface}, GPU ${cells[k]}`)
+      if (code !== expected || Math.abs((Number.isNaN(h) ? 0 : h) - (cells[k] - code * 1000)) > 0.0003 || Number.isNaN(h) !== Number.isNaN(baked) || Math.abs(h - baked) > 0.0003) {
+        mismatches.push(`${p.x},${p.z}: CPU ${h}/${surface}, GPU ${cells[k]}, bake ${baked}`)
         if (mismatches.length >= 8) break
       }
     }

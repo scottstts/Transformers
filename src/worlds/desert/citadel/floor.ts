@@ -57,6 +57,8 @@ export class CitadelFloor {
   /** the floor map: a 0.5 m grid of the fort frame and its packed cells */
   readonly map: Grid
   readonly cells: Float32Array
+  /** CPU-only coverage of the floor raster, distinguishing a sand floor at 0 from no floor. */
+  private readonly coverage: Uint8Array
   private readonly texture: DataTexture
   private readonly cosYaw = uniform(0)
   private readonly sinYaw = uniform(0)
@@ -99,7 +101,11 @@ export class CitadelFloor {
     }
     for (const p of this.patches) fillPolygon(this.map, p.poly, (cell) => { if (Math.abs(height[cell] - p.y0) < 0.05) code[cell] = p.code })
     this.cells = new Float32Array(n)
-    for (let k = 0; k < n; k++) this.cells[k] = height[k] === -Infinity ? 0 : height[k] + CLASS_STEP * code[k]
+    this.coverage = new Uint8Array(n)
+    for (let k = 0; k < n; k++) {
+      this.coverage[k] = height[k] === -Infinity ? 0 : 1
+      this.cells[k] = this.coverage[k] ? height[k] + CLASS_STEP * code[k] : 0
+    }
     this.texture = new DataTexture(this.cells, this.map.nx, this.map.nz, RedFormat, FloatType)
     this.texture.minFilter = this.texture.magFilter = NearestFilter
     this.texture.generateMipmaps = false
@@ -139,6 +145,17 @@ export class CitadelFloor {
     const p = this.local(x, z)
     const i = this.find(p.x, p.z)
     return i < 0 ? NaN : levelAt(this.pieces[i], p.x, p.z)
+  }
+
+  /** Constant-time CPU read of the GPU floor raster for startup bakes; NaN off the floor. */
+  rasterHeight(x: number, z: number): number {
+    const p = this.local(x, z), m = this.map
+    const i = Math.floor((p.x - m.x0) / m.cell), j = Math.floor((p.z - m.z0) / m.cell)
+    if (i < 0 || j < 0 || i >= m.nx || j >= m.nz) return NaN
+    const k = j * m.nx + i
+    if (!this.coverage[k]) return NaN
+    const v = this.cells[k]
+    return v - CLASS_STEP * Math.floor(v / CLASS_STEP + 1e-4)
   }
 
   /** Surface class at a world point, or null off the floor. */
