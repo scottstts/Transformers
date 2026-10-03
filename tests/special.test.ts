@@ -10,6 +10,7 @@ import { MAX_KEYS } from '../src/content/transformer/combat/moves.ts'
 import { Curve } from '../src/content/transformer/combat/curves.ts'
 import type { SpecialMove } from '../src/content/transformer/combat/special.ts'
 import type { Character } from '../src/content/transformer/character.ts'
+import type { HitEvent } from '../src/content/transformer/combat/hits.ts'
 import { NO_CONTACT, readAsset, readWeapon } from './support/assets.ts'
 import { bodyCore, runFight } from './support/fight.ts'
 
@@ -64,6 +65,34 @@ function realDuration(special: SpecialMove): number {
   for (let t = 0; t < special.move.duration; t += 0.001) real += 0.001 / Math.max(0.01, tempo.at(t))
   return real
 }
+
+it('aims every Red Line roaming hit at the final blast centre in world space', () => {
+  const c = FIGHTERS.find((f) => f.name === 'ferrari-f1')!.make()
+  const sweeps = new Map<number, readonly [number, number]>()
+  let blast: HitEvent | undefined
+  let ordinaryHits = 0
+  const after = realDuration(c.combat.special) + 1
+  runFight(c, [after], after + 2, () => {}, 1 / 60, [0], (_t, combat) => {
+    combat.onHit = (hit) => {
+      if (hit.special && hit.sweep >= 0) {
+        expect(hit.toward).toBeDefined()
+        sweeps.set(hit.sweep, [...hit.toward!] as [number, number])
+      } else {
+        expect(hit.toward).toBeUndefined()
+        if (hit.final) blast = { ...hit }
+        if (!hit.special) ordinaryHits++
+      }
+    }
+  })
+  expect(sweeps.size).toBe(7)
+  expect(blast).toBeDefined()
+  for (const [x, z] of sweeps.values()) {
+    expect(x).toBeCloseTo(blast!.x)
+    expect(z).toBeCloseTo(blast!.z)
+  }
+  expect(blast!.radial).toBe(true)
+  expect(ordinaryHits).toBeGreaterThan(0)
+})
 
 describe.each(FIGHTERS)('$name special', ({ make, midCombo, apex, travel }) => {
   const character = make()

@@ -6,11 +6,12 @@ import { RED_LINE } from './special'
  * What the racer's blows do to the soldiers (combat/hits.ts): quick, light
  * hands, a draw-cut that opens a wide arc, and the ERS dash cutting through
  * everything along its 9 m. Red Line marks every soldier its four cuts pass
- * through and throws the ones its hairpins skid into; at the flick the
- * centre goes up and takes the whole ring with it.
+ * through and pushes them and the ones its hairpins skid into toward the
+ * centre; at the flick the centre goes up and takes the whole ring with it.
  */
-const cuts: SweepHit[] = RED_LINE.cuts.map(([t0, t1]) => ({ t0, t1, kind: 'cut', radius: 2.8, ahead: 0, damage: 70, knock: 4, lift: 1.5 }))
-const hairpins: SweepHit[] = RED_LINE.hairpins.map(([t0, t1]) => ({ t0, t1, kind: 'blunt', radius: 2.4, ahead: 0, damage: 30, knock: 13, lift: 3 }))
+const toward = [0, RED_LINE.center] as const
+const cuts: SweepHit[] = RED_LINE.cuts.map(([t0, t1]) => ({ t0, t1, kind: 'cut', radius: 2.8, ahead: 0, damage: 70, knock: 4, lift: 1.5, toward }))
+const hairpins: SweepHit[] = RED_LINE.hairpins.map(([t0, t1]) => ({ t0, t1, kind: 'blunt', radius: 2.4, ahead: 0, damage: 30, knock: 13, lift: 3, toward }))
 
 export const F1_HITS: CombatHits = {
   moves: [

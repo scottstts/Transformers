@@ -353,7 +353,10 @@ export class Horde {
     }
     const rx = d > 1e-3 ? dx / d : hx, rz = d > 1e-3 ? dz / d : hz
     let dirX: number, dirZ: number, knock = e.knock, damage = e.damage
-    if (e.radial) {
+    if (e.toward) {
+      dirX = e.toward[0] - s.x
+      dirZ = e.toward[1] - s.z
+    } else if (e.radial) {
       // a blast: straight out from it, harder nearer
       const f = 1 - 0.55 * Math.pow(Math.min(1, d / e.reach), 2)
       dirX = rx; dirZ = rz

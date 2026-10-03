@@ -511,6 +511,7 @@ export class RobotCombat {
     const e = this.hit
     e.special = this.special !== null
     e.final = false
+    e.toward = undefined
     const strikes = hits.strikes
     while (strikes && this.nextStrike < strikes.length && strikes[this.nextStrike].t <= t) {
       const s = strikes[this.nextStrike++]
@@ -562,6 +563,10 @@ export class RobotCombat {
         e.z = d.z + Math.cos(state.yaw) * w.ahead
         e.heading = state.yaw; e.reach = w.radius; e.arc = Math.PI * 2
         e.damage = w.damage; e.knock = w.knock; e.lift = w.lift; e.motion = motion; e.sweep = this.sweepBase + i; e.radial = false
+        e.toward = w.toward ? [
+          this.origin.x + Math.sin(h) * w.toward[1] + Math.cos(h) * w.toward[0],
+          this.origin.z + Math.cos(h) * w.toward[1] - Math.sin(h) * w.toward[0],
+        ] : undefined
         e.final = false
         sink(e)
       }

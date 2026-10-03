@@ -54,6 +54,8 @@ export interface SweepHit {
   damage: number
   knock: number
   lift: number
+  /** Push toward this point in the move's ground frame instead of along the motion. */
+  toward?: readonly [number, number]
 }
 
 export interface BlastHit {
@@ -114,6 +116,8 @@ export interface HitEvent {
   sweep: number
   /** thrown outward from the centre (blasts, outward strikes) rather than along the heading; a circle's damage also falls off with distance */
   radial: boolean
+  /** Optional world point a sweep pushes toward, without the motion's extra knockback. */
+  toward?: readonly [number, number]
   /** the special: everything reacts bigger, and its blows before the last cannot destroy (enemies.md) */
   special: boolean
   /** the special's last blow: whatever its hits emptied breaks apart now */

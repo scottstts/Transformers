@@ -296,6 +296,30 @@ describe('horde', () => {
     expect(s.vitality).toBe(1)
   })
 
+  it('pushes a targeted sweep toward its centre without the dash speed adding outward knockback', () => {
+    const { horde, sector, target, at, run, blow } = make()
+    const yard = sector('forecourt').yard.at
+    at(yard[0], yard[1])
+    run(6)
+    const s = horde.nearby(target.x, target.z, 6)[0]
+    s.vx = 0
+    s.vz = 0
+    const hit = blow(s, 70, {
+      shape: 'circle', x: s.x, z: s.z, reach: 0.1, sweep: 100,
+      kind: 'cut', knock: 4, lift: 1.5, motion: 65, special: true,
+      toward: [s.x - 3, s.z + 4],
+    })
+    expect(horde.hit(hit)).toBeGreaterThanOrEqual(1)
+    expect(s.vx).toBeCloseTo(-2.4)
+    expect(s.vz).toBeCloseTo(3.2)
+    // The final blast still throws out from its own centre.
+    s.vx = 0
+    s.vz = 0
+    horde.hit({ ...hit, x: s.x - 3, z: s.z + 4, reach: 13.5, toward: undefined, radial: true, sweep: -1, kind: 'blast', final: true })
+    expect(s.vx).toBeGreaterThan(0)
+    expect(s.vz).toBeLessThan(0)
+  })
+
   it('takes health off a soldier blow by blow: it flinches and recovers, and breaks apart only when its health is gone', () => {
     const { horde, sector, fort, target, at, run, blow } = make()
     const yard = sector('forecourt').yard.at
