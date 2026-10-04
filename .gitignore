@@ -35,3 +35,4 @@ tasks
 /assets/
 # disposable Blender build output (compiled geometry, reports)
 blender/**/out/
+blender/reviews/
