@@ -142,7 +142,8 @@ def cowl():
             row.append(rear_cowl_point(t,u))
         rows.append(row)
     G.skin(m,rows,.004,(0,0,1))
-    emit(m,'car.rear_screen.formed.lower.cowl','tail',0)
+    # Rides with the backlight; the tail carrier crosses the robot torso.
+    emit(m,'car.rear_screen.formed.lower.cowl','rear_screen',0)
     for s in (-1,1):
         x=s*.42
         m=K.Mesh()

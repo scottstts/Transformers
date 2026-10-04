@@ -5,8 +5,9 @@ from . import kit as K,geometry as G,contract as D,robot_geometry as M,head_helm
 MASK=[(-.018,.290),(-.058,.292),(-.108,.272),(-.097,.245),(-.071,.224),
       (-.062,.160),(-.039,.127),(-.023,.111),(0,.117),(.023,.111),(.039,.127),
       (.062,.160),(.071,.224),(.097,.245),(.108,.272),(.058,.292),(.018,.290)]
-BASE=D.Curve([(.105,-.191),(.129,-.207),(.178,-.214),(.230,-.207),(.275,-.205),(.300,-.195)])
-NOSE=D.Curve([(.105,0),(.207,0),(.216,.010),(.232,.019),(.257,.015),(.280,.008),(.305,.002),(.319,0)])
+# Faceplate stays near-vertical under the brow with a shallow nose ridge.
+BASE=D.Curve([(.105,-.196),(.129,-.210),(.178,-.217),(.230,-.212),(.275,-.207),(.300,-.196)])
+NOSE=D.Curve([(.105,0),(.200,0),(.212,.008),(.232,.018),(.257,.015),(.280,.009),(.305,.003),(.319,0)])
 
 
 def uv(points):
@@ -14,8 +15,9 @@ def uv(points):
 
 
 def face_point(x,z):
-    nose=max(0,1-(abs(x)/.019)**2)**1.5*NOSE(z) if abs(x)<.019 else 0
-    cheek=.055*max(0,(abs(x)-.056)/.056)
+    nose=max(0,1-(abs(x)/.026)**2)**1.5*NOSE(z) if abs(x)<.026 else 0
+    # Chevron plan: the faceplate sweeps back from the centreline.
+    cheek=.20*abs(x)+.034*max(0,(abs(x)-.056)/.056)
     malar=.005*max(0,1-((abs(x)-.049)/.030)**2)**2*max(0,1-((z-.218)/.054)**2)**2
     return x,BASE(z)-nose+cheek-malar,z
 

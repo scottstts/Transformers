@@ -68,8 +68,9 @@ def collar():
     # A deep cast mounting cradle sits on the chest, rather than a thin
     # outline suspended in front of the neck. The central bearing stays free.
     m=K.Mesh()
-    profile=[(.785,.123),(.785,.215),(.805,.243),(.845,.223),(.929,.164),
-             (.964,.142),(.969,.123),(.947,.109),(.815,.110)]
+    # The flared skirt runs down onto the hood, cowl and backbone below it.
+    profile=[(.640,.123),(.640,.262),(.668,.268),(.735,.254),(.785,.241),(.805,.243),
+             (.845,.223),(.929,.164),(.964,.142),(.969,.123),(.947,.109),(.815,.110)]
     G.turn(m,profile,(0,0,1),(0,.155,0),'robot_graphite',96,True)
     for p in m.v:p.x*=1.18
     M.emit(m,'chest.cast.cervical.cradle','chest')

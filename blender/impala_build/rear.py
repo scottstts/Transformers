@@ -63,7 +63,11 @@ def build():
     for t in G.lin(0,1,49):
         row=[]
         for u in G.lin(-1,1,119):
-            top=.858+.012*abs(u)**6
+            # The deck lid's trailing edge overhangs the panel's top flange.
+            x=u*D.side_x(D.TAIL,.858)
+            # Tracks just under the lid and quarter trailing edges, without a ramp
+            # at the lid/quarter seam.
+            top=.858+.012*abs(u)**6-.014+.011*max(0,min(1,(abs(x)-.74)/.26))
             z=.554+(top-.554)*t
             x=u*D.side_x(D.TAIL,z)
             row.append((x,D.tail_surface_y(x,z),z))
@@ -72,9 +76,6 @@ def build():
     obj=emit(m,'car.rear.sculpted.tail.panel','tail',0)
     rear_lamps.build(obj)
     K.finish(obj,.0015)
-    m=K.Mesh()
-    G.sweep(m,[(x,D.tail_y(x)+.002,.854+.005*(1-(x/.97)**2)) for x in G.lin(-.970,.970,95)],G.round_section(.007,.005,14),'paint',(0,1,0))
-    emit(m,'car.rear.trunk.edge.rolled.hem','tail',0)
     badge.build()
     rear_decoration()
     rear_bumper.build()

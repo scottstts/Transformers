@@ -37,7 +37,9 @@ def abdomen():
     for i,(z,width) in enumerate(((.060,.465),(.214,.540),(.374,.620))):
         p=[(-width/2,z+.095),(-width*.30,z+.121),(0,z+.073),(width*.30,z+.121),
            (width/2,z+.095),(width*.33,z-.074),(0,z-.105),(-width*.33,z-.074)]
-        surf=lambda x,h:(x,-.186-.048*(1-(x/.36)**2)-.029*(h/.6),h)
+        # Shingled: each upper plate stands one plate thickness proud of the
+        # one below, so the overlaps never share a surface.
+        surf=lambda x,h,i=i:(x,-.186-.048*(1-(x/.36)**2)-.029*(h/.6)-.020*i,h)
         M.panel('abdomen.segment.%s.formed.V.plate'%i,'spine',p,surf,.018,'robot_graphite',spacing=.012)
         M.rim('abdomen.segment.%s.machined.lower.reveal'%i,'spine',p,
               lambda x,h:(x,surf(x,h)[1]-.004,h),'machined',.009,.006)

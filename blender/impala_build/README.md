@@ -74,3 +74,31 @@ joint frames. `robot_refit.py` owns the short cervical cradle and forged
 shoulder bridges. The arm rig uses forward elbow flexion and mirrored inner
 thumb roots. The wheel bead seats on the rim without a daylight gap; wheel
 tubs are omitted as requested.
+
+The tail panel's top flange runs just under the deck lid and quarter trailing
+edges across the full width; there is no separate rolled hem rod. The front corner lamp frame's outer edge follows the
+fender's leading edge (`front.corner_outer_x`) at every height, and the grille
+surrounds end at that edge. The grille top line runs 3 mm under the hood and
+fender front lips, and the top bar has a deep header that tucks under them. The
+corner housing return is body paint: it is the fender wrapping into the frame. The backlight's lower cowl rides the `rear_screen`
+carrier: the tail carrier spans the robot torso front to back, so cowl parts on
+it end up in front of the chest. The interior mirror hangs from the roof header
+behind the windshield's top edge.
+
+The robot head is authored at 1.42×, seated 45 mm down onto the neck, and carried by an armoured cervical sleeve
+(`head.neck()`, called from `head.build()`) that tapers up into the skull. A
+dark inner core, inset 16 mm (30 mm at the front) inside the helmet plan, closes the view through the
+face and temple seams. The helmet plan has a rounded occiput (sampled arc, 6 mm crown past the
+flanks); the occipital housing reuses that rear arc, so the nape meets the shell
+flush. Head depth is capped near 0.50 m by the bonnet storage volume. The faceplate has a
+shallow chevron plan and stays near-vertical under the brow; the occiput keeps its depth down to the
+nape. A larger head needs `run.bake_stage()` so stowage re-fits it in the bonnet.
+
+The abdomen V-plates are shingled 20 mm apart so their overlaps never share a
+surface. The bench halves fold into one nested volume; opposite 2 mm axial
+slides on their hinges keep coincident faces apart.
+
+The cervical cradle's skirt runs down onto the hood, cowl and backbone, so the
+neck base is seated on the body. The rear tailpipes run past the folded floor
+ends; the `fold.exhaust.tail.L` and `.R` hinges flip their tails (and the rear hangers) back down
+beside the pipe so nothing stands above the shoulders.

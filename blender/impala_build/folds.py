@@ -92,8 +92,10 @@ def build():
     # presenting full-width seat backs or floor slabs as robot armor.
     for part,y in (('front_bench',-.050),('rear_bench',.900)):
         left='fold.'+part+'.L';right='fold.'+part+'.R'
-        hinge(left,part,(0,y,.750),(0,0,90),(.31,.87))
-        hinge(right,part,(0,y,.750),(0,0,-90),(.31,.87))
+        # The mirrored halves nest in one volume; a small axial offset keeps
+        # their coincident faces apart.
+        hinge(left,part,(0,y,.750),(0,0,90),(.31,.87),(0,0,.002))
+        hinge(right,part,(0,y,.750),(0,0,-90),(.31,.87),(0,0,-.002))
         for obj in list(K.PARTS):
             if obj.type=='MESH' and obj.parent==K.NODES[part]:cut_object(obj,0,0,right,left)
     for zone,y in (('front',-1.300),('middle',.100),('rear',1.430)):
@@ -104,6 +106,15 @@ def build():
             if obj.type=='MESH' and obj.parent==K.NODES[part]:cut_object(obj,0,0,right,left)
         for node in (left,right):
             carrier_cut(node,node+'.end',1,y,(0,y,.340),(178,0,0),low=False,span=(.24,.74))
+    # The tailpipes run past the folded floor ends and would stand above the
+    # shoulders. Their tails flip back down beside the pipe, pivoting just
+    # above it so the two runs lie side by side.
+    for side in ('L','R'):
+        end='fold.floor.rear.%s.end'%side;tail='fold.exhaust.tail.'+side
+        hinge(tail,end,(0,2.150,.415),(178,0,0),(.30,.80))
+        for obj in list(K.PARTS):
+            if obj.type=='MESH' and obj.name.startswith('car.exhaust.') and obj.parent in (K.NODES[end],K.NODES[tail]):
+                cut_object(obj,1,2.150,end,tail)
     hinge('fold.roof.L','roof',(0,.150,1.350),(0,-178,0),(.35,.88))
     hinge('fold.roof.R','roof',(0,.150,1.350),(0,0,0),(.35,.88))
     for obj in list(K.PARTS):

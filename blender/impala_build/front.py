@@ -6,7 +6,8 @@ from . import kit as K, contract as D, geometry as G, badge
 from .body import emit
 
 
-UPPER=D.Curve([(0,.823),(.444,.825),(.829,.824),(1.025,.842)])
+# Top bar runs 3 mm under the hood and fender front lips, which rise at the corners.
+UPPER=D.Curve([(0,.829),(.444,.829),(.760,.829),(.829,.835),(.900,.843),(.980,.847),(1.025,.849)])
 LOWER=D.Curve([(0,.647),(.465,.650),(.837,.657),(1.025,.694)])
 
 
@@ -19,6 +20,18 @@ def lower_surround(x):
         if abs(dx)<radius:
             z=min(z,D.LAMP_Z-math.sqrt(radius*radius-dx*dx)-.008)
     return z
+
+
+def corner_outer_x(z):
+    """Outer edge of the corner lamp frame, flush inside the fender's leading edge."""
+    y=D.front_shell_leading(z)
+    return D.side_x(y,z)-.008
+
+
+def surround_end(z):
+    x=1.023
+    for _ in range(4):x=corner_outer_x(z(x))
+    return x
 
 
 def clear_intervals(z):
@@ -88,9 +101,12 @@ def grille():
     emit(m,'car.grille.recessed.radiator','nose',0)
     for name,z,height in (('top',lambda x:UPPER(abs(x)),.026),('lower',lower_surround,.022)):
         m=K.Mesh()
-        section=[(-.007,-height/2),(.002,-height/2),(.008,-height/2+.004),
-                 (.009,height/2-.004),(.003,height/2),(-.007,height/2)]
-        G.sweep(m,[(x,D.grille_y(x)-.009,z(x)) for x in G.lin(-1.023,1.023,411)],section,'chrome',(0,-1,0))
+        # The top bar's deep header runs back under the hood and fender lips.
+        back=(-.062,height/2-.010) if name=='top' else (-.007,-height/2)
+        section=[back,(.002,-height/2),(.008,-height/2+.004),
+                 (.009,height/2-.004),(.003,height/2),(-.062 if name=='top' else -.007,height/2)]
+        end=surround_end(lambda x:z(x)+(-.004 if name=='top' else .004))
+        G.sweep(m,[(x,D.grille_y(x)-.009,z(x)) for x in G.lin(-end,end,411)],section,'chrome',(0,-1,0))
         emit(m,'car.grille.'+name+'.surround','nose',.0007)
     badge.build('grille',.208,(.333,D.fascia_y(.333)-.034,.733),'nose',-1)
     m=K.Mesh()
@@ -104,11 +120,14 @@ def corner_caps():
     for s in (-1,1):
         # Body leading edge is authored behind this housing. Cutting a second
         # curved pocket from the thin shell produced exposed, folded slivers.
+        # The outer edge follows the fender's leading edge at every height.
         def point(u,v):
-            x=s*(.840+.183*u)
-            y=D.grille_y(x)
-            low=LOWER(abs(x))+.004;high=UPPER(abs(x))-.004
-            return (x,y,low+(high-low)*v)
+            x=.840+.183*u
+            for _ in range(3):
+                low=LOWER(x)+.004;high=UPPER(x)-.004
+                x=.840+(corner_outer_x(low+(high-low)*v)-.840)*u
+            x*=s
+            return (x,D.grille_y(x),low+(high-low)*v)
         m=K.Mesh()
         G.skin(m,[[tuple(Vector(point(u,v))+Vector((0,.025,0))) for u in G.lin(0,1,31)] for v in G.lin(0,1,15)],.007,(0,-1,0),'dark')
         emit(m,'car.grille.outer.corner.recess.'+str(s),'nose',0)
@@ -125,10 +144,11 @@ def corner_caps():
         for v in G.lin(0,1,35):
             front=Vector(point(1,v));z=front.z
             y=D.front_shell_leading(z)
-            x=s*(D.side_x(y,z)+.005)
+            x=s*(D.side_x(y,z)+.0015)
             rear=Vector((x,D.body_y(x,y,z)+.002,z))
             rows.append([front.lerp(rear,t) for t in G.lin(0,1,45)])
-        G.skin(m,rows,.004,(s,0,0),'dark')
+        # Body colour: the fender skin wraps into the lamp frame.
+        G.skin(m,rows,.004,(s,0,0),'paint')
         emit(m,'car.grille.corner.housing.return.'+str(s),'nose',0)
         for i,v in enumerate((.16,.38,.60,.82)):
             m=K.Mesh()

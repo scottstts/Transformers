@@ -4,9 +4,10 @@ import bpy
 from mathutils import Vector
 from . import kit as K,geometry as G,robot_geometry as M,contract as D
 
-STATIONS=[(.055,.042,-.118,-.048),(.106,.077,-.181,-.019),(.180,.124,-.195,.028),
-          (.258,.146,-.204,.066),(.315,.151,-.220,.082),(.365,.146,-.207,.077),
-          (.423,.126,-.150,.065),(.467,.083,-.081,.039),(.491,.035,-.023,.011)]
+# Full rounded occiput: the back keeps its depth down to the nape.
+STATIONS=[(.055,.042,-.118,-.010),(.106,.077,-.181,.032),(.180,.124,-.195,.070),
+          (.258,.146,-.204,.088),(.315,.151,-.220,.094),(.365,.146,-.207,.090),
+          (.423,.126,-.150,.074),(.467,.083,-.081,.045),(.491,.035,-.023,.012)]
 WIDTH=D.Curve([(z,w) for z,w,f,b in STATIONS])
 FRONT=D.Curve([(z,f) for z,w,f,b in STATIONS])
 BACK=D.Curve([(z,b) for z,w,f,b in STATIONS])
@@ -14,8 +15,11 @@ BACK=D.Curve([(z,b) for z,w,f,b in STATIONS])
 
 def ring(z):
     w,f,b=WIDTH(z),FRONT(z),BACK(z)
-    plan=[(0,f,z),(.55*w,f+.020,z),(w,f*.47,z),(w,b*.52,z),
-          (.73*w,b,z),(-.73*w,b,z),(-w,b*.52,z),(-w,f*.47,z),(-.55*w,f+.020,z)]
+    # Rounded occiput: the back crowns out past the flanks instead of a flat cut.
+    back=[(w*math.cos(a),b*.52+(b*.48+.006)*math.sin(a)**.7,z)
+          for a in (math.radians(d) for d in (30,60,90,120,150))]
+    plan=[(0,f,z),(.55*w,f+.020,z),(w,f*.47,z),(w,b*.52,z),*back,
+          (-w,b*.52,z),(-w,f*.47,z),(-.55*w,f+.020,z)]
     return [Vector((x,y,z)) for x,y in G.rounded_polygon([(x,y) for x,y,z in plan],.008,8)]
 
 
@@ -59,19 +63,31 @@ def shell():
     cutter.matrix_world=obj.matrix_world.copy()
     G.exact_cut(obj,cutter,'Open helmet face socket')
     m=K.Mesh();rows=[]
-    # Separate occipital housing with a diagonal jaw-to-nape break. A flat
-    # rear spine and chamfered shoulders replace the rounded lower skull.
-    for z in G.lin(.115,.321,58):
-        w=WIDTH(z);b=BACK(z)
-        outline=[(-w*.92,b-.055),(-w*.75,b),(-w*.44,b+.007),
-                 (w*.44,b+.007),(w*.75,b),(w*.92,b-.055)]
+    # Occipital housing continues the helmet's own rear plan below the brow
+    # band, so the shell and nape meet without a step at the flanks.
+    for z in G.lin(.115,.313,58):
+        w=WIDTH(z);side=BACK(z)*.52-.045
+        points=[Vector((w,side,z))]+ring(z)[24:80]+[Vector((-w,side,z))]
         row=[]
-        for a,c in zip(outline,outline[1:]):
-            row.extend((a[0]+(c[0]-a[0])*t,a[1]+(c[1]-a[1])*t,z) for t in G.lin(0,1,9)[:-1])
-        row.append((*outline[-1],z));rows.append(row)
+        for i,(a,c) in enumerate(zip(points,points[1:])):
+            steps=6 if i in (0,len(points)-2) or (i-1)%8==7 else 1
+            row.extend(tuple(a.lerp(c,t)) for t in G.lin(0,1,steps+1)[:-1])
+        row.append(tuple(points[-1]));rows.append(row)
     G.skin(m,rows,.017,(0,1,0),'dark')
     M.emit(m,'head.occipital.stepped.nape.casting','head')
     return obj
+
+
+def core():
+    """Dark inner skull casting behind the face seams, inset inside every shell."""
+    m=K.Mesh();rings=[]
+    for z in G.lin(.118,.330,44):
+        w,f,b=WIDTH(z),FRONT(z),BACK(z);c=(f+b)/2;half=(b-f)/2
+        # Deeper front inset clears the swept-back faceplate.
+        kx,kf,kb=(w-.016)/w,(half-.030)/half,(half-.016)/half
+        rings.append([Vector((p.x*kx,c+(p.y-c)*(kf if p.y<c else kb),z)) for p in ring(z)])
+    m.loft(rings,'dark',smooth=True)
+    M.emit(m,'head.inner.skull.core','head')
 
 
 def brow():
@@ -102,7 +118,7 @@ def crest():
     m=K.Mesh()
     path=[(0,front_y(0,z)-.012,z) for z in G.lin(.327,.491,92)]
     path += [(0,y,.500) for y in G.lin(front_y(0,.491)-.008,back_y(0,.491)+.008,16)]
-    path += [(0,back_y(0,z)+.012,z) for z in G.lin(.491,.370,72)]
+    path += [(0,back_y(0,z)+.008,z) for z in G.lin(.491,.370,72)]
     G.sweep(m,path,[(-.006,-.012),(.002,-.012),(.006,-.009),(.007,.009),(.002,.012),(-.006,.012)],
             'head_brow_alloy',(0,-.5,1))
     M.emit(m,'head.central.longitudinal.crest','head')
@@ -148,4 +164,4 @@ def ears():
 
 
 def build():
-    shell();brow();crest();ears()
+    shell();core();brow();crest();ears()

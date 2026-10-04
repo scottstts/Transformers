@@ -105,8 +105,9 @@ def trim():
             G.sweep(m,[(s*.823,b-.170,.808),(s*.818,b-.219,.824)],G.round_section(.007,.007,10),'chrome',(-s,0,0))
             emit(m,'car.interior.'+name+'.window.crank',name,.0008)
     m=K.Mesh()
-    G.hardware(m,(0,-.332,1.453),(0,-.398,1.363),.006,'chrome',20)
-    m.prism([(x,-.408,1.342+z) for x,z in G.rounded_rect(.240,.063,.030,16)],(0,.014,0),'leather')
+    # Hangs from the roof header behind the windshield's top edge.
+    G.hardware(m,(0,-.236,1.474),(0,-.215,1.395),.006,'chrome',20)
+    m.prism([(x,-.225,1.374+z) for x,z in G.rounded_rect(.240,.063,.030,16)],(0,.014,0),'leather')
     emit(m,'car.interior.rearview.mirror','roof',.001)
 
 
