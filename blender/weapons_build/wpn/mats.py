@@ -3,6 +3,7 @@
 
   glow   the axe's light-bar strip, the gun's capacitor coils (emissive, driven in game)
   blade  the sword's polished blade steel
+  blade, edge, guard, grip  the cutlass's forged blade, honed edge bevels, spring-steel guard and wrapped grip
   lacquer, bronzeDark, edge  the spear's black shaft, patinated flutes, honed edges
 
 Blender materials are named `<weapon>.<slot>`; the exporter writes the slot."""
@@ -39,6 +40,12 @@ SLOTS = {
         'bronze': (0x745a3c, 1.0, 0.38, None, 0, 0.0),
         'bronzeDark': (0x2e2419, 1.0, 0.55, None, 0, 0.0),
         'edge': (0xb89a6c, 1.0, 0.16, None, 0, 0.0),
+    },
+    'cutlass': {
+        'blade': (0x70757f, 0.97, 0.31, None, 0, 0.0),
+        'edge': (0xb8bcc2, 0.97, 0.16, None, 0, 0.0),
+        'guard': (0x5c636d, 0.98, 0.38, None, 0, 0.0),
+        'grip': (0x1f1b17, 0.0, 0.65, None, 0, 0.0),
     },
     'sword': {
         'blade': (0xc9ccd0, 1.0, 0.16, None, 0, 0.0),

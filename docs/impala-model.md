@@ -3,8 +3,8 @@
 The Impala remains one assembled model throughout deployment. Car stampings
 and trim move on rigid carriers; the internal mechanical core is fitted into
 the car rather than exchanged for a second model. Native Blender authoring is
-still undergoing reference and motion review. Export and game integration
-follow user approval of the model, animation, and separate cutlass.
+approved and exported (`impala_build/export.py`, run through `export_game.py`). Game
+integration follows.
 
 Car reference matching uses fixed pinhole cameras and unchanged source photos.
 Contact sheets preserve image aspect ratios and do not deform either image.
@@ -94,3 +94,29 @@ visual checks for crossing parts and unsupported motion.
 The authoring meshes keep the car's small manufactured detail. A game mesh
 pass remains necessary after the shape and motion are approved; the Blender
 authoring density is not a runtime triangle budget.
+
+## Game export
+
+`assets/impala.{json,bin}` carry the baked timeline of `impala.blend` (241 frames,
+8 s) in the shared container; `assets/impala-cutlass.{json,bin}` is the weapon
+(`weapons_build/wpn/cutlass.py`: 3.41 m overall, a 2.87 m blade, grip centre at the
+origin, edge toward +X, the blade curving toward -X; the pommel end is its second grip).
+
+- The authoring scene hosts every car panel and linkage stage in world space. The
+  export parents each to the skeleton bone nearest it in the finished robot and
+  stores the exact transform relative to that bone at every frame, so playback
+  matches the authored motion and the live gait carries the panels. Stowed
+  castings stay children of their joint (`part:<joint>`); the four wheels are
+  hub-centred `wheel:wheelF.*` / `wheel:wheelR.*` nodes (tyre, rim, hub and drum spin;
+  the leaf spring stays on the assembly).
+- Meshes are reduced from 5.5 M to about 0.9 M triangles by collapse decimation,
+  proportionally harder on dense meshes, each checked to stay within 4 mm of its
+  authored surface (`IMPALA_TRI_BUDGET=0` exports the authoring density).
+- Ground lift is the lowest support point of the model on z = 0 (linkage stages
+  excluded); it stays within 5 mm over the whole timeline.
+- The rig block describes the authored stand pose. Two things differ from the
+  conventions the live gait assumes (hands that bend fingers about Y, forearms
+  that only flex): the Impala's fingers flex about X and its forearms turn in
+  32 deg, and a handover to the gait pops until the rig or the skeleton is aligned.
+- The brace stages leave their 4 % nests in frames 1 to 3 (a scale jump of about
+  0.9), which the export reproduces.

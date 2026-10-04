@@ -4,26 +4,8 @@ from . import kit as K, geometry as G, robot_geometry as M
 
 
 def neck():
-    # Short duplex yaw bearing buried inside a flared four-point collar.
-    M.bearing('neck.recessed.duplex.yaw.race','neck',(0,.014,.017),(0,0,1),.111,.065)
-    M.bearing('neck.skull.pitch.trunnion','neck',(0,0,.087),(1,0,0),.052,.148)
-    for s in (-1,1):
-        p=[(.054,-.067),(.137,-.092),(.158,-.039),(.117,.085),(.080,.125),(.053,.082)]
-        surf=lambda x,z:(s*x,-.045-.043*(1-(z/.15)**2),z)
-        M.panel('neck.%s.flared.cervical.fork'%s,'neck',p,surf,.027,'robot_graphite',spacing=.009,
-                cutouts=[G.rounded_polygon([(.088,-.032),(.114,-.039),(.100,.044),(.081,.072)],.007,8)])
-        M.rim('neck.%s.fork.machined.bevel'%s,'neck',p,surf,'machined',.008,.006)
-        M.actuator('neck.%s.short.pitch.piston'%s,'neck',(s*.124,.061,-.072),(s*.067,.038,.091),.024)
-        M.tube('neck.%s.cervical.power.bundle'%s,'neck',[(s*.095,.073,-.080),(s*.108,.090,-.020),(s*.063,.068,.074)],.010)
-    for i in range(3):
-        z=-.047+i*.046;w=.060-i*.010
-        p=[(-w,z),(-w*.70,z+.034),(0,z+.050),(w*.70,z+.034),(w,z),(0,z-.012)]
-        M.panel('neck.throat.overlapping.chevron.'+str(i),'neck',p,
-                lambda x,h:(x,-.104-.009*(1-abs(x)/.07),h),.009,'machined',spacing=.006)
-    m=K.Mesh()
-    G.turn(m,[(0,.027),(0,.053),(.024,.060),(.046,.046),(.060,.034),(.060,.025)],
-           (0,0,1),(0,.011,0),'dark',80,True)
-    M.emit(m,'head.underside.gimballed.socket','head')
+    from . import cervical
+    cervical.neck()
 
 
 def shoulders():
@@ -66,27 +48,8 @@ def shoulders():
 
 
 def collar():
-    # A deep cast mounting cradle sits on the chest, rather than a thin
-    # outline suspended in front of the neck. The central bearing stays free.
-    m=K.Mesh()
-    # The flared skirt runs down onto the hood, cowl and backbone below it.
-    profile=[(.640,.123),(.640,.262),(.668,.268),(.735,.254),(.785,.241),(.805,.243),
-             (.845,.223),(.929,.164),(.964,.142),(.969,.123),(.947,.109),(.815,.110)]
-    G.turn(m,profile,(0,0,1),(0,.155,0),'robot_graphite',96,True)
-    for p in m.v:p.x*=1.18
-    M.emit(m,'chest.cast.cervical.cradle','chest')
-    for s in (-1,1):
-        p=[(.032,.824),(.110,.783),(.298,.800),(.239,.946),(.126,.993),(.061,.938)]
-        def surface(x,z):return s*x,-.126+.125*max(0,min(1,(z-.80)/.20)),z
-        M.panel('chest.%s.solid.gorget.guard'%s,'chest',p,surface,.046,'paint',spacing=.012)
-        M.rim('chest.%s.gorget.rolled.rim'%s,'chest',p,surface,'machined',.009,.007)
-        M.actuator('chest.%s.collar.tension.strut'%s,'chest',
-                   (s*.275,.085,.804),(s*.125,.190,.953),.035)
-        m=K.Mesh()
-        for x,z in ((.157,.842),(.212,.886)):
-            y=surface(x,z)[1]
-            G.hardware(m,(s*x,y-.002,z),(s*x,y-.013,z),.012,'bronze',6)
-        M.emit(m,'chest.%s.collar.fixings'%s,'chest')
+    from . import cervical
+    cervical.collar()
 
 
 def limb_details():

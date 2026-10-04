@@ -3,7 +3,7 @@
 The editable scene is `../impala.blend`. Frame 0 is the car and frame 240 is the
 robot. The shared car geometry, articulated mechanical core, and rigid
 deployment are present in the live scene. Reference likeness and intermediate
-motion review are still in progress. No model export or game integration is approved.
+motion review are complete. `export_game.py` writes the game asset; game integration is not done.
 
 The car uses 39 rigid carriers. Body skins have actual thickness, authored
 longitudinal curves and concave transverse sections. Hood channels, wheel
