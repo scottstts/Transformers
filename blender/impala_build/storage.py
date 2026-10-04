@@ -1,4 +1,6 @@
-"""Full-size posterior castings rotate into the seat bases in car mode."""
+"""Posterior castings on their own carriers. They ride their joints rigidly:
+the joint nesting in stowage.py keeps them inside the body in car mode, so the
+old half-turn swivel (which orbited them through open air) is no longer used."""
 from mathutils import Matrix
 from . import kit as K, motion
 
@@ -8,7 +10,7 @@ SPECS={}
 def carrier(name,bone,parts,span):
     key='robot.storage.'+name
     if key not in K.NODES:K.node(key)
-    SPECS[key]={'bone':bone,'span':span,'stowed':K.rotation(z=180)}
+    SPECS[key]={'bone':bone,'span':span,'stowed':K.rotation()}
     for obj in K.PARTS:
         if not parts(obj.name):continue
         obj.parent=K.NODES[key];obj.matrix_parent_inverse=Matrix.Identity(4)

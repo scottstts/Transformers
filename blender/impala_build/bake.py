@@ -16,7 +16,10 @@ def keys(obj,frames,matrices):
     locations=[m.translation for m in matrices];rotations=[m.to_quaternion() for m in matrices]
     for i in range(1,len(rotations)):
         if rotations[i].dot(rotations[i-1])<0:rotations[i].negate()
-    for path,count,values in (('location',3,locations),('rotation_quaternion',4,rotations)):
+    channels=[('location',3,locations),('rotation_quaternion',4,rotations)]
+    scales=[m.to_scale() for m in matrices]
+    if any(abs(v-1)>1e-6 for s in scales for v in s):channels.append(('scale',3,scales))
+    for path,count,values in channels:
         for k in range(count):
             curve=bag.fcurves.new(path,index=k);curve.keyframe_points.add(len(frames))
             curve.keyframe_points.foreach_set('co',[v for i,f in enumerate(frames) for v in (f,values[i][k])])

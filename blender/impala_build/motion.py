@@ -80,6 +80,54 @@ def mix(a,b,u):
     return K.transform(p,q)
 
 
+def hinge(point,degrees):
+    """Rotation about a transverse (X) hinge line through a car-space point."""
+    p=Vector(point)
+    return Matrix.Translation(p)@K.rotation(x=degrees).to_matrix().to_4x4()@Matrix.Translation(-p)
+
+
+def keyed(points,rotations,u):
+    """Centripetal-free Catmull-Rom through pivot waypoints; rotations are
+    slerped segment by segment on a continuous hemisphere."""
+    n=len(points)-1;x=u*n;i=min(int(x),n-1);f=x-i
+    p0=points[max(i-1,0)];p1=points[i];p2=points[i+1];p3=points[min(i+2,n)]
+    pivot=.5*(2*p1+(p2-p0)*f+(2*p0-5*p1+4*p2-p3)*f*f+(3*p1-p0-3*p2+p3)*f**3)
+    a,b=rotations[i],rotations[i+1].copy()
+    if a.dot(b)<0:b.negate()
+    return pivot,a.slerp(b,f)
+
+
+# Rear module: tail and bumper are its rigid base. When the rear wheels leave,
+# it sets down on its lowest point. It then rises clear of the ground and folds
+# on its own seams: the trunk lid's aft stamping swings down on the tail's top
+# edge, the forward stamping folds under it on the lid seam, and the rear screen,
+# still joined to that forward edge, stands up behind the tail lamps. Every
+# piece stays on a real hinge. The compact module is then carried onto the back
+# on the spine braces.
+REAR_DROP=.275
+TRUNK_HINGE=(0,2.790,.855)
+SCREEN_JOINT=(0,1.660,1.030)
+
+
+def rear_module(t,worlds,out):
+    from . import folds
+    ground=Matrix.Translation((0,0,-REAR_DROP*smooth(t,.04,.16)))
+    raised=Matrix.Translation((0,-.300,1.100-REAR_DROP))
+    final=worlds['chest']@A.final_relative(A.SPECS['tail'])
+    # Rises as soon as the robot lifts and closes on its back progressively,
+    # folding while it is still clear of the ground and the robot.
+    base=mix(ground,raised,smooth(t,.24,.40))
+    base=mix(base,final,smooth(t,.38,.74))
+    out['tail']=base;out['rear_bumper']=base.copy()
+    aft=base@hinge(TRUNK_HINGE,90*smooth(t,.33,.49))
+    spec=folds.SPECS.get('fold.trunk.aft')
+    v=smooth(t,*spec['span']) if spec else 0
+    fold=Matrix.Translation(spec['point'])@K.rotation(*[v*x for x in spec['angle']]).to_matrix().to_4x4()@Matrix.Translation(-spec['point']) if spec else Matrix.Identity(4)
+    out['trunk']=aft@fold.inverted()
+    # The fold chain leaves the screen leaning back 22 deg; its joint squares it.
+    out['rear_screen']=out['trunk']@hinge(SCREEN_JOINT,22*smooth(t,.37,.53))
+
+
 def assembly_worlds(t,worlds=None):
     worlds=worlds or core_worlds(t);initial=core_worlds(0);out={}
     for name,spec in A.SPECS.items():
@@ -89,8 +137,12 @@ def assembly_worlds(t,worlds=None):
         # A distant origin traces an artificial arc through the floor when
         # long stampings rotate. The shared physical mount carries the fold.
         u=smooth(t,a,b);source=Vector(spec['source'])
-        pivot=(rest@source).lerp(Vector(spec['target']),u)
-        q=rest.to_quaternion().slerp(spec['rotation'],u)
+        if spec.get('keys'):
+            pivot,q=keyed([rest@source]+[Vector(p) for p,r in spec['keys']]+[Vector(spec['target'])],
+                          [rest.to_quaternion()]+[r for p,r in spec['keys']]+[spec['rotation']],u)
+        else:
+            pivot=(rest@source).lerp(Vector(spec['target']),u)
+            q=rest.to_quaternion().slerp(spec['rotation'],u)
         relative=K.transform(pivot,q)@Matrix.Translation(-source)
         out[name]=worlds[bone]@relative
     for side,s in (('L',1),('R',-1)):
@@ -110,13 +162,19 @@ def assembly_worlds(t,worlds=None):
         folded=worlds['shin.'+side].to_quaternion()@spec['rotation']
         q=out[family].to_quaternion().slerp(folded,smooth(t,.32,.74))
         out['axle.front.'+side]=K.transform(pivot,q)@Matrix.Translation(-source)
+    # Grille, bumper and engine stay with the hood: the car front is one unit.
+    for name in ('nose','front_bumper'):out[name]=out['hood.front'].copy()
+    # The engine rises flush under the hood skin before the unit swings past
+    # the head, so only the thin hood stack travels near the helmet.
+    out["engine"]=out["hood.front"]@Matrix.Translation((0,0,.455*(smooth(t,.02,.08)-smooth(t,.70,.86))))
+    rear_module(t,worlds,out)
     # The two hood stamps meet on the same physical hinge in the final fold.
     # Its full-size rear portion rotates down behind the front stamping.
     h=A.SPECS['hood.front'];front=out['hood.front']
     hinge=Vector((0,-1.795,.0));from . import contract as D
     hinge.z=D.hood_height(0,-1.795)
     target=front@hinge
-    q=front.to_quaternion()@K.rotation(x=-95*smooth(t,.19,.74))
+    q=front.to_quaternion()@K.rotation(x=-95*smooth(t,.28,.42))
     rear=K.transform(target,q)@Matrix.Translation(-hinge)
     out['hood.rear']=rear
     from . import folds
@@ -145,7 +203,8 @@ def matrices(t):
 def apply(t):
     local,core,panels=matrices(t)
     for name,matrix in local.items():
-        obj=K.NODES[name];obj.matrix_basis=matrix;obj.scale=(1,1,1)
+        obj=K.NODES[name];obj.matrix_basis=matrix
+        if not name.startswith('robot.stowed.'):obj.scale=(1,1,1)
     bpy.context.view_layer.update()
     return {'t':t,'planted_feet':t>=.28,'head_scale':tuple(K.NODES['robot.head'].scale)}
 

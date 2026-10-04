@@ -100,29 +100,35 @@ def build():
             if obj.type=='MESH' and obj.parent==K.NODES[part]:cut_object(obj,0,0,right,left)
     for zone,y in (('front',-1.300),('middle',.100),('rear',1.430)):
         part='floor.'+zone;left='fold.'+part+'.L';right='fold.'+part+'.R'
-        hinge(left,part,(0,y,.340),(0,-178,0),(.30,.87))
-        hinge(right,part,(0,y,.340),(0,0,0),(.30,.87))
+        # Mirror-image book fold on a centre line just under the pan.
+        hinge(left,part,(0,y,.290),(0,90,0),(.30,.80))
+        hinge(right,part,(0,y,.290),(0,-90,0),(.30,.80))
         for obj in list(K.PARTS):
             if obj.type=='MESH' and obj.parent==K.NODES[part]:cut_object(obj,0,0,right,left)
         for node in (left,right):
             carrier_cut(node,node+'.end',1,y,(0,y,.340),(178,0,0),low=False,span=(.24,.74))
     # The tailpipes run past the folded floor ends and would stand above the
-    # shoulders. Their tails flip back down beside the pipe, pivoting just
-    # above it so the two runs lie side by side.
+    # shoulders. Their tails flip back down onto the pipe, pivoting on its top
+    # surface so the two runs stay in contact through the whole turn.
     for side in ('L','R'):
         end='fold.floor.rear.%s.end'%side;tail='fold.exhaust.tail.'+side
-        hinge(tail,end,(0,2.150,.415),(178,0,0),(.30,.80))
+        hinge(tail,end,(0,2.150,.382),(178,0,0),(.30,.80))
         for obj in list(K.PARTS):
             if obj.type=='MESH' and obj.name.startswith('car.exhaust.') and obj.parent in (K.NODES[end],K.NODES[tail]):
                 cut_object(obj,1,2.150,end,tail)
-    hinge('fold.roof.L','roof',(0,.150,1.350),(0,-178,0),(.35,.88))
-    hinge('fold.roof.R','roof',(0,.150,1.350),(0,0,0),(.35,.88))
+    # Both roof halves close like a book on the centre line, mirror images of
+    # each other; neither half flips over the other.
+    carrier_cut('driveline','fold.driveline.aft',1,.425,(0,.425,.322),(178,0,0),low=False,span=(.20,.42))
+    hinge('fold.roof.L','roof',(0,.150,1.350),(0,90,0),(.35,.80))
+    hinge('fold.roof.R','roof',(0,.150,1.350),(0,-90,0),(.35,.80))
     for obj in list(K.PARTS):
         if obj.type=='MESH' and obj.parent==K.NODES['roof']:cut_object(obj,0,0,'fold.roof.R','fold.roof.L')
     for node in ('fold.roof.L','fold.roof.R'):
         carrier_cut(node,node+'.aft',1,.15,(0,.15,1.350),(178,0,0),low=False,span=(.25,.74))
-    carrier_cut('trunk','fold.trunk.aft',1,2.1,(0,2.1,1.0),(178,0,0),low=False,span=(.27,.76))
-    hinge('fold.fuel_tank','tail',(0,2.040,.365),(90,0,0),(.35,.87),(0,.380,.280))
+    carrier_cut('trunk','fold.trunk.aft',1,2.1,(0,2.1,1.0),(178,0,0),low=False,span=(.35,.51))
+    # The tank and its cradle are bolted to the tail panel and ride the rear
+    # module rigidly; the module sets down on the tank's skid.
+    hinge('fold.fuel_tank','tail',(0,2.040,.305),(0,0,0),(.30,.50))
     for obj in K.PARTS:
         if obj.name.startswith('car.fuel.tank.'):
             obj.parent=K.NODES['fold.fuel_tank'];obj.matrix_parent_inverse=Matrix.Identity(4)

@@ -75,7 +75,8 @@ def pelvis():
     M.panel('pelvis.central.keel.armour','pelvis',p,lambda x,z:(x,-.277-.055*(1-abs(x)/.13),z),
             .025,'robot_graphite',spacing=.012)
     M.rim('pelvis.central.keel.border','pelvis',p,lambda x,z:(x,-.284-.055*(1-abs(x)/.13),z),'machined',.010,.008)
-    M.bearing('pelvis.rear.differential.cover','pelvis',(0,.211,.010),(0,1,0),.170,.102)
+    # Seated against the waist rotor's lower face.
+    M.bearing('pelvis.rear.differential.cover','pelvis',(0,.211,.060),(0,1,0),.170,.102)
 
 
 def shoulders():

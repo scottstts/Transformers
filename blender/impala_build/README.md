@@ -68,9 +68,10 @@ and bakes the deployment. `run.bake_stage()` refreshes the braces and timeline.
 `head_review.py` and `robot_review.py` produce unwarped reference comparisons;
 the latter also makes a nine-frame motion contact sheet.
 
-The cutlass is excluded from the Impala scene. `stowage.py` creates rigid
-storage carriers inside closed car volumes and bakes their return to the
-joint frames. `robot_refit.py` owns the short cervical cradle and forged
+The cutlass is excluded from the Impala scene. `stowage.py` nests each robot
+casting group inside the body envelope by a straight slide in its own joint
+frame; the group slides back out while its joint moves (docs/impala-model.md).
+`transition_audit.py` reports panel/core pass-through and unsupported islands. `robot_refit.py` owns the short cervical cradle and forged
 shoulder bridges. The arm rig uses forward elbow flexion and mirrored inner
 thumb roots. The wheel bead seats on the rim without a daylight gap; wheel
 tubs are omitted as requested.
@@ -85,14 +86,17 @@ carrier: the tail carrier spans the robot torso front to back, so cowl parts on
 it end up in front of the chest. The interior mirror hangs from the roof header
 behind the windshield's top edge.
 
-The robot head is authored at 1.42×, seated 45 mm down onto the neck, and carried by an armoured cervical sleeve
-(`head.neck()`, called from `head.build()`) that tapers up into the skull. A
-dark inner core, inset 16 mm (30 mm at the front) inside the helmet plan, closes the view through the
-face and temple seams. The helmet plan has a rounded occiput (sampled arc, 6 mm crown past the
-flanks); the occipital housing reuses that rear arc, so the nape meets the shell
-flush. Head depth is capped near 0.50 m by the bonnet storage volume. The faceplate has a
-shallow chevron plan and stays near-vertical under the brow; the occiput keeps its depth down to the
-nape. A larger head needs `run.bake_stage()` so stowage re-fits it in the bonnet.
+The robot head follows the concept's Prime-style helmet: nearly as deep as it is
+tall, with a broad crown that peaks toward the front and falls away to the back
+(a wedge in side view). A wedge-section forehead fin rises from behind the V
+visor, its top level with the crown, and carries the crest rail back over the
+head. The ear discs sit in the rear half at about a third of the head height,
+with tapered blade antennas. The faceplate is near-vertical under the brow with
+a slatted mouth vent. The head is authored at 1.42x, seated 45 mm down onto the
+armoured cervical sleeve (`head.neck()`, called from `head.build()`). A dark
+inner core, inset 16 mm (30 mm at the front), closes the view through the seams.
+The occipital housing reuses the helmet ring's rear arc, so the nape meets the
+shell flush. After any head change run `run.bake_stage()`.
 
 The abdomen V-plates are shingled 20 mm apart so their overlaps never share a
 surface. The bench halves fold into one nested volume; opposite 2 mm axial
@@ -100,5 +104,5 @@ slides on their hinges keep coincident faces apart.
 
 The cervical cradle's skirt runs down onto the hood, cowl and backbone, so the
 neck base is seated on the body. The rear tailpipes run past the folded floor
-ends; the `fold.exhaust.tail.L` and `.R` hinges flip their tails (and the rear hangers) back down
-beside the pipe so nothing stands above the shoulders.
+ends; the `fold.exhaust.tail.L` and `.R` hinges flip their tails (and the rear
+hangers) onto the pipe, pivoting on its top surface.

@@ -32,12 +32,29 @@ def upperarm(side,s):
     M.bearing('elbow.'+side+'.pitch.race','forearm.'+side,(0,0,0),(s,0,0),.145,.335)
 
 
+HOUSING=((-.105,.221,.240),(-.153,.310,.326),(-.363,.319,.333),
+         (-.689,.268,.282),(-.865,.216,.224),(-.925,.180,.193))
+
+
+def housing_front(z):
+    """Front face of the forearm housing at a station (bone frame)."""
+    rows=[(zz,.014-d/2) for zz,w,d in HOUSING]
+    if z>=rows[0][0]:return rows[0][1]
+    for (a,ya),(b,yb) in zip(rows,rows[1:]):
+        if b<=z<=a:return ya+(yb-ya)*(z-a)/(b-a)
+    return rows[-1][1]
+
+
+def gauntlet_y(x,z):
+    """Inner gauntlet face: seated on the housing, crowned 36 mm at the spine."""
+    return housing_front(z)-.004-.036*max(0,1-(x/.2)**2)
+
+
 def forearm(side,s):
     bone='forearm.'+side
     m=K.Mesh()
     rings=[]
-    for z,w,d in ((-.105,.221,.240),(-.153,.310,.326),(-.363,.319,.333),
-                  (-.689,.268,.282),(-.865,.216,.224),(-.925,.180,.193)):
+    for z,w,d in HOUSING:
         rings.append([(x,y+.014,z) for x,y in G.rounded_rect(w,d,.038,10)])
     m.loft(rings,'dark',smooth=True)
     M.emit(m,'forearm.'+side+'.tapered.cast.power.housing',bone)
@@ -46,7 +63,7 @@ def forearm(side,s):
     p=[(-.139,-.179),(-.019,-.117),(.157,-.207),(.173,-.543),
        (.103,-.867),(-.021,-.932),(-.142,-.803),(-.162,-.375)]
     holes=[G.rounded_polygon([(-.084,-.338),(-.034,-.319),(-.033,-.562),(-.080,-.588)],.009,6)]
-    surf=lambda x,z:(x,-.192-.054*(1-(x/.2)**2)+.017*abs(z+.51),z)
+    surf=lambda x,z:(x,gauntlet_y(x,z),z)
     M.panel('forearm.'+side+'.inner.formed.gauntlet',bone,p,surf,.019,'paint',spacing=.012,cutouts=holes)
     M.rim('forearm.'+side+'.gauntlet.rolled.chrome.edge',bone,p,
           lambda x,z:(x,surf(x,z)[1]-.004,z),'chrome',.013,.009)

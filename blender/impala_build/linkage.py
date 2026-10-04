@@ -13,7 +13,11 @@ def definitions():
         rows=[('fender.'+side,'shin.'+side,(0,.075,-.030),'front_fender.'+side,(s*.890,D.FRONT_AXLE,.640),.031),
               ('door.'+side,'shoulder.'+side,(-s*.120,.250,-.100),'front_door.'+side,(s*.877,-.580,.470),.028),
               ('gauntlet.'+side,'forearm.'+side,(0,.100,-.130),'rear_door.'+side,(s*.890,.733,.470),.025),
-              ('hood.'+side,'chest',(s*.480,.120,.170),'hood.front',(s*.460,-1.795,D.hood_height(.460,-1.795)-.063),.028)]
+              ('hood.'+side,'chest',(s*.480,.120,.170),'hood.front',(s*.460,-1.795,D.hood_height(.460,-1.795)-.063),.028),
+              # Spine braces carry the rear module from the pelvis's back plate.
+              ('spine.'+side,'spine',(s*.100,.210,-.040),'trunk',(s*.420,1.880,1.000),.032),
+              # The roof rides a brace from the upper back until it docks.
+              ('roof.'+side,'chest',(s*.120,.280,.780),'roof',(s*.060,.100,1.445),.026)]
         for name,bone,a,panel,b,radius in rows:
             LINKS[name]={'bone':bone,'a':a,'panel':panel,'b':b,'radius':radius}
     return LINKS

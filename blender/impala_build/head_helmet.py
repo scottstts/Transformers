@@ -4,10 +4,15 @@ import bpy
 from mathutils import Vector
 from . import kit as K,geometry as G,robot_geometry as M,contract as D
 
-# Full rounded occiput: the back keeps its depth down to the nape.
-STATIONS=[(.055,.042,-.118,-.010),(.106,.077,-.181,.032),(.180,.124,-.195,.070),
-          (.258,.146,-.204,.088),(.315,.151,-.220,.094),(.365,.146,-.207,.090),
-          (.423,.126,-.150,.074),(.467,.083,-.081,.045),(.491,.035,-.023,.012)]
+# Concept helmet: nearly as deep as it is tall. The crown stays broad, peaks
+# toward the front and falls away to the back, so the side reads as a wedge.
+# The occiput keeps its depth down to the nape. Depth is bounded by the bonnet
+# storage volume.
+STATIONS=[(.055,.050,-.130,.000),(.106,.090,-.185,.050),(.180,.128,-.200,.100),
+          (.258,.148,-.208,.128),(.315,.152,-.216,.138),(.365,.150,-.212,.132),
+          (.410,.141,-.200,.112),(.445,.122,-.182,.082),(.468,.090,-.155,.040),
+          (.481,.045,-.124,-.008),(.486,.010,-.098,-.040)]
+TOP=STATIONS[-1][0]
 WIDTH=D.Curve([(z,w) for z,w,f,b in STATIONS])
 FRONT=D.Curve([(z,f) for z,w,f,b in STATIONS])
 BACK=D.Curve([(z,b) for z,w,f,b in STATIONS])
@@ -41,6 +46,13 @@ def back_y(x,z):
     return max(values) if values else BACK(z)
 
 
+def crown_z(y):
+    """Sagittal crown height at a fore-aft station."""
+    for z in G.lin(TOP,.312,200):
+        if front_y(0,z)<=y<=back_y(0,z):return z
+    return .312
+
+
 def flank_x(y,z):
     p=ring(z);values=[]
     y=max(min(a.y for a in p)+1e-7,min(max(a.y for a in p)-1e-7,y))
@@ -54,7 +66,7 @@ def shell():
     m=K.Mesh()
     # The cranial helmet ends at the brow. It is not an egg-shaped shell
     # running continuously from the crown to the chin.
-    zs=sorted(set(G.lin(.312,.491,75)+[z for z,w,f,b in STATIONS if z>=.312]))
+    zs=sorted(set(G.lin(.312,TOP,75)+[z for z,w,f,b in STATIONS if z>=.312]))
     m.loft([ring(z) for z in zs],'robot_graphite',smooth=True)
     obj=M.emit(m,'head.helmet.crowned.cast.shell','head')
     opening=[(-.047,.072),(.047,.072),(.097,.145),(.119,.265),(.125,.319),(-.125,.319),(-.119,.265),(-.097,.145)]
@@ -91,10 +103,25 @@ def core():
 
 
 def brow():
+    # Heavy V visor: it overhangs the optics and comes to a point between them.
     for s in (-1,1):
-        outline=[(0,.338),(.018,.324),(.125,.359),(.137,.347),(.126,.333),(.022,.302),(0,.313)]
+        outline=[(0,.343),(.022,.330),(.140,.372),(.152,.352),(.134,.336),(.026,.298),(0,.306)]
         M.panel('head.brow.%s.angled.stamped.blade'%s,'head',outline,
-                lambda x,z:(s*x,front_y(s*x,z)-.006,z),.009,'head_brow_alloy',spacing=.004)
+                lambda x,z:(s*x,front_y(s*x,z)-.010,z),.016,'head_brow_alloy',spacing=.004)
+
+
+# Forward-swept forehead fin in side profile (y, z); its base is buried in the crown.
+# Its top runs level with the crown so, head-on, it reads as the central ridge.
+FIN=[(-.226,.338),(-.236,.420),(-.252,.480),(-.238,.488),(-.186,.476),(-.140,.468),
+     (-.130,.450),(-.175,.400),(-.200,.338)]
+
+
+def fin():
+    # Wedge section: a knife leading edge widening aft into the crown.
+    m=K.Mesh()
+    rings=[[Vector((x,y+(.018 if x else 0),z)) for y,z in FIN] for x in (-.024,0,.024)]
+    m.loft(rings,'robot_graphite',cap=True,smooth=False)
+    M.emit(m,'head.forehead.swept.crest.fin','head')
 
 
 def crest():
@@ -115,21 +142,35 @@ def crest():
         G.sweep(m,path,[(-.003,-.003),(.002,-.003),(.004,0),(.002,.003),(-.003,.003)],
                 'head_brow_alloy',(s*.3,-.3,1))
         M.emit(m,'head.helmet.%s.longitudinal.crown.ribs'%s,'head')
+    # The crest rail caps the fin, then runs over the crown and down the back.
     m=K.Mesh()
-    path=[(0,front_y(0,z)-.012,z) for z in G.lin(.327,.491,92)]
-    path += [(0,y,.500) for y in G.lin(front_y(0,.491)-.008,back_y(0,.491)+.008,16)]
-    path += [(0,back_y(0,z)+.008,z) for z in G.lin(.491,.370,72)]
+    path=[tuple(p) for p in G.catmull([(0,-.250,.484),(0,-.238,.492),(0,-.186,.480),(0,-.150,crown_z(-.150)+.005)],8)]
+    path += [(0,y,crown_z(y)+.005) for y in G.lin(-.140,back_y(0,TOP)-.004,24)]
+    path += [(0,back_y(0,z)+.008,z) for z in G.lin(TOP-.010,.370,72)]
     G.sweep(m,path,[(-.006,-.012),(.002,-.012),(.006,-.009),(.007,.009),(.002,.012),(-.006,.012)],
-            'head_brow_alloy',(0,-.5,1))
+            'head_brow_alloy',(0,-.3,1))
     M.emit(m,'head.central.longitudinal.crest','head')
-    M.panel('head.forehead.central.inset','head',[(-.014,.344),(.014,.344),(.018,.420),(.012,.452),(-.012,.452),(-.018,.420)],
-            lambda x,z:(x,front_y(x,z)-.014,z),.003,'robot_graphite',spacing=.004)
+
+
+EAR_Y=.036
+EAR_SCALE=1.32
+
+
+def blade(m,base,axis,height,width,depth,mat):
+    """Tapered faceted antenna blade with a sharpened tip."""
+    a=Vector(axis).normalized();u=(Vector((1,0,0))-a*a.x).normalized();v=a.cross(u)
+    rings=[]
+    for t in G.lin(0,1,14):
+        k=1-.78*t**1.3
+        c=Vector(base)+a*height*t
+        rings.append([c+u*x+v*y for x,y in G.rounded_rect(width*k,depth*k,min(width,depth)*k*.22,4)])
+    m.loft(rings+[[Vector(base)+a*(height+.012)]*len(rings[0])],mat,cap=True,smooth=False)
 
 
 def ears():
     for s in (-1,1):
         m=K.Mesh()
-        center=(s*.166,.006,.309)
+        center=(s*.166,EAR_Y,.309)
         G.turn(m,[(-.007,.029),(-.007,.048),(.003,.052),(.013,.051),(.019,.046),
                   (.019,.037),(.013,.032),(.003,.029)],(s,0,0),center,'dark',96,True)
         G.turn(m,[(.015,.037),(.016,.047),(.021,.049),(.025,.044),(.025,.035),(.019,.033)],
@@ -141,22 +182,26 @@ def ears():
         G.turn(m,[(.030,0),(.030,.010),(.035,.011),(.037,.009),(.037,0)],
                (s,0,0),center,'bronze',64)
         for angle in G.lin(0,math.tau,5)[:-1]:
-            y=.006+.042*math.cos(angle);z=.309+.042*math.sin(angle)
+            y=EAR_Y+.042*math.cos(angle);z=.309+.042*math.sin(angle)
             G.hardware(m,(s*.188,y,z),(s*.191,y,z),.0024,'machined',8)
+        # Concept ear discs are about a third of the head height; scale the
+        # stack about its seat on the flank so it stays mounted.
+        seat=Vector((s*.159,EAR_Y,.309))
+        m.v=[seat+(p-seat)*EAR_SCALE for p in m.v]
         M.emit(m,'head.ear.%s.layered.rotor'%s,'head')
-        m=K.Mesh()
-        G.turn(m,[(0,0),(0,.011),(.016,.015),(.034,.012),(.100,.008),(.198,.005),(.205,.004),(.207,0)],
-               (s*.030,.025,1),(s*.167,.011,.350),'robot_graphite',40)
-        G.turn(m,[(0,.009),(.014,.009),(.018,.012),(.033,.012),(.039,.009),(.039,.006)],
-               (s*.030,.025,1),(s*.167,.011,.355),'machined',40,True)
+        # Concept antennas are tall tapered blades, not round whips.
+        m=K.Mesh();axis=(s*.06,.08,1);base=(s*.168,EAR_Y+.010,.350)
+        blade(m,base,axis,.230,.026,.034,'robot_graphite')
+        G.turn(m,[(0,.017),(.014,.017),(.018,.021),(.033,.021),(.039,.017),(.039,.013)],
+               axis,base,'machined',40,True)
         M.emit(m,'head.%s.rigid.antenna.horn'%s,'head')
         outline=[(-.059,.265),(.056,.263),(.058,.314),(.029,.366),(-.025,.364),(-.056,.315)]
         M.panel('head.temple.%s.ear.yoke'%s,'head',outline,
-                lambda y,z:(s*(flank_x(y+.040,z)+.003),y+.040,z),.008,'robot_graphite',outward=(s,0,0),spacing=.006)
+                lambda y,z:(s*(flank_x(y+EAR_Y+.034,z)+.003),y+EAR_Y+.034,z),.008,'robot_graphite',outward=(s,0,0),spacing=.006)
         p=[(-.133,.330),(-.110,.354),(-.025,.397),(.052,.373),(.069,.343),
            (.042,.323),(-.081,.331),(-.129,.316)]
         surface=lambda y,z:(s*(flank_x(y,z)+.008),y,z)
-        M.panel('head.temple.%s.swept.metal.brow.plate'%s,'head',p,surface,.011,'machined',
+        M.panel('head.temple.%s.swept.metal.brow.plate'%s,'head',p,surface,.011,'head_brow_alloy',
                 outward=(s,0,0),spacing=.005,
                 cutouts=[G.rounded_polygon([(-.078,.368),(-.031,.391),(-.021,.380),(-.063,.358)],.004,6)])
         M.rim('head.temple.%s.metal.rolled.brow.reveal'%s,'head',p,surface,
@@ -164,4 +209,4 @@ def ears():
 
 
 def build():
-    shell();core();brow();crest();ears()
+    shell();core();brow();fin();crest();ears()

@@ -93,8 +93,9 @@ def sails():
         m=K.Mesh()
         G.sweep(m,[(x+s*.012,y+.009,z) for x,y,z in path],G.round_section(.008,.008,12),'chrome',(s,0,0))
         emit(m,'car.A.pillar.window.trim.'+side,'roof',.0005)
-        # Vent wing is a real triangular glass panel in its own chromed frame.
-        triangle=[(s*.835,-.754,1.021),(s*.771,-.250,1.341),(s*.890,-.307,1.014)]
+        # Vent wing glass fills the whole four-sided opening: pillar foot, top,
+        # rear post and the sill line, in its own chromed frame.
+        triangle=[(s*.835,-.754,1.021),(s*.771,-.250,1.341),(s*.890,-.307,1.014),(s*.893,-.736,1.009)]
         m=K.Mesh()
         m.prism(triangle,(-s*.003,0,0),'glass')
         emit(m,'car.front_door.vent.glass.'+side,'front_door.'+side,.0005)

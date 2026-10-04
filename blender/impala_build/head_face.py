@@ -23,15 +23,19 @@ def face_point(x,z):
 
 
 def mask():
-    upper=G.catmull([(-.025,.187,0),(-.016,.196,0),(0,.199,0),(.016,.196,0),(.025,.187,0)],8)
-    lower=G.catmull([(.022,.186,0),(.013,.192,0),(0,.195,0),(-.013,.192,0),(-.022,.186,0)],8)
-    mouth=[(p.x,p.y) for p in upper+lower]
-    creases=[[(x,z) for z in G.lin(.194,.283,39)] for x in (-.012,0,.012)]
+    # Battle-mask mouth: a framed opening with vertical vent slats.
+    mouth=G.rounded_polygon([(-.031,.172),(.031,.172),(.035,.205),(.010,.212),(0,.209),(-.010,.212),(-.035,.205)],.003,5)
+    creases=[[(x,z) for z in G.lin(.218,.283,30)] for x in (-.012,0,.012)]
     creases += [[(-.056,z) for z in G.lin(.146,.264,24)],[(.056,z) for z in G.lin(.146,.264,24)]]
     M.panel('head.mask.sculpted.nasal.cheek.facets','head',uv(MASK),face_point,.0055,'mask_alloy',
             spacing=.0035,cutouts=[uv(mouth)],creases=creases)
-    M.panel('head.mask.mouth.recess','head',uv([(-.029,.181),(.029,.181),(.029,.208),(-.029,.208)]),
+    M.panel('head.mask.mouth.recess','head',uv([(-.040,.166),(.040,.166),(.040,.218),(-.040,.218)]),
             lambda x,z:(x,face_point(x,z)[1]+.010,z),.003,'dark',spacing=.006)
+    m=K.Mesh()
+    for x0 in (-.020,-.0067,.0067,.020):
+        bar=[(x0+u,.190+v) for u,v in G.rounded_rect(.0065,.034,.0015,4)]
+        m.prism([(x,face_point(x,z)[1]+.009,z) for x,z in bar],(0,-.010,0),'mask_alloy')
+    M.emit(m,'head.mask.mouth.vent.slats','head')
     chin=[(-.024,.108),(-.035,.127),(-.032,.150),(-.020,.164),(-.010,.168),
           (.010,.168),(.020,.164),(.032,.150),(.035,.127),(.024,.108),
           (.014,.116),(.017,.136),(.010,.150),(-.010,.150),(-.017,.136),(-.014,.116)]
@@ -43,7 +47,8 @@ def mask():
 
 def eyes():
     for s in (-1,1):
-        p=G.rounded_polygon([(s*x,z) for x,z in ((.024,.311),(.103,.322),(.108,.307),(.095,.293),(.047,.294),(.027,.301))],.006,10)
+        # Slanted optics tucked under the V visor.
+        p=G.rounded_polygon([(s*x,z) for x,z in ((.026,.300),(.104,.324),(.110,.310),(.098,.294),(.050,.292),(.030,.294))],.006,10)
         cx=s*.066;cz=.306
         m=K.Mesh();rings=[]
         for scale,depth in ((1.11,.025),(1.11,-.005),(1,-.010),(.90,-.010),(.90,.025)):
@@ -53,7 +58,7 @@ def eyes():
         lens=[(cx+(x-cx)*.895,cz+(z-cz)*.895) for x,z in p]
         M.panel('head.eye.%s.blue.optical.lens'%s,'head',lens,
                 lambda x,z:(x,H.front_y(x,z)-.007,z),.004,'head_eye',spacing=.004)
-        core=G.rounded_polygon([(s*x,z) for x,z in ((.039,.309),(.095,.317),(.098,.307),(.080,.298),(.044,.300))],.006,10)
+        core=G.rounded_polygon([(s*x,z) for x,z in ((.040,.302),(.096,.318),(.100,.308),(.082,.298),(.046,.297))],.006,10)
         M.panel('head.eye.%s.luminous.core'%s,'head',core,
                 lambda x,z:(x,H.front_y(x,z)-.008,z),.002,'eye_core',spacing=.004)
 

@@ -48,7 +48,8 @@ def shoulders():
         M.bearing('shoulder.'+side+'.yaw.drive',bone,(-s*.098,.043,.130),(0,0,1),.117,.114)
         for i in range(3):
             x=-.435+i*.095
-            p=[(x,.165),(x+.066,.180),(x+.078,.218),(x+.014,.204)]
+            # Seated on the clavicle slide housing below them.
+            p=[(x,.125),(x+.066,.140),(x+.078,.178),(x+.014,.164)]
             M.panel('shoulder.'+side+'.upper.slide.lamella.'+str(i),bone,p,
                     lambda x,z:(s*x,-.060,z),.056,'paint',spacing=.016)
         # Split clavicular fairings descend into the hood's folded rear edge.
@@ -127,18 +128,20 @@ def limb_details():
         # lens and a metal guard, matching the concept's car-tail-light motif.
         bone='forearm.'+side
         outline=G.rounded_polygon([(-.097,-.319),(-.025,-.292),(-.028,-.703),(-.080,-.734)],.014,10)
-        surf=lambda x,z:(x,-.253+.009*(z+.5)**2,z)
+        from .robot_arms import gauntlet_y
+        surf=lambda x,z:(x,gauntlet_y(x,z)-.024,z)
         M.panel('forearm.'+side+'.recessed.signal.cast.frame',bone,outline,surf,.018,'dark',spacing=.009,
                 cutouts=[G.rounded_polygon([(-.081,-.345),(-.042,-.329),(-.045,-.680),(-.071,-.697)],.009,9)])
         M.rim('forearm.'+side+'.signal.chrome.guard',bone,outline,
               lambda x,z:(x,surf(x,z)[1]-.003,z),'machined',.006,.006)
         m=K.Mesh()
         p=G.rounded_polygon([(-.079,-.346),(-.044,-.333),(-.047,-.677),(-.069,-.692)],.007,9)
-        m.prism([(x,-.246,z) for x,z in p],(0,.012,0),'red_lens')
+        m.prism([(x,gauntlet_y(x,z)-.017,z) for x,z in p],(0,.012,0),'red_lens')
         M.emit(m,'forearm.'+side+'.recessed.red.signal',bone,.001)
         for i in range(5):
             z=-.378-i*.055;m=K.Mesh()
-            G.hardware(m,(-.076,-.258,z),(-.044,-.258,z+.011),.0025,'machined',12)
+            y=gauntlet_y(-.060,z)-.029
+            G.hardware(m,(-.076,y,z),(-.044,y,z+.011),.0025,'machined',12)
             M.emit(m,'forearm.'+side+'.signal.protective.rib.'+str(i),bone)
 
 
