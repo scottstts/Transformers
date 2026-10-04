@@ -22,8 +22,8 @@ def car_stage():
 def robot_stage():
     from . import robot,attachments,folds,linkage,stowage,bake
     bpy.context.scene.frame_set(0)
-    core=robot.build();attachments.definitions();folds.build();braces=linkage.build()
-    stowage.build();timeline=bake.build();stage.viewport('car')
+    core=robot.build();attachments.definitions();folds.build()
+    stowage.build();braces=linkage.build();timeline=bake.build();stage.viewport('car')
     return {'core':core,'braces':braces,'timeline':timeline}
 
 
@@ -48,8 +48,9 @@ def refresh_car():
 
 def bake_stage():
     from . import robot,robot_armour,storage,stowage,attachments,folds,linkage,bake
-    robot.hydrate();attachments.definitions();folds.build();robot_armour.build();storage.build();linkage.build()
-    stowage.build()
+    robot.hydrate();attachments.definitions();folds.build();robot_armour.build();storage.build()
+    # Booms end on nested casting groups, so nesting is fitted before braces.
+    stowage.build();linkage.build()
     return bake.build()
 
 

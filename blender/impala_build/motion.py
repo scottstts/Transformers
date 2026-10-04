@@ -5,6 +5,7 @@ from mathutils import Matrix,Vector,Quaternion
 from . import kit as K,rig,attachments as A
 
 FRAMES=240
+HOOD_FOLD_SPAN=(.40,.54)
 
 
 def smooth(t,a,b):
@@ -164,9 +165,7 @@ def assembly_worlds(t,worlds=None):
         out['axle.front.'+side]=K.transform(pivot,q)@Matrix.Translation(-source)
     # Grille, bumper and engine stay with the hood: the car front is one unit.
     for name in ('nose','front_bumper'):out[name]=out['hood.front'].copy()
-    # The engine rises flush under the hood skin before the unit swings past
-    # the head, so only the thin hood stack travels near the helmet.
-    out["engine"]=out["hood.front"]@Matrix.Translation((0,0,.455*(smooth(t,.02,.08)-smooth(t,.70,.86))))
+    out["engine"]=out["hood.front"].copy()
     rear_module(t,worlds,out)
     # The two hood stamps meet on the same physical hinge in the final fold.
     # Its full-size rear portion rotates down behind the front stamping.
@@ -174,7 +173,7 @@ def assembly_worlds(t,worlds=None):
     hinge=Vector((0,-1.795,.0));from . import contract as D
     hinge.z=D.hood_height(0,-1.795)
     target=front@hinge
-    q=front.to_quaternion()@K.rotation(x=-95*smooth(t,.28,.42))
+    q=front.to_quaternion()@K.rotation(x=-95*smooth(t,*HOOD_FOLD_SPAN))
     rear=K.transform(target,q)@Matrix.Translation(-hinge)
     out['hood.rear']=rear
     from . import folds
@@ -182,7 +181,7 @@ def assembly_worlds(t,worlds=None):
     return out
 
 
-def matrices(t):
+def matrices(t,include_linkage=True):
     if not A.SPECS:A.definitions()
     core=core_worlds(t);panels=assembly_worlds(t,core)
     out={}
@@ -194,17 +193,17 @@ def matrices(t):
     from . import storage
     if storage.SPECS:out.update(storage.worlds(t,core))
     from . import linkage
-    if linkage.LINKS:out.update(linkage.worlds(t,core,panels))
+    if include_linkage and linkage.LINKS:out.update(linkage.worlds(t,core,panels))
     from . import stowage
     if stowage.SPECS:out.update(stowage.worlds(t))
     return out,core,panels
 
 
-def apply(t):
-    local,core,panels=matrices(t)
+def apply(t,include_linkage=True):
+    local,core,panels=matrices(t,include_linkage=include_linkage)
     for name,matrix in local.items():
         obj=K.NODES[name];obj.matrix_basis=matrix
-        if not name.startswith('robot.stowed.'):obj.scale=(1,1,1)
+        if not name.startswith(('robot.stowed.','link.')):obj.scale=(1,1,1)
     bpy.context.view_layer.update()
     return {'t':t,'planted_feet':t>=.28,'head_scale':tuple(K.NODES['robot.head'].scale)}
 

@@ -4,7 +4,6 @@ from mathutils import Vector
 from . import kit as K, contract as D, geometry as G
 from .body import emit
 
-ENGINE_Y=-1.995
 
 
 def suspension():
@@ -69,24 +68,7 @@ def driveline():
     for x in G.lin(-.09,.09,7):
         G.sweep(m,[(x,D.REAR_AXLE-.118,.220),(x,D.REAR_AXLE-.123,.290),(x,D.REAR_AXLE-.092,.360)],G.round_section(.008,.008,8),'dark',(0,-1,0))
     emit(m,'car.differential.cast.cooling.ribs','floor.rear',.001)
-    # Authored sump/timing-pan stations, retaining a visibly cast shoulder. The
-    # block sits forward in the bay, clear of the robot head packed behind it.
-    m=K.Mesh()
-    rings=[]
-    for z,w,d in ((.252,.259,.421),(.268,.392,.590),(.378,.420,.680),(.524,.364,.650)):
-        rings.append([(x,ENGINE_Y+y,z) for x,y in G.rounded_rect(w,d,.064,10)])
-    m.loft(rings,'dark',smooth=True)
-    emit(m,'car.engine.cast.sump','engine',.006)
-    m=K.Mesh()
-    for y in G.lin(ENGINE_Y-.245,ENGINE_Y+.255,9):
-        G.sweep(m,[(-.150,y,.264),(.150,y,.264)],G.round_section(.016,.009,8),'steel',(0,0,-1))
-    emit(m,'car.engine.sump.ribs','engine',.001)
     for s in (-1,1):
-        m=K.Mesh()
-        for y in G.lin(ENGINE_Y-.230,ENGINE_Y+.210,4):
-            p=G.catmull([(s*.172,y,.452),(s*.282,y,.408),(s*.307,y+.08,.319)],12)
-            G.sweep(m,p,G.round_section(.027,.027,12),'bronze',(s,0,0))
-        emit(m,'car.engine.exhaust.manifold.'+str(s),'engine',.001)
         p=G.catmull([(s*.307,-1.65,.315),(s*.40,-.88,.318),(s*.42,.10,.326),
                      (s*.49,.89,.326),(s*.63,1.42,.420),(s*.73,1.83,.365),
                      (s*.764,2.42,.361),(s*.764,2.67,.361)],12)

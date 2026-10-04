@@ -100,9 +100,10 @@ def build():
             if obj.type=='MESH' and obj.parent==K.NODES[part]:cut_object(obj,0,0,right,left)
     for zone,y in (('front',-1.300),('middle',.100),('rear',1.430)):
         part='floor.'+zone;left='fold.'+part+'.L';right='fold.'+part+'.R'
-        # Mirror-image book fold on a centre line just under the pan.
-        hinge(left,part,(0,y,.290),(0,90,0),(.30,.80))
-        hinge(right,part,(0,y,.290),(0,-90,0),(.30,.80))
+        # Pans stay whole and keep their car orientation; only the end flap
+        # folds on its hinge before the pan slides into the torso.
+        hinge(left,part,(0,y,.290),(0,0,0),(.30,.80))
+        hinge(right,part,(0,y,.290),(0,0,0),(.30,.80))
         for obj in list(K.PARTS):
             if obj.type=='MESH' and obj.parent==K.NODES[part]:cut_object(obj,0,0,right,left)
         for node in (left,right):
@@ -116,11 +117,10 @@ def build():
         for obj in list(K.PARTS):
             if obj.type=='MESH' and obj.name.startswith('car.exhaust.') and obj.parent in (K.NODES[end],K.NODES[tail]):
                 cut_object(obj,1,2.150,end,tail)
-    # Both roof halves close like a book on the centre line, mirror images of
-    # each other; neither half flips over the other.
     carrier_cut('driveline','fold.driveline.aft',1,.425,(0,.425,.322),(178,0,0),low=False,span=(.20,.42))
-    hinge('fold.roof.L','roof',(0,.150,1.350),(0,90,0),(.35,.80))
-    hinge('fold.roof.R','roof',(0,.150,1.350),(0,-90,0),(.35,.80))
+    # The roof stays whole; only its aft section folds on the transverse seam.
+    hinge('fold.roof.L','roof',(0,.150,1.350),(0,0,0),(.35,.80))
+    hinge('fold.roof.R','roof',(0,.150,1.350),(0,0,0),(.35,.80))
     for obj in list(K.PARTS):
         if obj.type=='MESH' and obj.parent==K.NODES['roof']:cut_object(obj,0,0,'fold.roof.R','fold.roof.L')
     for node in ('fold.roof.L','fold.roof.R'):

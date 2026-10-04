@@ -1,10 +1,12 @@
 """Telescopic panel braces with constant-size stages and actual pinned ends."""
 import math
+import hashlib
 import bpy
-from mathutils import Vector
+from mathutils import Matrix,Vector
 from . import kit as K,geometry as G,motion,contract as D
 
 LINKS={}
+GROWN=.040
 
 
 def definitions():
@@ -20,11 +22,28 @@ def definitions():
               ('roof.'+side,'chest',(s*.120,.280,.780),'roof',(s*.060,.100,1.445),.026)]
         for name,bone,a,panel,b,radius in rows:
             LINKS[name]={'bone':bone,'a':a,'panel':panel,'b':b,'radius':radius}
+    # The neck and head pack under the cowl and hood and return on telescopic
+    # booms (chest to neck, neck to head) that end retracted inside the sleeve.
+    neck='robot.stowed.'+hashlib.sha1(b'robot.neck').hexdigest()[:16]
+    head='robot.stowed.'+hashlib.sha1(b'robot.head').hexdigest()[:16]
+    LINKS['neck.boom']={'bone':'chest','a':(0,.155,.540),'panel':neck,'b':(0,0,.020),'radius':.034}
+    LINKS['head.boom']={'bone':neck,'a':(0,0,.030),'panel':head,'b':(0,0,.120),'radius':.030}
     return LINKS
 
 
-def ends(spec,core,panels,t=1):
-    a=core[spec['bone']]@Vector(spec['a']);b=panels[spec['panel']]@Vector(spec['b'])
+def frame(name,core,panels,stowed):
+    """World frame of a rig joint, car carrier or nested casting group."""
+    if name in core:return core[name]
+    if name.startswith('robot.stowed.'):
+        return core[K.NODES[name].parent.name[len('bone.robot.'):]]@stowed[name]
+    return panels[name]
+
+
+def ends(spec,core,panels,t=1,stowed=None):
+    if stowed is None:
+        from . import stowage
+        stowed=stowage.worlds(t)
+    a=frame(spec['bone'],core,panels,stowed)@Vector(spec['a']);b=frame(spec['panel'],core,panels,stowed)@Vector(spec['b'])
     if spec['panel'].startswith(('front_door.','rear_door.')):
         s=1 if spec['panel'].endswith('.L') else -1
         # Fold the mounting clevis into the boxed seat pedestal. In car mode
@@ -38,8 +57,10 @@ def ranges():
     values={name:[] for name in LINKS}
     for frame in range(motion.FRAMES+1):
         t=frame/motion.FRAMES;core=motion.core_worlds(t);panels=motion.assembly_worlds(t,core)
+        from . import stowage
+        stowed=stowage.worlds(t)
         for name,spec in LINKS.items():
-            a,b=ends(spec,core,panels,t);values[name].append((b-a).length)
+            a,b=ends(spec,core,panels,t,stowed);values[name].append((b-a).length)
     return {name:(min(lengths),max(lengths)) for name,lengths in values.items()}
 
 
@@ -95,7 +116,10 @@ def worlds(t,core,panels):
         step=((b-a).length-length)/(count-1)
         if step<0 or step>length:
             raise RuntimeError('Telescopic stroke exceeded: '+name+' @ '+str(t))
-        for i in range(count):out['link.'+name+'.stage.'+str(i)]=K.transform(a+axis*(i*step),q)
-        out['link.'+name+'.pin.A']=K.transform(a,q)
-        out['link.'+name+'.pin.B']=K.transform(b,q)
+        # Concealed inside the closed body, the braces start squashed on their
+        # stages and grow before any panel they carry leaves its seat.
+        g=Matrix.Scale(GROWN+(1-GROWN)*motion.smooth(t,.005,.06),4)
+        for i in range(count):out['link.'+name+'.stage.'+str(i)]=K.transform(a+axis*(i*step),q)@g
+        out['link.'+name+'.pin.A']=K.transform(a,q)@g
+        out['link.'+name+'.pin.B']=K.transform(b,q)@g
     return out

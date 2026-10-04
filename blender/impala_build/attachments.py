@@ -28,26 +28,26 @@ def definitions():
     define('hood.rear','chest',hinge,(0,.197,.804),K.rotation(x=-72),.18,.72)
     define('nose','chest',(0,D.fascia_y(0),.724),(0,-.470,.298),K.rotation(x=6),.06,.55)
     define('front_bumper','chest',(0,D.fascia_y(0)-.100,.545),(0,-.567,.103),K.rotation(x=6),.08,.58)
-    # Book-folded roof docks like the floor pans: a thin upright sheet behind them.
-    define('roof','chest',(0,.15,1.350),(-.495,.350,.300),K.rotation(z=90),.20,.85)
+    # Chest-carried panels keep their car orientation in the chest frame (the
+    # lying robot's back carries them flat); they fold on real hinges and
+    # slide straight in, with no free rotation in transit.
+    define('roof','chest',(0,.15,1.350),(0,.300,-.550),K.rotation(x=-90),.20,.85)
     define('windshield','chest',(0,-.620,1.110),(0,.230,.120),K.rotation(x=-90),.12,.76)
     define('rear_screen','chest',(0,1.044,1.260),(0,.850,.635),K.rotation(x=-70),.22,.81)
     define('trunk','chest',(0,2.100,1.0),(0,.250,-.050),K.rotation(x=-90),.24,.86)
     define('tail','chest',(0,D.TAIL,.650),(0,.840,.250),K.rotation(),.25,.82)
     define('rear_bumper','chest',(0,D.TAIL,.440),(0,.834,.040),K.rotation(),.25,.85)
     define('floor','chest',(0,.20,.340),(0,.460,.080),K.rotation(x=90),.28,.79)
-    # Book-folded pans dock as thin upright sheets across the torso, their
-    # folded length running side to side and centred, one behind the other.
-    for zone,y,x,back in (('front',-1.30,-.435,.050),('middle',.10,-.250,.150),('rear',1.43,-.415,.250)):
-        define('floor.'+zone,'chest',(0,y,.340),(x,back,.450),K.rotation(z=90),.20,.88)
+    for zone,y,back,z in (('front',-1.30,.050,-.450),('middle',.10,.150,-.300),('rear',1.43,.250,-.450)):
+        define('floor.'+zone,'chest',(0,y,.340),(0,back,z),K.rotation(x=-90),.20,.88)
     # The engine stays under the hood: it rides with the car front unit.
     define('engine','chest',(0,-1.595,.370),(0,.325,.245),K.rotation(x=90),.14,.78)
     # The propeller shaft folds in half at its centre joint and docks inside
     # the torso; nothing hangs below the pelvis.
-    define('driveline','chest',(0,.455,.270),(0,.300,.350),K.rotation(x=90),.24,.87)
+    define('driveline','chest',(0,.455,.270),(0,.300,-.550),K.rotation(x=-90),.24,.87)
     define('dashboard','chest',(0,-.650,.885),(0,.190,.250),K.rotation(x=-90),.12,.67)
-    define('front_bench','chest',(0,-.050,.750),(0,.250,-.350),K.rotation(x=90),.17,.73)
-    define('rear_bench','chest',(0,.900,.750),(0,.300,-.365),K.rotation(x=90),.22,.79)
+    define('front_bench','chest',(0,-.050,.750),(0,.420,.250),K.rotation(x=-90),.17,.73)
+    define('rear_bench','chest',(0,.900,.750),(0,.420,-.450),K.rotation(x=-90),.22,.79)
     for side,s in (('L',1),('R',-1)):
         for part in ('front_fender','wheel.front'):
             define(part+'.'+side,'shin.'+side,(s*1.0,D.FRONT_AXLE,.750),

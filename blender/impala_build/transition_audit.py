@@ -116,9 +116,12 @@ def tree(obj):
     ev.to_mesh_clear();return bvh
 
 
-def passthrough(frame,panels=('car.',),core=CORE):
+def passthrough(frame,panels=('car.',),core=CORE,analytic=False):
     """Car panel objects intersecting the robot's head, neck, chest or shoulders."""
     bpy.context.scene.frame_set(frame)
+    if analytic:
+        from . import motion
+        motion.apply(frame/motion.FRAMES,include_linkage=False)
     a=[o for o in bpy.data.objects if o.type=='MESH' and o.name.startswith(core)]
     b=[o for o in bpy.data.objects if o.type=='MESH' and o.name.startswith(panels) and o.visible_get()]
     def box(o):

@@ -29,17 +29,23 @@ def roof(y):
 
 
 
-def nest(points):
+# The head and neck never scale, so they pack where opaque panels hide them:
+# the head under the hood in the emptied engine bay, the neck under the cowl.
+UNDER_HOOD={'robot.head':((-2.300,-1.500),(.400,.980)),'robot.neck':((-1.620,-1.150),(.400,.930))}
+
+
+def nest(points,box=None):
     """Smallest world translation that brings a group inside the envelope."""
     lo=Vector([min(p[i] for p in points) for i in range(3)])
     hi=Vector([max(p[i] for p in points) for i in range(3)])
     d=Vector()
-    for i,(a,b) in ((0,(-HALF_WIDTH,HALF_WIDTH)),(1,(FRONT,REAR))):
+    span_y,span_z=box if box else ((FRONT,REAR),None)
+    for i,(a,b) in ((0,(-HALF_WIDTH,HALF_WIDTH)),(1,span_y)):
         if hi[i]-lo[i]>b-a:d[i]=(a+b)/2-(lo[i]+hi[i])/2
         else:d[i]=max(a-lo[i],0)+min(b-hi[i],0)
-    top=min(roof(y) for y in (lo.y+d.y,(lo.y+hi.y)/2+d.y,hi.y+d.y))
-    if hi.z-lo.z>top-FLOOR:d.z=(FLOOR+top)/2-(lo.z+hi.z)/2
-    else:d.z=max(FLOOR-lo.z,0)+min(top-hi.z,0)
+    floor,top=span_z if span_z else (FLOOR,min(roof(y) for y in (lo.y+d.y,(lo.y+hi.y)/2+d.y,hi.y+d.y)))
+    if hi.z-lo.z>top-floor:d.z=(floor+top)/2-(lo.z+hi.z)/2
+    else:d.z=max(floor-lo.z,0)+min(top-hi.z,0)
     return d
 
 
@@ -47,7 +53,8 @@ def nest(points):
 # squashed in place about their own centre in car mode (a few millimetres
 # across, concealed) and grow back on their joint as it deploys, so they never
 # travel apart from it.
-CABIN=(-1.100,1.450)
+# From the cowl to the rear screen: everything the glass can show.
+CABIN=(-1.480,1.650)
 SQUASH=.040
 
 
@@ -57,7 +64,9 @@ def squashed(points,shift):
 
 
 def span(key):
-    if any(x in key for x in ('head','neck')):return (.30,.80)
+    # The head leaves the bonnet early, moving back while the car front moves
+    # forward and away from it.
+    if any(x in key for x in ('head','neck')):return (.12,.62)
     if any(x in key for x in ('foot','toe','shin','calf')):return (.06,.30)
     if any(x in key for x in ('thigh','hip','pelvis')):return (.10,.42)
     # The torso core grows first: the roof and hood braces bear on it.
@@ -72,19 +81,20 @@ def build():
         if source and source in K.NODES:
             obj.parent=K.NODES[source];obj.matrix_parent_inverse=Matrix.Identity(4)
             obj.matrix_basis=Matrix.Identity(4)
-    SPECS.clear();motion.apply(0)
+    # Brace endpoints depend on this fit. Do not evaluate old brace strokes
+    # against the temporary, unnested rest pose during a repeated bake.
+    SPECS.clear();motion.apply(0,include_linkage=False)
     groups={}
     for obj in K.PARTS:
         if not obj.name.startswith('robot.') or obj.name.startswith('robot.linkage.') or not obj.parent:continue
-        if '.window.' in obj.name:continue
         parent=obj.parent.name[5:]
         key=parent if obj.name.startswith(('robot.head.','robot.neck.')) else obj.name
         groups.setdefault(key,[]).append(obj)
     for key,parts in groups.items():
         points=[o.matrix_world@Vector(p) for o in parts for p in o.bound_box]
-        shift=nest(points)
+        shift=nest(points,UNDER_HOOD.get(key))
         # The head and neck never scale; they keep unit scale throughout.
-        squash=SQUASH if squashed(points,shift) and key not in ('robot.head','robot.neck') else 1.0
+        squash=SQUASH if key not in UNDER_HOOD and squashed(points,shift) else 1.0
         if squash<1:shift=Vector()
         parent=parts[0].parent;node_name='robot.stowed.'+hashlib.sha1(key.encode()).hexdigest()[:16]
         if node_name not in K.NODES:K.node(node_name)
