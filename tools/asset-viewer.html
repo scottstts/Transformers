@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Asset viewer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #bfc2c5; color: #202428; font: 13px system-ui, sans-serif; }
+    canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+    #toolbar, #timeline { position: fixed; z-index: 2; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px; background: #f5f5f5ed; border: 1px solid #0002; border-radius: 6px; }
+    #toolbar { top: 12px; left: 12px; right: 12px; }
+    #timeline { bottom: 12px; left: 12px; right: 12px; }
+    input, button, select { font: inherit; }
+    button, select, input[type=text] { min-height: 30px; padding: 4px 8px; }
+    #asset { width: 170px; }
+    #frame { flex: 1; min-width: 100px; }
+    #frameNumber { width: 62px; }
+    #info { margin-left: auto; color: #5d636a; }
+    #cover { position: fixed; inset: 0; z-index: 3; display: grid; place-items: center; background: #e5e6e8eb; }
+    #cover[hidden], #timeline[hidden], #head[hidden] { display: none; }
+    #message { max-width: 560px; padding: 24px; white-space: pre-wrap; line-height: 1.6; }
+    #hint { position: fixed; bottom: 65px; left: 14px; color: #4f555c; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <!-- Standalone: open anywhere, then select a matching JSON + bin pair. Internet required for Three.js. -->
+  <div id="toolbar">
+    <button id="open">Open JSON + bin…</button>
+    <input id="files" type="file" accept=".json,.bin" multiple hidden>
+    <select id="shading" aria-label="Shading">
+      <option value="preview">Preview materials</option>
+      <option value="clay">Clay</option>
+      <option value="normals">Normals</option>
+      <option value="wire">Wireframe</option>
+    </select>
+    <button id="fit">Fit</button>
+    <button id="head" hidden>Head</button>
+    <span id="info"></span>
+  </div>
+  <div id="timeline" hidden>
+    <button id="play">Play</button>
+    <button id="start">Start / car</button>
+    <button id="end">End / robot</button>
+    <input id="frame" type="range" min="0" max="240" step="0.1" value="240" aria-label="Animation frame">
+    <input id="frameNumber" type="number" min="0" max="240" step="0.1" value="240" aria-label="Frame number">
+  </div>
+  <div id="hint">Drag: orbit · right drag: pan · scroll: zoom. Geometry and normals come directly from the export; materials are previews.</div>
+  <div id="cover"><div id="message">Loading viewer from CDN…</div></div>
+  <script type="importmap">
+    { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js",
+      "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js",
+      "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.tsl.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+    } }
+  </script>
+  <script>
+    // Also catches module-import failures, before the module has initialized.
+    window.addEventListener('error', (event) => {
+      document.getElementById('cover').hidden = false;
+      document.getElementById('message').textContent = event.message || 'Could not load viewer modules from CDN. Check your internet connection.';
+    });
+  </script>
+  <script type="module">
+    import * as THREE from 'three/webgpu';
+    import { attribute, mix, normalGeometry, normalize, positionGeometry, uniform } from 'three/tsl';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    // Version 1 export decoding, kept here so this file has no project dependencies.
+    function positions(buffer, offset, count, min, max) {
+      const quantized = new Int16Array(buffer, offset, count * 3), result = new Float32Array(count * 3);
+      for (let axis = 0; axis < 3; axis++) {
+        const span = (max[axis] - min[axis]) / 65535;
+        for (let i = 0; i < count; i++) result[i * 3 + axis] = min[axis] + (quantized[i * 3 + axis] + 32768) * span;
+      }
+      return result;
+    }
+
+    function normals(buffer, offset, count) {
+      const oct = new Int16Array(buffer, offset, count * 2), result = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        let x = oct[i * 2] / 32767, y = oct[i * 2 + 1] / 32767;
+        const z = 1 - Math.abs(x) - Math.abs(y);
+        if (z < 0) {
+          const ox = x;
+          x = (1 - Math.abs(y)) * Math.sign(ox || 1);
+          y = (1 - Math.abs(ox)) * Math.sign(y || 1);
+        }
+        const length = Math.hypot(x, y, z) || 1;
+        result[i * 3] = x / length; result[i * 3 + 1] = y / length; result[i * 3 + 2] = z / length;
+      }
+      return result;
+    }
+
+    function decodeGeometry(buffer, record) {
+      const n = record.count, geometry = new THREE.BufferGeometry();
+      const position = positions(buffer, record.position, n, record.min, record.max);
+      geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
+      geometry.setAttribute('normal', new THREE.BufferAttribute(normals(buffer, record.normal, n), 3));
+      const Index = record.index32 ? Uint32Array : Uint16Array;
+      geometry.setIndex(new THREE.BufferAttribute(new Index(buffer, record.index, record.triangles * 3).slice(), 1));
+      if (record.morphPosition !== undefined && record.morphNormal !== undefined && record.morphMin && record.morphMax) {
+        const morph = positions(buffer, record.morphPosition, n, record.morphMin, record.morphMax);
+        geometry.setAttribute('morphPosition', new THREE.BufferAttribute(morph, 3));
+        geometry.setAttribute('morphNormal', new THREE.BufferAttribute(normals(buffer, record.morphNormal, n), 3));
+        geometry.boundingBox = new THREE.Box3().setFromArray(position).union(new THREE.Box3().setFromArray(morph));
+        geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
+      } else { geometry.computeBoundingBox(); geometry.computeBoundingSphere(); }
+      return geometry;
+    }
+
+    function decodeSoldierGeometry(buffer, record) {
+      const geometry = decodeGeometry(buffer, record);
+      geometry.setAttribute('boneIndex', new THREE.BufferAttribute(Float32Array.from(new Uint8Array(buffer, record.bone, record.count)), 1));
+      return geometry;
+    }
+
+    const $ = (id) => document.getElementById(id);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xbfc2c5);
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 2000);
+    let renderer, controls, model, animation, playing = false, busy = false, stopped = false, lastTime = 0;
+    const q0 = new THREE.Quaternion(), q1 = new THREE.Quaternion();
+    const box = new THREE.Box3(), center = new THREE.Vector3(), size = new THREE.Vector3();
+
+    // Blender's linear base colors and PBR values for the Impala; other slots use simple inspection colors.
+    // No geometry smoothing, normal reconstruction, bump maps, or procedural surface detail is applied.
+    const slots = {
+      paint: [[.002,.006,.014],.24,.12,.92], chrome: [[.72,.76,.80],1,.095],
+      steel: [[.19,.24,.29],.88,.32], dark: [[.030,.041,.053],.82,.39],
+      bronze: [[.26,.17,.070],.84,.30], rubber: [[.006,.007,.009],0,.76],
+      glass: [[.55,.70,.76],0,.012,.1,1], lamp: [[.96,.98,.98],0,.018,.05,1],
+      bulb_glass: [[.89,.94,.95],0,.045,0,.98], clear: [[.63,.65,.62],.05,.25,.3],
+      clear_lens: [[.80,.84,.82],0,.12,.2,.35], red_lens: [[.65,.023,.003],0,.17,.4,.22,.08],
+      ivory: [[.62,.55,.40],.03,.47], red: [[.45,.014,.007],.22,.25,.45],
+      redline: [[.40,.016,.009],0,.48], amber: [[.70,.18,.013],.15,.24,.5],
+      leather: [[.006,.016,.025],0,.62,.05], tan: [[.33,.205,.073],0,.57],
+      plate: [[.72,.69,.51],.2,.4], plate_ink: [[.006,.023,.12],0,.4],
+      enamel_blue: [[.008,.055,.22],.25,.25,.4], machined: [[.28,.33,.37],.94,.21],
+      mask_alloy: [[.24,.27,.30],.72,.44], head_brow_alloy: [[.18,.16,.12],.94,.31],
+      robot_graphite: [[.017,.021,.030],.77,.27,.28],
+      head_eye: [[.008,.035,.65],0,.20,0,0,3], eye_core: [[.045,.29,.90],.1,.18,0,0,3.2],
+      blade: [[.16,.18,.21],.97,.31], edge: [[.48,.50,.54],.97,.16],
+      guard: [[.105,.124,.148],.98,.38], grip: [[.013,.010,.008],0,.65],
+    };
+
+    function previewMaterial(slot, name) {
+      let spec = slots[slot];
+      if (slot === 'paint' && !name.startsWith('impala')) spec = name.startsWith('ferrari') ? [[.65,.012,.018],.15,.25,.8] : [[.72,.75,.76],.15,.3,.5];
+      spec ??= /eye|glow|ion|lightWhite/.test(slot) ? [[.08,.35,.9],0,.25,0,0,2]
+        : /dark|graphite|carbon|black|interior|chassis|armor/i.test(slot) ? [[.028,.033,.04],.5,.35]
+        : /gold|bronze|copper|yellow/i.test(slot) ? [[.4,.25,.08],.9,.3]
+        : /lightRed|tapeRed/.test(slot) ? [[.5,.015,.008],0,.3,0,0,1]
+        : [[.42,.46,.5],.65,.32];
+      const [rgb, metalness, roughness, clearcoat = 0, transmission = 0, emission = 0] = spec;
+      const material = new THREE.MeshPhysicalNodeMaterial({ metalness, roughness, clearcoat, clearcoatRoughness: slot === 'paint' ? .065 : .17, transmission, thickness: .006 });
+      material.color.setRGB(...rgb);
+      if (emission) { material.emissive.copy(material.color); material.emissiveIntensity = emission; }
+      return material;
+    }
+
+    function addMesh(parent, geometry, slot, name, morph, cache) {
+      const key = slot + (geometry.hasAttribute('morphPosition') ? ':morph' : '');
+      let materials = cache.get(key);
+      if (!materials) {
+        materials = {
+          preview: previewMaterial(slot, name),
+          clay: new THREE.MeshStandardNodeMaterial({ color: 0x929aa3, metalness: .35, roughness: .28 }),
+          normals: new THREE.MeshNormalNodeMaterial(),
+          wire: new THREE.MeshBasicNodeMaterial({ color: 0x202830, wireframe: true }),
+        };
+        if (geometry.hasAttribute('morphPosition')) for (const material of Object.values(materials)) {
+          material.positionNode = mix(positionGeometry, attribute('morphPosition', 'vec3'), morph);
+          material.normalNode = normalize(mix(normalGeometry, attribute('morphNormal', 'vec3'), morph));
+        }
+        cache.set(key, materials);
+      }
+      const mesh = new THREE.Mesh(geometry, materials[$('shading').value]);
+      mesh.userData.materials = materials;
+      parent.add(mesh);
+    }
+
+    function build(manifest, buffer, name) {
+      if (manifest.version !== 1) throw new Error('Unsupported asset version: ' + manifest.version);
+      const root = new THREE.Group();
+      root.rotation.x = -Math.PI / 2;
+      const cache = new Map(), morph = uniform(0);
+      animation = null;
+      if (manifest.nodes) {
+        const nodes = manifest.nodes.map((record) => { const group = new THREE.Group(); group.name = record.name; return group; });
+        manifest.nodes.forEach((record, i) => {
+          (record.parent < 0 ? root : nodes[record.parent]).add(nodes[i]);
+          for (const mesh of record.meshes) addMesh(nodes[i], decodeGeometry(buffer, mesh), mesh.material, name, morph, cache);
+        });
+        const frames = manifest.frames, count = nodes.length;
+        animation = {
+          frames, count, nodes, morph, duration: manifest.rig?.dims.duration ?? 8,
+          tracks: new Float32Array(buffer, manifest.tracks, frames * count * 7),
+          scales: manifest.scales === undefined ? null : new Float32Array(buffer, manifest.scales, frames * count * 3),
+          lift: new Float32Array(buffer, manifest.lift, frames),
+          morphs: manifest.morph === undefined ? null : new Float32Array(buffer, manifest.morph, frames),
+        };
+      } else if (manifest.lods && manifest.bones) {
+        // Soldier/commander vertices are in individual bone frames. Bake their exported rest pose once.
+        const worlds = manifest.bones.map(() => new THREE.Matrix4());
+        manifest.bones.forEach((bone, i) => {
+          worlds[i].compose(new THREE.Vector3(...bone.t), new THREE.Quaternion(...bone.q), new THREE.Vector3(1, 1, 1));
+          if (bone.parent >= 0) worlds[i].premultiply(worlds[bone.parent]);
+        });
+        const p = new THREE.Vector3(), n = new THREE.Vector3();
+        for (const record of manifest.lods[0].meshes) {
+          const geometry = decodeSoldierGeometry(buffer, record);
+          const positions = geometry.getAttribute('position'), normals = geometry.getAttribute('normal'), bones = geometry.getAttribute('boneIndex');
+          for (let i = 0; i < positions.count; i++) {
+            const matrix = worlds[bones.getX(i)];
+            p.fromBufferAttribute(positions, i).applyMatrix4(matrix); positions.setXYZ(i, p.x, p.y, p.z);
+            n.fromBufferAttribute(normals, i).transformDirection(matrix); normals.setXYZ(i, n.x, n.y, n.z);
+          }
+          geometry.deleteAttribute('boneIndex'); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
+          addMesh(root, geometry, record.material, name, morph, cache);
+        }
+      } else if (manifest.meshes) {
+        for (const record of manifest.meshes) addMesh(root, decodeGeometry(buffer, record), record.material, name, morph, cache);
+      } else throw new Error('Unrecognized manifest: expected transformer nodes, weapon meshes, or soldier LODs.');
+      root.userData.materials = cache;
+      return root;
+    }
+
+    function pose(frame) {
+      if (!animation) return;
+      const a = animation, f = Math.max(0, Math.min(a.frames - 1, frame)), f0 = Math.min(Math.floor(f), a.frames - 2), t = f - f0;
+      for (let i = 0; i < a.count; i++) {
+        const o = (f0 * a.count + i) * 7, next = o + a.count * 7, node = a.nodes[i], tr = a.tracks;
+        node.position.set(tr[o] + (tr[next] - tr[o]) * t, tr[o + 1] + (tr[next + 1] - tr[o + 1]) * t, tr[o + 2] + (tr[next + 2] - tr[o + 2]) * t);
+        q0.fromArray(tr, o + 3); q1.fromArray(tr, next + 3); node.quaternion.copy(q0.slerp(q1, t));
+        if (a.scales) {
+          const s = (f0 * a.count + i) * 3, ns = s + a.count * 3;
+          node.scale.set(a.scales[s] + (a.scales[ns] - a.scales[s]) * t, a.scales[s + 1] + (a.scales[ns + 1] - a.scales[s + 1]) * t, a.scales[s + 2] + (a.scales[ns + 2] - a.scales[s + 2]) * t);
+        }
+      }
+      model.position.y = a.lift[f0] + (a.lift[f0 + 1] - a.lift[f0]) * t;
+      if (a.morphs) a.morph.value = a.morphs[f0] + (a.morphs[f0 + 1] - a.morphs[f0]) * t;
+      $('frame').value = f; $('frameNumber').value = f.toFixed(1);
+      model.updateMatrixWorld(true);
+    }
+
+    function fit(object = model) {
+      box.setFromObject(object); box.getCenter(center); box.getSize(size);
+      const radius = Math.max(size.length() / 2, .05);
+      const distance = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.min(camera.aspect, 1);
+      controls.target.copy(center);
+      camera.position.copy(center).addScaledVector(new THREE.Vector3(.8, .35, 1).normalize(), distance * 1.12);
+      controls.minDistance = .02; controls.maxDistance = Math.max(100, distance * 15); controls.update();
+    }
+
+    function dispose(root) {
+      root.traverse((object) => { if (object.isMesh) object.geometry.dispose(); });
+      for (const variants of root.userData.materials.values()) for (const material of Object.values(variants)) material.dispose();
+      scene.remove(root);
+    }
+
+    function showMessage(message) { $('cover').hidden = false; $('message').textContent = message; }
+    function fatal(error) {
+      stopped = true; playing = false;
+      showMessage('Viewer failed: ' + (error.message ?? error) + '\n\nStage: ' + stage + ' · ' + innerWidth + '×' + innerHeight + ' · DPR ' + devicePixelRatio);
+      console.error(error);
+    }
+    let stage = 'module imports';
+
+    async function load(source) {
+      if (busy || stopped) return;
+      busy = true; playing = false; $('play').textContent = 'Play';
+      showMessage('Loading export…');
+      try {
+        stage = 'reading asset';
+        const { manifest, buffer, name } = await source();
+        if (model) dispose(model);
+        stage = 'decoding asset'; model = build(manifest, buffer, name); scene.add(model);
+        $('timeline').hidden = !animation;
+        if (animation) {
+          $('frame').max = $('frameNumber').max = animation.frames - 1;
+          pose(animation.frames - 1);
+        }
+        $('head').hidden = !model.getObjectByName('bone:head');
+        fit();
+        let triangles = 0, meshes = 0;
+        model.traverse((o) => { if (o.isMesh) { triangles += o.geometry.index.count / 3; meshes++; } });
+        $('info').textContent = name + ' · ' + triangles.toLocaleString() + ' triangles · ' + meshes + ' meshes';
+        stage = 'compiling preview'; await renderer.compileAsync(scene, camera);
+        stage = 'first draw'; renderer.render(scene, camera);
+        if (!stopped) $('cover').hidden = true;
+        stage = 'viewing';
+      } catch (error) {
+        if (!stopped) { $('cover').hidden = true; $('info').textContent = 'Load failed: ' + error.message; console.error(error); }
+      } finally { busy = false; }
+    }
+
+    function resize() {
+      const w = innerWidth, h = innerHeight;
+      if (!w || !h || !renderer) return;
+      const dpr = Math.min(devicePixelRatio, 1.7, Math.sqrt(4_000_000 / (w * h)));
+      renderer.setDrawingBufferSize(w, h, Number.isFinite(dpr) && dpr > 0 ? dpr : 1);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+    }
+
+    function tick(now) {
+      if (stopped) return;
+      requestAnimationFrame(tick);
+      const dt = Math.min((now - lastTime) / 1000, .1); lastTime = now;
+      if (busy || !renderer) return;
+      if (playing && animation) {
+        const next = Number($('frame').value) + dt / animation.duration * (animation.frames - 1);
+        pose(next >= animation.frames - 1 ? 0 : next);
+      }
+      try { controls.update(); renderer.render(scene, camera); } catch (error) { fatal(error); }
+    }
+
+    async function boot() {
+      if (!navigator.gpu) throw new Error('WebGPU is required. Open this file in a browser with WebGPU enabled.');
+      stage = 'initializing WebGPU';
+      renderer = new THREE.WebGPURenderer({ antialias: true, reversedDepthBuffer: true });
+      renderer._getFallback = null;
+      const onLost = renderer.onDeviceLost.bind(renderer), onError = renderer.onError.bind(renderer);
+      renderer.onDeviceLost = (info) => { onLost(info); fatal(new Error(info.message || 'WebGPU device lost')); };
+      renderer.onError = (info) => { onError(info); fatal(new Error(info.message || 'WebGPU error')); };
+      await renderer.init();
+      renderer.backend.device.addEventListener('uncapturederror', (event) => fatal(event.error));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      document.body.prepend(renderer.domElement);
+      controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+      resize();
+      let resizeQueued = false;
+      addEventListener('resize', () => { if (!resizeQueued) { resizeQueued = true; requestAnimationFrame(() => { resizeQueued = false; resize(); }); } });
+      stage = 'studio lighting';
+      const room = new RoomEnvironment(), pmrem = new THREE.PMREMGenerator(renderer);
+      const environment = pmrem.fromScene(room, .04).texture;
+      scene.environment = environment; room.dispose(); pmrem.dispose();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x5b6570, 1));
+      const key = new THREE.DirectionalLight(0xffffff, 3); key.position.set(5, 8, 5); scene.add(key);
+      $('open').onclick = () => { $('files').value = ''; $('files').click(); };
+      $('files').onchange = () => load(async () => {
+        const files = [...$('files').files], json = files.find((f) => /\.json$/i.test(f.name)), bin = files.find((f) => /\.bin$/i.test(f.name));
+        if (files.length !== 2 || !json || !bin || json.name.slice(0, -5) !== bin.name.slice(0, -4)) throw new Error('Select the matching .json and .bin files together.');
+        return { name: bin.name.slice(0, -4), manifest: JSON.parse(await json.text()), buffer: await bin.arrayBuffer() };
+      });
+      $('fit').onclick = () => { if (model) fit(); };
+      $('head').onclick = () => { if (model) fit(model.getObjectByName('bone:head')); };
+      $('play').onclick = () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; };
+      const scrub = (value) => { playing = false; $('play').textContent = 'Play'; pose(Number(value)); };
+      $('frame').oninput = () => scrub($('frame').value); $('frameNumber').oninput = () => scrub($('frameNumber').value);
+      $('start').onclick = () => { scrub(0); fit(); }; $('end').onclick = () => { if (animation) { scrub(animation.frames - 1); fit(); } };
+      $('shading').onchange = async () => {
+        if (!model || busy) return;
+        busy = true; showMessage('Preparing shading…');
+        try {
+          model.traverse((o) => { if (o.isMesh) o.material = o.userData.materials[$('shading').value]; });
+          await renderer.compileAsync(scene, camera); renderer.render(scene, camera);
+          if (!stopped) $('cover').hidden = true;
+        } catch (error) { fatal(error); } finally { busy = false; }
+      };
+      requestAnimationFrame(tick);
+      $('info').textContent = 'Open a matching .json + .bin pair';
+      $('cover').hidden = true;
+    }
+    boot().catch(fatal);
+  </script>
+</body>
+</html>

@@ -18,6 +18,14 @@ Every file the game downloads (models, weapons, the soldiers, the citadel) lives
 - `VITE_ASSET_BASE=/local-assets npm run dev` plays the mirror instead of the CDN (a dev-server route, `vite.config.js`).
 - Citadel decoding uses the exported GLB directly with MeshoptDecoder; materials, floor queries and navigation consume its slot metadata and companion plan. The mirror shares its decoded promise across tests/tools; production still uses the CDN loader.
 
+`tools/asset-viewer.html` is a standalone file: open it directly in a WebGPU browser
+and select a matching JSON/bin pair. It loads Three.js from a pinned CDN version
+and needs an internet connection, with no project server or source imports.
+Transformers play their baked tracks;
+weapons and soldier-format assets show their exported rest pose. Geometry and
+normals use an inline copy of the export decoding format; material colors are inspection previews. The viewer
+does not apply the live gait, smooth normals, or change the files.
+
 ## Publishing an export
 
 1. Export from Blender (writes `assets/<name>.*`).

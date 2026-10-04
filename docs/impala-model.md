@@ -109,9 +109,14 @@ origin, edge toward +X, the blade curving toward -X; the pommel end is its secon
   castings stay children of their joint (`part:<joint>`); the four wheels are
   hub-centred `wheel:wheelF.*` / `wheel:wheelR.*` nodes (tyre, rim, hub and drum spin;
   the leaf spring stays on the assembly).
-- Meshes are reduced from 5.5 M to about 0.9 M triangles by collapse decimation,
-  proportionally harder on dense meshes, each checked to stay within 4 mm of its
-  authored surface (`IMPALA_TRI_BUDGET=0` exports the authoring density).
+- The export targets 4.5 M triangles from the 5.5 M authoring model. The entire
+  robot head and meshes containing paint, chrome, glass, lamp or bulb-glass slots
+  retain their authoring topology and corner normals. Remaining meshes share the
+  remaining budget, with collapse reductions checked against a sampled 0.5 mm
+  surface-distance limit. This checks geometry rather than shading fidelity;
+  visual approval is still pending. The budget is a soft target because failed
+  reductions retain more geometry (`IMPALA_TRI_BUDGET=0` retains all density).
+  The current inspection export contains 4,622,916 triangles and a 69.36 MB binary.
 - Ground lift is the lowest support point of the model on z = 0 (linkage stages
   excluded); it stays within 5 mm over the whole timeline.
 - The rig block describes the authored stand pose. Two things differ from the

@@ -21,8 +21,9 @@ follows its bone. Armour and storage groups keep their stowed castings as childr
 Geometry is stored per node and material slot in the node's own frame (quantized
 positions, octahedral normals). The authoring density is not a runtime budget: each
 mesh is reduced with a collapse decimation whose result is checked against the
-original surface (`TOLERANCE`) and refined until it holds. IMPALA_TRI_BUDGET (default
-900k triangles; 0 keeps the authoring density) sets the overall target.
+original surface (`TOLERANCE`) and refined until it holds. The head and reflective
+exterior slots keep their authoring density. IMPALA_TRI_BUDGET (default 4.5M
+triangles; 0 keeps all authoring density) sets the overall target.
 """
 import json
 import math
@@ -38,11 +39,17 @@ FRAMES = 240
 NAME = 'impala'
 MAT_PREFIX = 'impala.'
 OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'assets'))
-TRI_BUDGET = int(os.environ.get('IMPALA_TRI_BUDGET', '900000'))
-TOLERANCE = 0.004            # largest distance (m) between a reduced mesh and its authored surface
+TRI_BUDGET = int(os.environ.get('IMPALA_TRI_BUDGET', '4500000'))
+TOLERANCE = 0.0005           # sampled surface-distance limit (m) for reduced meshes
 POWER = 0.7                  # triangles kept grow with this power of a mesh's own count
 MIN_KEEP = 150               # a mesh smaller than this is never reduced
 WHEEL_PARTS = ('car.wheel.', 'car.brake.')
+FULL_DENSITY_SLOTS = {'impala.paint', 'impala.chrome', 'impala.glass', 'impala.lamp', 'impala.bulb_glass'}
+
+
+def _full_density(o):
+    return o.name.startswith('robot.head.') or any(
+        slot.material and slot.material.name in FULL_DENSITY_SLOTS for slot in o.material_slots)
 
 
 def _oct(n):
@@ -166,18 +173,18 @@ def _reduced(o, M, target, dg):
     return _arrays(o.evaluated_get(dg), M), n, 0.0
 
 
-def _plan(counts):
+def _plan(counts, budget=TRI_BUDGET):
     """Per-mesh triangle targets: floor + c * n^POWER, c solved for the overall budget."""
-    if TRI_BUDGET <= 0:
+    if budget <= 0:
         return list(counts)
     def total(c):
         return sum(min(n, max(min(n, MIN_KEEP), c * n ** POWER)) for n in counts)
     lo, hi = 0.0, 1.0
-    while total(hi) < TRI_BUDGET and hi < 1e6:
+    while total(hi) < budget and hi < 1e6:
         hi *= 2
     for _ in range(60):
         mid = (lo + hi) / 2
-        if total(mid) < TRI_BUDGET:
+        if total(mid) < budget:
             lo = mid
         else:
             hi = mid
@@ -502,8 +509,13 @@ def export(out_dir=OUT_DIR):
     table = _split_wheels(_build_nodes(nodes, meshes))
     all_objs = [o for nd in table for o, _ in nd.objs]
     counts = [_tri_count(o) for o in all_objs]
-    targets = dict(zip((o.name for o in all_objs), _plan(counts)))
+    protected = [_full_density(o) for o in all_objs]
+    protected_tris = sum(n for n, keep in zip(counts, protected) if keep)
+    remaining = [n for n, keep in zip(counts, protected) if not keep]
+    reduced_targets = iter(_plan(remaining, max(1, TRI_BUDGET - protected_tris)) if TRI_BUDGET > 0 else remaining)
+    targets = {o.name: n if keep else next(reduced_targets) for o, n, keep in zip(all_objs, counts, protected)}
     print('authoring %d triangles in %d meshes, target %s' % (sum(counts), len(all_objs), TRI_BUDGET or 'full'))
+    print('preserving %d triangles in head and reflective exterior meshes' % protected_tris)
 
     dg = bpy.context.evaluated_depsgraph_get()
     blob = Blob()
