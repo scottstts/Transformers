@@ -38,10 +38,6 @@ def benches():
             G.sweep(m,[(x,front(z)-.007,z+.005*(1-(x/.704)**8)) for x in G.lin(-.704,.704,99)],
                     G.round_section(.007,.005,10),'leather',(0,-1,0))
         emit(m,'car.interior.'+name+'.bench.stitching',carrier,0)
-        m=K.Mesh()
-        for x in (-.62,.62):
-            m.prism([(x+a,y-.02,.636+b) for a,b in G.rounded_rect(.047,.035,.008,8)],(0,.012,0),'chrome')
-        emit(m,'car.interior.'+name+'.seatbelt.buckles',carrier,.001)
 
 
 def dashboard():

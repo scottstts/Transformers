@@ -156,24 +156,6 @@ def cowl():
         emit(m,'car.windshield.wiper.'+str(s),'windshield',.0005)
 
 
-def rolled_windows():
-    """Full-size hardtop panes roll into the doors, then rise on the shoulders."""
-    for s,side in ((1,'L'),(-1,'R')):
-        for label,p in (
-            ('front',[(-.299,1.027),(-.246,1.343),(.214,1.355),(.232,1.027)]),
-            ('rear',[(.246,1.027),(.244,1.352),(.572,1.339),(.843,1.206),(1.093,1.046),(1.101,1.026)])):
-            p=G.rounded_polygon(p,.007,6)
-            def surface(y,z):
-                return s*(.919-.130*max(0,min(1,(z-1.025)/.330))),y,z
-            m=K.Mesh()
-            points=[(y,z) for y in G.lin(min(q[0] for q in p),max(q[0] for q in p),33)
-                    for z in G.lin(1.030,1.353,17)]
-            G.constrained_skin(m,p,points,[],surface,.003,(s,0,0),'armour_glass' if label=='front' else 'glass')
-            emit(m,'car.'+label+'_door.rolled.main.glass.'+side,'window.'+label+'.'+side,0)
-            m=K.Mesh();G.sweep(m,[surface(y,z) for y,z in p],G.round_section(.009,.007,12),'chrome',(s,0,0),True)
-            emit(m,'car.'+label+'_door.rolled.glass.chrome.edge.'+side,'window.'+label+'.'+side,0)
-
-
 def mirrors():
     for s,side in ((1,'L'),(-1,'R')):
         x=s*.956
@@ -197,4 +179,3 @@ def build():
     sails()
     cowl()
     mirrors()
-    rolled_windows()

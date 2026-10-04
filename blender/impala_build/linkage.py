@@ -27,7 +27,7 @@ def definitions():
     neck='robot.stowed.'+hashlib.sha1(b'robot.neck').hexdigest()[:16]
     head='robot.stowed.'+hashlib.sha1(b'robot.head').hexdigest()[:16]
     LINKS['neck.boom']={'bone':'chest','a':(0,.155,.540),'panel':neck,'b':(0,0,.020),'radius':.034}
-    LINKS['head.boom']={'bone':neck,'a':(0,0,.030),'panel':head,'b':(0,0,.120),'radius':.030}
+    LINKS['head.boom']={'bone':neck,'a':(-.080,0,.030),'panel':head,'b':(.080,0,.120),'radius':.030}
     return LINKS
 
 
@@ -77,6 +77,15 @@ def build():
         length=low*.88;count=max(3,math.ceil(high/(length*.92)))
         if count>9:raise RuntimeError('Panel brace needs revised anchors: '+name)
         spec['length']=length;spec['stages']=count
+        # Fit the whole reduced brace, including its pins, as one assembly.
+        from . import stowage
+        core=motion.core_worlds(0);panels=motion.assembly_worlds(0,core)
+        a,b=ends(spec,core,panels,0);center=(a+b)/2
+        radius=spec['radius']*1.4
+        points=[center+(p+Vector((x,y,z))-center)*GROWN for p in (a,b)
+                for x in (-radius,radius) for y in (-radius,radius) for z in (-radius,radius)]
+        shift,box_index=stowage.concealed_shift(points)
+        spec['packed_center']=center+shift;spec['box_index']=box_index
         for i in range(count):
             node='link.'+name+'.stage.'+str(i)
             if node not in K.NODES:K.node(node)
@@ -116,10 +125,12 @@ def worlds(t,core,panels):
         step=((b-a).length-length)/(count-1)
         if step<0 or step>length:
             raise RuntimeError('Telescopic stroke exceeded: '+name+' @ '+str(t))
-        # Concealed inside the closed body, the braces start squashed on their
-        # stages and grow before any panel they carry leaves its seat.
-        g=Matrix.Scale(GROWN+(1-GROWN)*motion.smooth(t,.005,.06),4)
-        for i in range(count):out['link.'+name+'.stage.'+str(i)]=K.transform(a+axis*(i*step),q)@g
-        out['link.'+name+'.pin.A']=K.transform(a,q)@g
-        out['link.'+name+'.pin.B']=K.transform(b,q)@g
+        # Scale the entire connected brace about one midpoint, including the
+        # spacing of its stages. Independent stage scaling leaves loose pins.
+        u=motion.smooth(t,.005,.06);center=(a+b)/2
+        packed=spec['packed_center'].lerp(center,u)
+        packing=Matrix.Translation(packed)@Matrix.Scale(GROWN+(1-GROWN)*u,4)@Matrix.Translation(-center)
+        for i in range(count):out['link.'+name+'.stage.'+str(i)]=packing@K.transform(a+axis*(i*step),q)
+        out['link.'+name+'.pin.A']=packing@K.transform(a,q)
+        out['link.'+name+'.pin.B']=packing@K.transform(b,q)
     return out

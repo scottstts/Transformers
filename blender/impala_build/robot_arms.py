@@ -16,17 +16,6 @@ def upperarm(side,s):
     for x in (-.135,.135):
         M.actuator('arm.'+side+'.oblique.drive.'+str(x),bone,
                    (x,-.081,-.126),(x*.76,-.055,-.934),.044)
-    p=[(-.124,-.200),(-.025,-.163),(.100,-.199),(.115,-.460),
-       (.074,-.751),(-.020,-.845),(-.104,-.660)]
-    surf=lambda x,z:(x,-.205-.033*(1-(x/.15)**2)+.022*(z+.45)**2,z)
-    M.panel('arm.'+side+'.formed.biceps.cuirass',bone,p,surf,.018,'paint',spacing=.012)
-    M.rim('arm.'+side+'.biceps.machined.reveal',bone,p,
-          lambda x,z:(x,surf(x,z)[1]-.003,z),'machined',.013,.009)
-    for i in range(3):
-        z=-.333-i*.075
-        p=[(-.073,z),(.063,z+.018),(.064,z-.004),(-.073,z-.020)]
-        M.panel('arm.'+side+'.biceps.recessed.rib.'+str(i),bone,p,
-                lambda x,z:(x,surf(x,z)[1]-.003,z),.008,'robot_graphite',spacing=.016)
     M.tube('arm.'+side+'.return.cable',bone,[(s*.115,.173,-.092),(s*.165,.195,-.348),
            (s*.140,.193,-.679),(s*.086,.163,-.936)],.016,'dark')
     M.bearing('elbow.'+side+'.pitch.race','forearm.'+side,(0,0,0),(s,0,0),.145,.335)

@@ -51,26 +51,37 @@ def shoulder(side,s):
 
 
 def hip(side,s):
-    bone=carrier('hip.'+side,'pelvis',(s*.457,0,.045),(s*.482,0,.028),K.rotation(z=-s*87),(.30,.87))
+    # Follow the thigh's hip pivot: walking cannot swing its armour into the
+    # guard. A solid casting below connects the raised plate to that pivot.
+    bone=carrier('hip.'+side,'thigh.'+side,(s*.012,0,.045),(s*.012,-.080,.050),K.rotation(z=-s*87),(.30,.87))
     p=[(-.019,.189),(.146,.246),(.287,.129),(.310,-.119),(.231,-.401),(.080,-.531),(-.058,-.364),(-.074,-.056)]
+    p=[(x,z if z>=0 else z*.72) for x,z in p]
     def surf(x,z):return s*x,-.281-.047*(1-((x-.12)/.24)**2)+.055*abs(z+.12),z
     M.panel('armour.'+side+'.hip.outer.curved.skirt',bone,p,surf,.025,'paint',spacing=.014)
     M.rim('armour.'+side+'.hip.skirt.machined.return',bone,p,
           lambda x,z:(s*x,surf(x,z)[1]-.005,z),'machined',.012,.009)
     for i in range(3):
         z=-.065-i*.098
-        p=[(.011,z+.051),(.231,z+.008),(.214,z-.041),(.056,z-.015)]
+        p=[(.011,(z+.051)*.72),(.231,(z+.008)*.72),(.214,(z-.041)*.72),(.056,(z-.015)*.72)]
         M.panel('armour.'+side+'.hip.overlap.scale.'+str(i),bone,p,
                 lambda x,z:(s*x,surf(x,z)[1]-.025,z),.011,'robot_graphite',spacing=.015)
-    M.bearing('armour.'+side+'.hip.skirt.hinge',bone,(s*.132,-.256,.189),(0,-1,0),.060,.049)
-    M.actuator('armour.'+side+'.hip.skirt.rear.stay',bone,
-               (s*.132,-.202,.070),(s*.218,-.180,-.325),.028)
+    M.bearing('armour.'+side+'.hip.skirt.hinge',bone,(s*.132,-.266,.189),(0,-1,0),.060,.049)
+    # The root is inside the hip differential's axle cap in thigh space;
+    # the other end enters the skirt hinge. Both ends share the same mount
+    # during gait, rather than leaving a plate floating ahead of the body.
     m=K.Mesh()
-    for x,y,z in ((s*.132,-.202,.070),(s*.218,-.180,-.325)):
+    path=G.filleted_path([(s*.058,.080,-.050),(s*.098,-.070,.015),
+                         (s*.132,-.266,.189)],.026,9)
+    G.sweep(m,path,[(-.030,-.036),(.030,-.036),(.030,.036),(-.030,.036)],'dark',(1,0,0))
+    M.emit(m,'armour.'+side+'.hip.skirt.cast.pivot.mount',bone)
+    M.actuator('armour.'+side+'.hip.skirt.rear.stay',bone,
+               (s*.132,-.265,.070),(s*.218,-.260,-.234),.028)
+    m=K.Mesh()
+    for x,y,z in ((s*.132,-.265,.070),(s*.218,-.260,-.234)):
         for dz in (-.023,.023):
             m.prism([(x-.028,y-.008,z+dz),(x+.028,y-.008,z+dz),
-                     (x+.032,-.277,z+dz),(x-.032,-.277,z+dz)],(0,0,.010),'dark')
-        G.hardware(m,(x,-.285,z),(x,-.266,z),.012,'bronze',6)
+                     (x+.032,-.330,z+dz),(x-.032,-.330,z+dz)],(0,0,.010),'dark')
+        G.hardware(m,(x,-.338,z),(x,-.319,z),.012,'bronze',6)
     M.emit(m,'armour.'+side+'.hip.stay.bonded.clevises',bone)
 
 

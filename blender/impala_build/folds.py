@@ -87,6 +87,14 @@ def build():
         for obj in K.PARTS:
             if obj.name in ('car.front_door.mirror.housing.'+side,'car.front_door.mirror.face.'+side):
                 obj.parent=K.NODES[mirror];obj.matrix_parent_inverse=Matrix.Identity(4)
+        vent='fold.vent.'+side
+        # Fold the vent wing down against the upper door skin on its sill
+        # edge. A shallow fold still covers the shoulder bearing in profile.
+        # The glass and chrome frame stay together on this physical hinge.
+        hinge(vent,'front_door.'+side,(s*.890,-.307,1.014),(0,s*150,0),(.20,.70))
+        for obj in K.PARTS:
+            if obj.name in ('car.front_door.vent.glass.'+side,'car.front_door.vent.frame.'+side):
+                obj.parent=K.NODES[vent];obj.matrix_parent_inverse=Matrix.Identity(4)
     # Fold transverse cabin furniture and chassis skins around a central
     # knuckle. Their actual widths nest inside the backpack, rather than
     # presenting full-width seat backs or floor slabs as robot armor.
@@ -94,8 +102,11 @@ def build():
         left='fold.'+part+'.L';right='fold.'+part+'.R'
         # The mirrored halves nest in one volume; a small axial offset keeps
         # their coincident faces apart.
-        hinge(left,part,(0,y,.750),(0,0,90),(.31,.87),(0,0,.002))
-        hinge(right,part,(0,y,.750),(0,0,-90),(.31,.87),(0,0,-.002))
+        # Stagger the front halves 3 mm outward as well as the carrier's
+        # depth offset; this also separates the coincident broad back faces.
+        bias=.003 if part=='front_bench' else 0
+        hinge(left,part,(0,y,.750),(0,0,90),(.31,.87),(-bias,0,.002))
+        hinge(right,part,(0,y,.750),(0,0,-90),(.31,.87),(bias,0,-.002))
         for obj in list(K.PARTS):
             if obj.type=='MESH' and obj.parent==K.NODES[part]:cut_object(obj,0,0,right,left)
     for zone,y in (('front',-1.300),('middle',.100),('rear',1.430)):
@@ -108,6 +119,15 @@ def build():
             if obj.type=='MESH' and obj.parent==K.NODES[part]:cut_object(obj,0,0,right,left)
         for node in (left,right):
             carrier_cut(node,node+'.end',1,y,(0,y,.340),(178,0,0),low=False,span=(.24,.74))
+            if zone=='front':
+                # The front stamping starts at -1.017: the old -1.300 pin was
+                # outside its mesh. Fold from its actual aft mounting edge.
+                carriage='floor.front.pan.'+('L' if node.endswith('.L') else 'R')
+                if carriage not in K.NODES:K.node(carriage)
+                hinge(node+'.pan',carriage,(0,-.400,.340),(-178,0,0),(.20,.40))
+                for obj in K.PARTS:
+                    if obj.name.startswith(('car.floor.front.pressed.','car.chassis.crossmember.-0.82')) and obj.parent in (K.NODES[node],K.NODES[node+'.end'],K.NODES[node+'.pan']):
+                        obj.parent=K.NODES[node+'.pan'];obj.matrix_parent_inverse=Matrix.Identity(4)
     # The tailpipes run past the folded floor ends and would stand above the
     # shoulders. Their tails flip back down onto the pipe, pivoting on its top
     # surface so the two runs stay in contact through the whole turn.
@@ -124,7 +144,7 @@ def build():
     for obj in list(K.PARTS):
         if obj.type=='MESH' and obj.parent==K.NODES['roof']:cut_object(obj,0,0,'fold.roof.R','fold.roof.L')
     for node in ('fold.roof.L','fold.roof.R'):
-        carrier_cut(node,node+'.aft',1,.15,(0,.15,1.350),(178,0,0),low=False,span=(.25,.74))
+        carrier_cut(node,node+'.aft',1,.15,(0,.15,1.350),(178,0,0),low=False,span=(.25,.42))
     carrier_cut('trunk','fold.trunk.aft',1,2.1,(0,2.1,1.0),(178,0,0),low=False,span=(.35,.51))
     # The tank and its cradle are bolted to the tail panel and ride the rear
     # module rigidly; the module sets down on the tank's skid.

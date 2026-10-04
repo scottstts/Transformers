@@ -31,7 +31,7 @@ def definitions():
     # Chest-carried panels keep their car orientation in the chest frame (the
     # lying robot's back carries them flat); they fold on real hinges and
     # slide straight in, with no free rotation in transit.
-    define('roof','chest',(0,.15,1.350),(0,.300,-.550),K.rotation(x=-90),.20,.85)
+    define('roof','chest',(0,.15,1.350),(0,.300,-.550),K.rotation(x=-90),.44,.85)
     define('windshield','chest',(0,-.620,1.110),(0,.230,.120),K.rotation(x=-90),.12,.76)
     define('rear_screen','chest',(0,1.044,1.260),(0,.850,.635),K.rotation(x=-70),.22,.81)
     define('trunk','chest',(0,2.100,1.0),(0,.250,-.050),K.rotation(x=-90),.24,.86)
@@ -39,14 +39,21 @@ def definitions():
     define('rear_bumper','chest',(0,D.TAIL,.440),(0,.834,.040),K.rotation(),.25,.85)
     define('floor','chest',(0,.20,.340),(0,.460,.080),K.rotation(x=90),.28,.79)
     for zone,y,back,z in (('front',-1.30,.050,-.450),('middle',.10,.150,-.300),('rear',1.43,.250,-.450)):
-        define('floor.'+zone,'chest',(0,y,.340),(0,back,z),K.rotation(x=-90),.20,.88)
+        define('floor.'+zone,'chest',(0,y,.340),(0,back,z),K.rotation(x=-90),.42 if zone=='front' else .20,.88)
+    # Fold both front pans, then slide them into separate depth layers inside
+    # the back assembly. Their full width nests behind the folded trunk lid.
+    for side,s in (('L',1),('R',-1)):
+        define('floor.front.pan.'+side,'chest',(s*.428,-.400,.340),
+               (0,.420 if side=='L' else .580,.380),K.rotation(x=-90),.42,.88)
     # The engine stays under the hood: it rides with the car front unit.
     define('engine','chest',(0,-1.595,.370),(0,.325,.245),K.rotation(x=90),.14,.78)
     # The propeller shaft folds in half at its centre joint and docks inside
     # the torso; nothing hangs below the pelvis.
     define('driveline','chest',(0,.455,.270),(0,.300,-.550),K.rotation(x=-90),.24,.87)
     define('dashboard','chest',(0,-.650,.885),(0,.190,.250),K.rotation(x=-90),.12,.67)
-    define('front_bench','chest',(0,-.050,.750),(0,.420,.250),K.rotation(x=-90),.17,.73)
+    # Keep the overlapping bench layout, with a 4 mm depth stagger so the
+    # upholstery's flat end surfaces do not share the rear bench's planes.
+    define('front_bench','chest',(0,-.050,.750),(0,.424,.250),K.rotation(x=-90),.17,.73)
     define('rear_bench','chest',(0,.900,.750),(0,.420,-.450),K.rotation(x=-90),.22,.79)
     for side,s in (('L',1),('R',-1)):
         for part in ('front_fender','wheel.front'):
