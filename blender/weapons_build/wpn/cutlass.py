@@ -5,7 +5,7 @@ returns into a turned pommel, and a short swept quillon.
 Sized for the 5.4 m robot at 3.4 m overall (blade 2.87 m), long as a
 cutlass of a giant: the left hand's grip centre is the origin, +Z runs to the
 tip, the edge faces +X and the blade curves back toward -X at the tip (a
-sabre curves away from its edge), the knuckle bow rises on the spine side as in
+sabre curves away from its edge), the knuckle bow rises on the cutting-edge side as in
 the reference photo.
 
 Declared joins: the blade root is sunk into the bolster; the bow's ends are
@@ -177,17 +177,20 @@ def _catmull(pts, per):
 def _guard():
     p = Part(NAME, 'cutlass.guard')
     ref = [(0, 0, -.334), (.081, 0, -.340), (.164, 0, -.295), (.204, 0, -.210), (.208, 0, -.110), (.179, 0, -.032), (.107, 0, .016), (.034, 0, .026)]
-    path = _catmull([P(*v) for v in ref], 20)
+    path = _catmull([P(-x, y, z) for x, y, z in ref], 20)
     p.add(_strap(path, .0055 * SCALE, .021 * SCALE), 'guard')
-    quill = _catmull([P(x, 0, z) for x, z in ((-.126, .041), (-.092, .061), (-.043, .042), (.013, .024), (.068, .023), (.113, .018))], 20)
-    # the quillon lies toward the edge side and tapers to a point
+    quill = _catmull([P(-x, 0, z) for x, z in ((-.126, .041), (-.092, .061), (-.043, .042), (.013, .024), (.068, .023), (.113, .018))], 20)
+    # the quillon lies toward the spine side and tapers to a point
     p.add(_strap(quill, .0050 * SCALE, .021 * SCALE, 10), 'guard')
     return p
 
 
 def build(coll):
     """Every part of the cutlass in `coll`. Returns the export metadata."""
-    K.finish(_blade().build(coll), width=0.0012, seg=1, angle=40)
+    # The section already defines the ground edge and fuller shoulders. An
+    # angle-limited bevel starts/stops along the fading fuller and pinches both
+    # ends on each side of the blade; preserve the authored section instead.
+    K.finish(_blade().build(coll), width=0, seg=1, angle=40)
     K.finish(_grip().build(coll), width=0, seg=1, angle=60)
     K.finish(_fittings().build(coll), width=0.002, seg=1, angle=35)
     K.finish(_guard().build(coll), width=0.0015, seg=1, angle=35)
