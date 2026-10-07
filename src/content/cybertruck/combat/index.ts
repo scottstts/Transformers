@@ -140,7 +140,7 @@ export function createCybertruckCombat(model: TransformerModel, weaponAsset: Wea
   })
   const lightbar = uniform(LIGHTBAR.rest)
   const weapon = weaponAsset
-    ? new Weapon(weaponAsset, axeMaterials(lightbar), { front: [5, 8, 14], after: [0.15, 0.4, 1.8], band: 0.12, cool: 0.3 }, overlay.grip)
+    ? new Weapon(weaponAsset, axeMaterials(lightbar), { front: [5, 8, 14], after: [0.15, 0.4, 1.8], band: 0.12, cool: 0.3 }, overlay.grip, overlay.build.main)
     : null
   const effects = new CybertruckFighter(model, truck, contact, mix, weapon, lightbar)
   truck.object.add(effects.object)

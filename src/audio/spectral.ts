@@ -137,3 +137,59 @@ export function synthesise(model: SpectralModel, grid: SpectralGrid, seed: numbe
   if (top > 0) for (let i = 0; i < n; i++) out[i] *= peak / top
   return out
 }
+
+/**
+ * Steady noise with a measured spectrum, `n` samples (a power of two), unit
+ * RMS: random phases under magnitudes interpolated in dB, linearly in log
+ * frequency, between `bands` (Hz) and their levels `db`, then one inverse
+ * FFT. Built in the frequency domain, it is exactly periodic, so it loops
+ * with no seam (an engine's noise played on and on).
+ */
+export function shapedNoise(n: number, rate: number, bands: readonly number[], db: readonly number[], seed: number): Float32Array<ArrayBuffer> {
+  if (n & (n - 1)) throw new Error('shapedNoise: n must be a power of two')
+  const re = new Float64Array(n), im = new Float64Array(n)
+  const r = rng(seed)
+  const level = (f: number): number => {
+    if (f <= bands[0]) return db[0]
+    if (f >= bands[bands.length - 1]) return db[db.length - 1]
+    const x = Math.log2(f / bands[0]) / Math.log2(bands[1] / bands[0])
+    const b = Math.min(bands.length - 2, Math.floor(x))
+    return db[b] + (db[b + 1] - db[b]) * (x - b)
+  }
+  for (let k = 1; k < n / 2; k++) {
+    // a band's power spread over its bins: magnitude per bin goes as 1/sqrt(f) for a flat third-octave level
+    const f = (k * rate) / n
+    const m = 10 ** (level(f) / 20) / Math.sqrt(f)
+    const a = r() * Math.PI * 2
+    re[k] = m * Math.cos(a)
+    im[k] = m * Math.sin(a)
+    re[n - k] = re[k]
+    im[n - k] = -im[k]
+  }
+  // inverse transform (conjugate, forward, conjugate)
+  for (let k = 0; k < n; k++) im[k] = -im[k]
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1
+    for (; j & bit; bit >>= 1) j ^= bit
+    j ^= bit
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (-2 * Math.PI) / len
+    for (let i = 0; i < n; i += len) {
+      for (let k = 0; k < len / 2; k++) {
+        const c = Math.cos(ang * k), s = Math.sin(ang * k)
+        const p = i + k, q = p + len / 2
+        const vr = re[q] * c - im[q] * s, vi = re[q] * s + im[q] * c
+        re[q] = re[p] - vr; im[q] = im[p] - vi
+        re[p] += vr; im[p] += vi
+      }
+    }
+  }
+  const out = new Float32Array(n)
+  let sum = 0
+  for (let i = 0; i < n; i++) sum += re[i] * re[i]
+  const g = sum > 0 ? 1 / Math.sqrt(sum / n) : 0
+  for (let i = 0; i < n; i++) out[i] = re[i] * g
+  return out
+}

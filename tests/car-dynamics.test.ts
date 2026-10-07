@@ -4,9 +4,10 @@ import { updateCar, type CarControls } from '../src/game/car-dynamics'
 import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck'
 import { F1_PROFILE } from '../src/content/ferrari-f1'
 import { BAT_PROFILE } from '../src/content/bat'
+import { IMPALA_PROFILE } from '../src/content/impala'
 import type { DriveProfile } from '../src/content/transformer/character'
 
-const CARS: Array<[string, DriveProfile]> = [['cybertruck', CYBERTRUCK_PROFILE.drive], ['ferrari-f1', F1_PROFILE.drive], ['bat', BAT_PROFILE.drive]]
+const CARS: Array<[string, DriveProfile]> = [['cybertruck', CYBERTRUCK_PROFILE.drive], ['ferrari-f1', F1_PROFILE.drive], ['bat', BAT_PROFILE.drive], ['impala', IMPALA_PROFILE.drive]]
 
 /** Drive a scripted input (steering +1 = right) from `speed` for `seconds`; `probe` sees every frame. */
 function drive(car: DriveProfile, speed: number, seconds: number, input: (t: number) => CarControls, fps = 60, probe?: (s: MotionState, t: number) => void): MotionState {

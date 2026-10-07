@@ -1,6 +1,7 @@
 import { Group, Mesh, Vector3, type Material, type Matrix4, type Node, type Object3D } from 'three/webgpu'
 import { abs, color, exp, max, positionLocal, smoothstep, time, uniform, vec2, vec3 } from 'three/tsl'
 import type { WeaponAsset } from '../asset/weapon'
+import type { Side } from './pose'
 import { N } from '../../../rendering/noise.ts'
 
 /** How a weapon forms and fades: the colour of its forming front and of the heat it leaves behind (linear HDR). */
@@ -19,7 +20,7 @@ export interface ForgeStyle {
 const COOL_TIME = 0.7
 
 /**
- * A weapon in the main hand. Its meshes hang off the hand node at the grip
+ * A weapon in the main hand (`hand`). Its meshes hang off the hand node at the grip
  * (weapon frame -> hand frame, from the combat overlay), so it follows the
  * posed hand exactly, and it is drawn with its character's own material slots.
  *
@@ -39,6 +40,8 @@ export class Weapon {
   charge = 0
   /** cutting edge ends in the weapon frame */
   readonly edge: [Vector3, Vector3]
+  /** the hand that holds it (the overlay's main hand) */
+  readonly hand: Side
   private readonly front = uniform(0)
   private readonly glow = uniform(0)
   private readonly surge = uniform(0)
@@ -48,8 +51,9 @@ export class Weapon {
   /** true only while boot/switch warmup forces every weapon pipeline through a real draw */
   private warming = false
 
-  constructor(asset: WeaponAsset, materials: Record<string, Material>, style: ForgeStyle, grip: Matrix4) {
+  constructor(asset: WeaponAsset, materials: Record<string, Material>, style: ForgeStyle, grip: Matrix4, hand: Side) {
     this.asset = asset
+    this.hand = hand
     const m = asset.manifest
     this.edge = [new Vector3(...m.edge[0]), new Vector3(...m.edge[1])]
     this.object.name = `weapon:${m.name}`

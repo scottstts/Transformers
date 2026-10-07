@@ -6,6 +6,7 @@ import { CYBERTRUCK_LABEL, CYBERTRUCK_WEAPON, createCybertruck, loadCybertruckAs
 import { F1_LABEL, F1_WEAPON, createF1, loadF1Asset } from './ferrari-f1'
 import { SEMI_LABEL, SEMI_WEAPON, createSemi, loadSemiAsset } from './semi'
 import { BAT_LABEL, BAT_WEAPON, createBat, loadBatAsset } from './bat'
+import { IMPALA_LABEL, IMPALA_WEAPON, createImpala, loadImpalaAsset } from './impala'
 
 /** A playable car: how to fetch its asset and build it, and how the vehicle menu presents it. */
 export interface RosterEntry {
@@ -57,6 +58,15 @@ export const ROSTER: readonly RosterEntry[] = [
     weapon: BAT_WEAPON,
     load: loadBatAsset,
     create: createBat,
+  },
+  {
+    id: 'impala',
+    label: IMPALA_LABEL,
+    accent: '#7d1622',
+    special: '#d6283c',
+    weapon: IMPALA_WEAPON,
+    load: loadImpalaAsset,
+    create: createImpala,
   },
 ]
 

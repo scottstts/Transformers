@@ -247,7 +247,7 @@ export function createBatCombat(model: TransformerModel, weaponAsset: WeaponAsse
     sole,
   })
   const weapon = weaponAsset
-    ? new Weapon(weaponAsset, createSpearMaterials(), { front: [14, 6, 1.6], after: [1.8, 0.5, 0.1], band: 0.1, cool: 0.24 }, overlay.grip)
+    ? new Weapon(weaponAsset, createSpearMaterials(), { front: [14, 6, 1.6], after: [1.8, 0.5, 0.1], band: 0.1, cool: 0.24 }, overlay.grip, overlay.build.main)
     : null
   const effects = new BatFighter(model, bat, contact, mix, weapon)
   bat.object.add(effects.object)

@@ -104,6 +104,26 @@ export function eulerXYZ(x: number, y: number, z: number, out = new Quaternion()
 }
 const _euler = new Euler()
 
+/**
+ * How a rig's hands are built, read from its bones (the exports differ): the
+ * axis the fingers flex about (the knuckle row's: `y` for the older rigs,
+ * whose fingers stand front to back with the palms facing in; `x` for the
+ * Impala's, whose knuckles run across the hand with the palm facing back),
+ * which way along the knuckle row the thumb sits, each finger joint's stand
+ * flexion, and each forearm's turn about its own axis in the stand (the
+ * Impala's turn in 32 degrees; the older rigs' only flex).
+ */
+export interface HandLayout {
+  /** the knuckle row's axis in the hand frame: the fingers flex about it */
+  flex: 'x' | 'y'
+  /** unit direction along the knuckle row toward the thumb, per side (hand frame) */
+  thumb: Record<'L' | 'R', Vector3>
+  /** each finger joint's stand flexion (deg, toward the palm), by bone index (NaN for other bones) */
+  stand: Float32Array
+  /** the stand forearm's rotation with its flexion taken out (a turn about its own axis), per side */
+  turn: Record<'L' | 'R', Quaternion>
+}
+
 export class RobotRig {
   readonly names: string[]
   readonly parent: Array<number>
@@ -129,6 +149,48 @@ export class RobotRig {
     })
     this.local = bones.map(() => ({ t: new Vector3(), q: new Quaternion() }))
     this.world = bones.map(() => new Matrix4())
+    this.hand = this.layout()
+  }
+
+  /** The hands' construction (HandLayout), measured from the bones once. */
+  readonly hand: HandLayout
+
+  private layout(): HandLayout {
+    const knuckle = this.offset[this.index['index1.L']]
+    const flex = Math.abs(knuckle.x) > Math.abs(knuckle.y) ? 'x' : 'y'
+    const thumb = (side: 'L' | 'R'): Vector3 => {
+      const o = this.offset[this.index[`thumb1.${side}`]]
+      return flex === 'x' ? new Vector3(Math.sign(o.x), 0, 0) : new Vector3(0, Math.sign(o.y), 0)
+    }
+    const stand = new Float32Array(this.names.length).fill(NaN)
+    for (const side of ['L', 'R'] as const) {
+      const s = side === 'L' ? 1 : -1
+      for (const f of FINGERS) for (let k = 1; k <= 3; k++) {
+        const i = this.index[`${f}${k}.${side}`]
+        const q = this.stand[i].q
+        // the flexion about the row's axis (y rigs flex the right hand the other way)
+        const along = flex === 'x' ? q.x : q.y * s
+        stand[i] = 2 * Math.atan2(along, q.w) * 180 / Math.PI
+      }
+    }
+    const turn = (side: 'L' | 'R'): Quaternion =>
+      new Quaternion().setFromAxisAngle(X_AXIS, deg(this.dims.elbowBend)).multiply(this.stand[this.index[`forearm.${side}`]].q).normalize()
+    return { flex, thumb: { L: thumb('L'), R: thumb('R') }, stand, turn: { L: turn('L'), R: turn('R') } }
+  }
+
+  /** A finger joint's local rotation flexed `angle` degrees toward the palm. */
+  fingerFlex(side: 'L' | 'R', angle: number, out: Quaternion): Quaternion {
+    return this.hand.flex === 'x' ? eulerXYZ(angle, 0, 0, out) : eulerXYZ(0, (side === 'L' ? 1 : -1) * angle, 0, out)
+  }
+
+  /** The thumb's base turned `angle` degrees about the palm's normal, across toward the fingers (on top of its stand). */
+  thumbOppose(side: 'L' | 'R', angle: number, out: Quaternion): Quaternion {
+    return this.hand.flex === 'x' ? eulerXYZ(0, (side === 'L' ? 1 : -1) * angle, 0, out) : eulerXYZ(angle, 0, 0, out)
+  }
+
+  /** A distal thumb joint flexed `angle` degrees (on top of its stand). */
+  thumbFlex(side: 'L' | 'R', angle: number, out: Quaternion): Quaternion {
+    return this.hand.flex === 'x' ? eulerXYZ(angle, 0, 0, out) : eulerXYZ(0, (side === 'L' ? 1 : -1) * angle, 0, out)
   }
 
   /** pelvis joint frame of the last live pose */
@@ -166,9 +228,13 @@ export class RobotRig {
       // twist about the arm's own axis first (it hangs along -Z): the elbow's hinge turns inward
       const twist = g.armTwist?.[side] ?? 0
       if (twist) this.local[this.index[`upperarm.${side}`]].q.multiply(_q1.setFromAxisAngle(Z_AXIS, -s * deg(twist)))
-      set(`forearm.${side}`, eulerXYZ(-d.elbowBend + g.elbow[side], 0, 0, tmp))
+      // the elbow flexes on top of the stand forearm's own turn about its axis
+      set(`forearm.${side}`, eulerXYZ(-d.elbowBend + g.elbow[side], 0, 0, tmp).multiply(this.hand.turn[side]))
       for (const f of FINGERS) {
-        for (let k = 0; k < 3; k++) set(`${f}${k + 1}.${side}`, eulerXYZ(0, s * d.fingerCurl[k] * curl, 0, tmp))
+        for (let k = 0; k < 3; k++) {
+          const i = this.index[`${f}${k + 1}.${side}`]
+          this.fingerFlex(side, this.hand.stand[i] * curl, this.local[i].q)
+        }
       }
     }
     const weight = overlay?.weight ?? 0

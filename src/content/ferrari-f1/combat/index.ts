@@ -138,7 +138,7 @@ export function createF1Combat(model: TransformerModel, weaponAsset: WeaponAsset
     sole,
   })
   const weapon = weaponAsset
-    ? new Weapon(weaponAsset, swordMaterials(), { front: [18, 12, 6], after: [2.2, 0.5, 0.08], band: 0.1, cool: 0.22 }, overlay.grip)
+    ? new Weapon(weaponAsset, swordMaterials(), { front: [18, 12, 6], after: [2.2, 0.5, 0.08], band: 0.1, cool: 0.22 }, overlay.grip, overlay.build.main)
     : null
   const effects = new F1Fighter(model, racer, contact, mix, weapon)
   racer.object.add(effects.object)

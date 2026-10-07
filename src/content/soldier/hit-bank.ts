@@ -3,7 +3,7 @@ import { synthesise as synthesiseModel, type SpectralGrid, type SpectralVariatio
 
 /**
  * The robots' blows landing on the soldiers, synthesised from models fitted
- * to Foley recordings (a punch, a stomp, a sword slash) by
+ * to Foley recordings (a punch, a stomp, a sword slash, a cutlass biting) by
  * tools/hit-model.mjs: for each, its level over time in 28 third-octave
  * bands, and the partials that ring on after the impact with their own
  * envelopes. A take is band-passed noise per band, shaped by the band's
@@ -21,14 +21,18 @@ import { synthesise as synthesiseModel, type SpectralGrid, type SpectralVariatio
  *   heavy  (the stomp) blasts and blows that throw: a scuff, then the boom
  *   slash  cuts; the recording's whoosh is left out (the robot's own swing
  *          voice is that half), the model starts at the blade's impact
+ *   cutlass the Impala's cutlass biting: a bright slice of noise as the
+ *          blade goes through, then the heavier blade's lower metal ring
+ *          (around 1.3-4.7 kHz) dying away over most of a second; the rush
+ *          before the bite is the robot's swing voice
  *
  * Each kind has HIT_VARIANTS takes: their own noise, a smooth tilt of a dB
  * or two across the bands, time stretched a few per cent, the partials
  * detuned a hair, so repeated blows never repeat. Pure: the audio side
  * copies the samples into AudioBuffers, a take a frame.
  */
-export type BlowKind = 'punch' | 'heavy' | 'slash'
-export const BLOW_KINDS: readonly BlowKind[] = ['punch', 'heavy', 'slash']
+export type BlowKind = 'punch' | 'heavy' | 'slash' | 'cutlass'
+export const BLOW_KINDS: readonly BlowKind[] = ['punch', 'heavy', 'slash', 'cutlass']
 export const HIT_VARIANTS = 4
 /** Take length (s), the band-pass Q (third octaves, as fitted) and how far a take's timing and bands vary. */
 const GRID: SpectralGrid = { bands: HIT_BANDS, times: HIT_TIMES, seconds: 0.95, q: 4.32 }

@@ -52,7 +52,8 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   const DT = 1 / 120
   const model = player.model
   const node = (name: string): Object3D => model.node(name)
-  const weapon = node('bone:hand.R').children.find((c) => c.name.startsWith('weapon:'))
+  const main = player.combat.overlay.build.main
+  const weapon = node(`bone:hand.${main}`).children.find((c) => c.name.startsWith('weapon:'))
   const extent = asset.weapon.manifest.extent
 
   const has = (name: string): boolean => { try { node(name); return true } catch { return false } }
@@ -60,7 +61,7 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   const chain = ['thigh', 'shin', 'foot', 'toe'].filter((b) => has(`bone:${b}.R`) && has(`bone:${b}.L`))
   const bodies = surfaces(model.root.children[0].children)
   const armOf = (side: 'R' | 'L'): RegExp => new RegExp(`(clav|upperarm|forearm|hand|index|middle|ring|pinky|thumb)\\d?\\.${side}|wheelArm\\.${side}|frontWheel\\.${side}|wheel:wheelF\\.${side}`)
-  const hand = /(hand|index\d|middle\d|ring\d|pinky\d|thumb\d)\.R$/
+  const hand = new RegExp(`(hand|index\\d|middle\\d|ring\\d|pinky\\d|thumb\\d)\\.${main}$`)
 
   // spans are reported in move time (m<move> <time>, s<time> the special's) where a move is playing
   const frame = (fight as unknown as { frame: { move: number; time: number } }).frame
@@ -123,11 +124,11 @@ export async function probeClash(car: string, tokens: string[], until: number): 
     }
     // the weapon wrist bent past WRIST_BEND off the forearm's line (deg)
     if (weapon?.visible) {
-      pos('bone:forearm.R', e0)
-      pos('bone:hand.R', e1)
-      pos('bone:middle1.R', e2)
+      pos(`bone:forearm.${main}`, e0)
+      pos(`bone:hand.${main}`, e1)
+      pos(`bone:middle1.${main}`, e2)
       const bend = e2.sub(e1).angleTo(e1.clone().sub(e0)) * 180 / Math.PI
-      if (bend > WRIST_BEND) report('wrist.R bend|deg', t, bend)
+      if (bend > WRIST_BEND) report(`wrist.${main} bend|deg`, t, bend)
     }
     // each leg's bones (thigh, shin, foot) against the other leg's parts
     for (const side of ['R', 'L'] as const) {

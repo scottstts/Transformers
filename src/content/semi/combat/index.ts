@@ -171,7 +171,7 @@ export function createSemiCombat(model: TransformerModel, weaponAsset: WeaponAss
   })
   const coils = uniform(COILS.rest)
   const weapon = weaponAsset
-    ? new Weapon(weaponAsset, gunMaterials(coils), { front: [9, 6, 16], after: [0.9, 0.35, 2.2], band: 0.1, cool: 0.28 }, overlay.grip)
+    ? new Weapon(weaponAsset, gunMaterials(coils), { front: [9, 6, 16], after: [0.9, 0.35, 2.2], band: 0.1, cool: 0.28 }, overlay.grip, overlay.build.main)
     : null
   const effects = new SemiFighter(model, semi, contact, mix, weapon, coils)
   semi.object.add(effects.object)

@@ -6,11 +6,12 @@ import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createSemi } from '../src/content/semi/index.ts'
 import { createBat } from '../src/content/bat/index.ts'
+import { createImpala } from '../src/content/impala/index.ts'
 import { RobotJump } from '../src/game/jump.ts'
 import { NO_CONTACT, readAsset } from './support/assets.ts'
 
 const dt = 1 / 240
-const robots = [['ferrari-f1', createF1], ['cybertruck', createCybertruck], ['semi', createSemi], ['bat', createBat]] as const
+const robots = [['ferrari-f1', createF1], ['cybertruck', createCybertruck], ['semi', createSemi], ['bat', createBat], ['impala', createImpala]] as const
 const JOINTS = ['thigh.L', 'thigh.R', 'shin.L', 'shin.R'] as const
 
 /** A leap from a settled run, pressed at stride fraction `at`, driven as the session drives it. */
@@ -64,7 +65,7 @@ describe.each(robots)('%s running leap', (name, make) => {
     let landAccel = 0
     for (let i = touch - 24; i < touch + 24; i++) landAccel = Math.max(landAccel, Math.abs(frames[i + 4].pelvis - 2 * frames[i].pelvis + frames[i - 4].pelvis) / (16 * dt * dt) / 9.81)
     // it waits for the stride: the next toe-off with a loaded foot, within half a cycle
-    const cadence = { 'ferrari-f1': 15.6 / 5.2, cybertruck: 15 / 4.6, semi: 17 / 5.6, bat: 14.2 / 4.1 }[name]
+    const cadence = { 'ferrari-f1': 15.6 / 5.2, cybertruck: 15 / 4.6, semi: 17 / 5.6, bat: 14.2 / 4.1, impala: 14.5 / 4.26 }[name]
     expect(takeoff).toBeGreaterThanOrEqual(0.08)
     expect(takeoff).toBeLessThan(1 / cadence + 0.09)
     expect(load.some((f) => f.up[trail] === 0)).toBe(true)

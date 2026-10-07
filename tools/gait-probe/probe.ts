@@ -1,18 +1,10 @@
 import { Vector3 } from 'three/webgpu'
-import { AudioMix } from '../../src/audio/mix.ts'
+import { probeRobot } from './robot.ts'
 import type { GaitStyle } from '../../src/content/transformer/animation/gait.ts'
 import type { Character } from '../../src/content/transformer/character.ts'
-import { createF1 } from '../../src/content/ferrari-f1/index.ts'
-import { createCybertruck } from '../../src/content/cybertruck/index.ts'
-import { createSemi } from '../../src/content/semi/index.ts'
-import { createBat } from '../../src/content/bat/index.ts'
-import { NO_CONTACT, readAsset } from '../../tests/support/assets.ts'
 
 const dt = 1 / 240
 const G = 9.81
-const create: Record<string, typeof createF1 | typeof createCybertruck | typeof createSemi | typeof createBat> = {
-  'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi, bat: createBat,
-}
 
 /**
  * One settled gait cycle of a robot, sampled through the rendered model: a
@@ -21,7 +13,7 @@ const create: Record<string, typeof createF1 | typeof createCybertruck | typeof 
  * acceleration in g), so timing that reads as sped up shows as numbers.
  */
 export function probe(name: string, running: boolean, table: boolean): void {
-  const robot: Character = create[name](readAsset(name), NO_CONTACT, new AudioMix())
+  const robot: Character = probeRobot(name)
   // GAIT='{"stance":[0.58,0.2]}' overrides style values for a trial without editing the robot
   if (process.env.GAIT) Object.assign((robot.gait as unknown as { style: GaitStyle }).style, JSON.parse(process.env.GAIT))
   const speed = running ? robot.profile.robot.runSpeed : robot.profile.robot.walkSpeed

@@ -4,7 +4,7 @@ The Impala remains one assembled model throughout deployment. Car stampings
 and trim move on rigid carriers; the internal mechanical core is fitted into
 the car rather than exchanged for a second model. Native Blender authoring is
 approved and exported (`impala_build/export.py`, run through `export_game.py`). Game
-integration follows.
+integration is impala.md.
 
 Car reference matching uses fixed pinhole cameras and unchanged source photos.
 Contact sheets preserve image aspect ratios and do not deform either image.
@@ -122,6 +122,7 @@ origin, edge toward +X, the blade curving toward -X; the pommel end is its secon
 - The rig block describes the authored stand pose. Two things differ from the
   conventions the live gait assumes (hands that bend fingers about Y, forearms
   that only flex): the Impala's fingers flex about X and its forearms turn in
-  32 deg, and a handover to the gait pops until the rig or the skeleton is aligned.
+  32 deg. The game rig reads both from the bones (`RobotRig.hand`, impala.md), so the
+  handover to the gait is seamless.
 - The brace stages leave their 4 % nests in frames 1 to 3 (a scale jump of about
   0.9), which the export reproduces.

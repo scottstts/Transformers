@@ -1,5 +1,5 @@
 // Full-world boot and fixed-camera frame costs at 1080p; no browser/listening server.
-// Usage: node tools/citadel-bench.mjs
+// Usage: [BENCH_CAR=<roster id>] node tools/citadel-bench.mjs
 import { createServer } from 'vite'
 
 globalThis.self = globalThis

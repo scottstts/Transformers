@@ -33,8 +33,8 @@ export type HitReaction = 'toss'
 export interface StrikeHit {
   t: number
   kind: HitKind
-  /** Optional sound of the blow, independent of how it damages the target. */
-  blowSound?: 'punch' | 'heavy' | 'slash'
+  /** Optional sound of the blow, independent of how it damages the target; `none` for a blow whose effect sounds it itself (lightning) */
+  blowSound?: 'punch' | 'heavy' | 'slash' | 'cutlass' | 'none'
   reach: number
   arc: number
   aim?: number
@@ -103,7 +103,7 @@ export interface HitEvent {
   shape: 'sector' | 'circle' | 'capsule'
   kind: HitKind
   reaction?: HitReaction
-  blowSound?: 'punch' | 'heavy' | 'slash'
+  blowSound?: 'punch' | 'heavy' | 'slash' | 'cutlass' | 'none'
   x: number
   z: number
   /** Capsule start; x/z are its endpoint. The whole segment is swept, including between frames. */

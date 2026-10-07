@@ -65,6 +65,22 @@
       "bytes": 152541,
       "sha256": "db79615b9e9aee74594c559ecced2171a79f49974fb18fe0467ea06470a8ed68"
     },
+    "impala-cutlass.bin": {
+      "bytes": 331592,
+      "sha256": "35e9fbe9b7922c6c3ca597ae154fa08f27a72c1605a80f40a14647f0eb2abf24"
+    },
+    "impala-cutlass.json": {
+      "bytes": 1296,
+      "sha256": "93a3ba44c945646ac5c1a3a485a0ddcf366827a517fe61e05ce6c54b164043e3"
+    },
+    "impala.bin": {
+      "bytes": 69361152,
+      "sha256": "7c7dc72a1bc68952b6181af1fdc61a9d295897cf648ccdd90902ce4a6a83c245"
+    },
+    "impala.json": {
+      "bytes": 212691,
+      "sha256": "a44d52016a7bc8b2ab8253d1c5a9c37abb01f7fdb4de2300843af8b3a8636bf4"
+    },
     "semi-gun.bin": {
       "bytes": 1194696,
       "sha256": "3a1926b052512d660927dfa8871fb33f78eceee88d69f137c6d6a92391725d9d"

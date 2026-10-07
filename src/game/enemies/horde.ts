@@ -332,7 +332,7 @@ export class Horde {
       nearest = Math.min(nearest, this.listener.distanceTo(_v.set(c.x, c.floor + 3, c.z)))
       n++
     }
-    if (n > 0) {
+    if (n > 0 && e.blowSound !== 'none') {
       // the blow itself, once: a blade's chop and ring, a heavy hit, or a punch
       const kind = e.blowSound ?? (e.kind === 'cut' ? 'slash' : e.kind === 'blast' || e.knock >= 13 || e.lift >= 3 ? 'heavy' : 'punch')
       this.audio.blow(kind, Math.min(1.4, 0.55 + (e.knock + e.damage * 0.02) / 20), n, nearest)

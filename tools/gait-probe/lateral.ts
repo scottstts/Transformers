@@ -1,15 +1,9 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three/webgpu'
-import { AudioMix } from '../../src/audio/mix.ts'
+import { probeRobot } from './robot.ts'
 import type { Character } from '../../src/content/transformer/character.ts'
 import type { GaitStyle } from '../../src/content/transformer/animation/gait.ts'
-import { createF1 } from '../../src/content/ferrari-f1/index.ts'
-import { createCybertruck } from '../../src/content/cybertruck/index.ts'
-import { createSemi } from '../../src/content/semi/index.ts'
-import { createBat } from '../../src/content/bat/index.ts'
-import { NO_CONTACT, readAsset } from '../../tests/support/assets.ts'
 
 const dt = 1 / 240
-const create: Record<string, typeof createF1> = { 'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi, bat: createBat }
 
 /**
  * A settled cycle seen from behind: the side-to-side travel and the roll and yaw
@@ -17,7 +11,7 @@ const create: Record<string, typeof createF1> = { 'ferrari-f1': createF1, cybert
  * against the hips, and the hands. Angles are world rotations of the joint frames.
  */
 export function lateral(name: string, running: boolean, table: boolean): void {
-  const robot: Character = create[name](readAsset(name), NO_CONTACT, new AudioMix())
+  const robot: Character = probeRobot(name)
   if (process.env.GAIT) Object.assign((robot.gait as unknown as { style: GaitStyle }).style, JSON.parse(process.env.GAIT))
   const speed = running ? robot.profile.robot.runSpeed : robot.profile.robot.walkSpeed
   const { gait, model } = robot

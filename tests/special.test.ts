@@ -4,6 +4,7 @@ import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { createSemi } from '../src/content/semi/index.ts'
 import { createBat } from '../src/content/bat/index.ts'
+import { createImpala } from '../src/content/impala/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CH, CHANNEL_NAMES, LEG } from '../src/content/transformer/combat/pose.ts'
 import { MAX_KEYS } from '../src/content/transformer/combat/moves.ts'
@@ -54,6 +55,14 @@ const FIGHTERS: Fighter[] = [
     apex: 20,
     // round the ring and onto its centre
     travel: 6,
+  },
+  {
+    name: 'impala',
+    make: () => createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix()),
+    midCombo: [0, 0.38],
+    apex: 2.5,
+    // the leap onto the centre
+    travel: 8,
   },
 ]
 
@@ -138,7 +147,7 @@ describe.each(FIGHTERS)('$name special', ({ make, midCombo, apex, travel }) => {
     const p = new Vector3()
     const inside = (box: typeof chest, node: string, world: Vector3): boolean => box.containsPoint(p.copy(world).applyMatrix4(inv.copy(c.model.node(node).matrixWorld).invert()))
     const cores = [[chest, 'bone:chest'], [pelvis, 'bone:pelvis'], [head, 'bone:head']] as const
-    const weapon = c.model.node('bone:hand.R').children.find((o) => o.name.startsWith('weapon:'))!
+    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))!
     const formed = c.combat.effects.weapon!
     const clicks = start === 'from the stance' ? [] : midCombo
     const at = start === 'from the stance' ? 0 : midCombo[1] + 0.25

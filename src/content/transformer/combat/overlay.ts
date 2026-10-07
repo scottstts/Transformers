@@ -40,19 +40,21 @@ export interface CombatBuild {
 }
 
 /**
- * Weapon axes in a hand's frame: the haft (weapon +z) leaves the fist past the
- * index finger (hand -y), the edge (weapon +x) faces the knuckles (hand -z).
- * The same for either hand: two hands on one haft hold it palm to palm.
+ * Weapon axes in a hand's frame (`thumb`: the knuckle row's direction toward
+ * the thumb, HandLayout). A haft: it leaves the fist on the thumb's side
+ * (weapon +z), the edge (weapon +x) faces the knuckles (hand -z); two hands on
+ * one haft hold it palm to palm. A pistol grip: the barrels (weapon +z) leave
+ * past the knuckles, the top (weapon +x) faces the thumb's side; the right
+ * palm faces the gun's left side, the left palm its right side. For the
+ * older rigs the thumb's side is hand -y (the index finger's); the Impala's
+ * thumbs sit across the hand, so its two hands' grips mirror.
  */
-const GRIP_ROT = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
-  new Vector3(0, 0, -1), new Vector3(1, 0, 0), new Vector3(0, -1, 0)))
-/**
- * A pistol grip in a hand's frame: the barrels (weapon +z) leave past the
- * knuckles (hand -z), the top (weapon +x) faces the index finger (hand -y).
- * The right palm faces the gun's left side, the left palm its right side.
- */
-const PISTOL_ROT = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
-  new Vector3(0, -1, 0), new Vector3(-1, 0, 0), new Vector3(0, 0, -1)))
+function gripRotation(thumb: Vector3, pistol: boolean): Quaternion {
+  const knuckles = new Vector3(0, 0, -1)
+  const x = pistol ? thumb.clone() : knuckles
+  const z = pistol ? knuckles : thumb.clone()
+  return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, new Vector3().crossVectors(z, x), z))
+}
 /** The weapon's rest in the chest frame: upright, the edge facing forward. */
 const WEAPON_REST = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
   new Vector3(0, -1, 0), new Vector3(1, 0, 0), new Vector3(0, 0, 1)))
@@ -100,9 +102,9 @@ export class CombatOverlay implements RigOverlay {
   private readonly gaitQ: Quaternion[]
   private readonly gripOffset: Record<Side, Vector3>
   private readonly offGrip: Vector3
-  /** weapon axes in the hand's frame (GRIP_ROT or PISTOL_ROT), and back */
-  private readonly gripRot: Quaternion
-  private readonly gripRotInv: Quaternion
+  /** weapon axes in each hand's frame (gripRotation), and back */
+  private readonly gripRot: Record<Side, Quaternion>
+  private readonly gripRotInv: Record<Side, Quaternion>
   /** Continuous quaternion branch while a hand takes/releases the weapon. */
   private readonly wristDelta: Record<Side, Quaternion> = { R: new Quaternion(), L: new Quaternion() }
   private readonly wristWeight: Record<Side, number> = { R: 0, L: 0 }
@@ -140,9 +142,10 @@ export class CombatOverlay implements RigOverlay {
     this.gaitQ = rig.local.map(() => new Quaternion())
     this.gripOffset = { R: new Vector3(...build.grip), L: new Vector3(-build.grip[0], build.grip[1], build.grip[2]) }
     this.offGrip = new Vector3(...build.offGrip)
-    this.gripRot = (build.pistol ? PISTOL_ROT : GRIP_ROT).clone()
-    this.gripRotInv = this.gripRot.clone().invert()
-    this.gripBase.compose(this.gripOffset[build.main], this.gripRot, _one)
+    const hand = rig.hand
+    this.gripRot = { R: gripRotation(hand.thumb.R, build.pistol ?? false), L: gripRotation(hand.thumb.L, build.pistol ?? false) }
+    this.gripRotInv = { R: this.gripRot.R.clone().invert(), L: this.gripRot.L.clone().invert() }
+    this.gripBase.compose(this.gripOffset[build.main], this.gripRot[build.main], _one)
     this.grip.copy(this.gripBase)
     this.measureNeutral(rig)
   }
@@ -251,7 +254,7 @@ export class CombatOverlay implements RigOverlay {
           .multiply(_q3.setFromAxisAngle(_x, deg(v[WEAPON + 4])))
           .multiply(_q2.setFromAxisAngle(_z, sgn * deg(follows ? 0 : v[WEAPON + 5])))
           .multiply(WEAPON_REST)
-        handQ.copy(weaponQ).multiply(this.gripRotInv)
+        handQ.copy(weaponQ).multiply(this.gripRotInv[side])
         _grip.copy(at)
         at.sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
         if (follows) {
@@ -266,7 +269,7 @@ export class CombatOverlay implements RigOverlay {
             const knuckles = _v1.set(1, 0, 0).applyQuaternion(weaponQ)
             const turn = Math.atan2(_v0.crossVectors(knuckles, forearm).dot(haft), knuckles.dot(forearm)) + sgn * deg(v[WEAPON + 5])
             weaponQ.multiply(_q2.setFromAxisAngle(_z, turn))
-            handQ.copy(weaponQ).multiply(this.gripRotInv)
+            handQ.copy(weaponQ).multiply(this.gripRotInv[side])
             at.copy(_grip).sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
           }
         }
@@ -292,7 +295,7 @@ export class CombatOverlay implements RigOverlay {
         target.lerp(at, hold)
       } else {
         this.weapon.decompose(_vw, _qw, _s)
-        handQ.copy(_qw).multiply(this.gripRotInv)
+        handQ.copy(_qw).multiply(this.gripRotInv[side])
         const at = _vw.add(_v0.copy(this.offGrip).applyQuaternion(_qw)).sub(_v1.copy(this.gripOffset[side]).applyQuaternion(handQ))
         target.lerp(at, hold)
       }
@@ -308,15 +311,17 @@ export class CombatOverlay implements RigOverlay {
     const parentQ = _qp.setFromRotationMatrix(rig.world[a.parent])
     const flex = solveArm(S, target, L1, L2, pole, parentQ, _q1)
     const local = rig.local
+    // the elbow's flexion, on top of the forearm's own turn about its axis (which moves neither elbow nor wrist)
+    const turn = rig.hand.turn[side]
     local[a.upper].q.copy(this.gaitQ[a.upper]).slerp(_q1, w)
-    local[a.fore].q.copy(this.gaitQ[a.fore]).slerp(_q2.setFromAxisAngle(_x, -flex), w)
+    local[a.fore].q.copy(this.gaitQ[a.fore]).slerp(_q2.setFromAxisAngle(_x, -flex).multiply(turn), w)
 
     // the hand: the stand's with the wrist channels, or turned to the weapon
     eulerXYZ(v[o + 4], sgn * v[o + 5], sgn * v[o + 6], _q3)
     const fist = _q2.copy(rig.stand[a.hand].q).multiply(_q3)
     if (hold > 0) {
       // the forearm's world rotation as it will be: parent * upper * fore (the hand's own offset turns nothing)
-      const fore = _q3.copy(parentQ).multiply(_q1).multiply(_q4.setFromAxisAngle(_x, -flex)).invert()
+      const fore = _q3.copy(parentQ).multiply(_q1).multiply(_q4.setFromAxisAngle(_x, -flex)).multiply(turn).invert()
       // A shortest-path slerp can switch sides at 180 degrees as the weapon
       // rotates. At partial grip that turns into a visible one-frame wrist
       // flip. Unwrap the relative quaternion before applying the grip weight.
@@ -337,24 +342,25 @@ export class CombatOverlay implements RigOverlay {
 
   /** Fingers close from the gait's curl toward the channel's grip. */
   private fingers(rig: RobotRig, g: GaitPose, w: number): void {
-    const d = rig.dims
     const fist = this.build.fist
+    const open = rig.hand.stand
     for (const side of SIDES) {
-      const s = side === 'L' ? 1 : -1
       const grip = this.pose.v[ARM[side] + 7]
       const hold = this.pose.v[side === this.build.main ? CH['w.wield'] : CH['w.two']]
       const f = this.idx.arm[side].fingers
       for (let k = 0; k < f.length; k++) {
         const j = k % 3
-        const gait = d.fingerCurl[j] * g.curl / GAIT_REST_CURL
+        const stand = open[f[k]]
+        const gait = stand * g.curl / GAIT_REST_CURL
         const closed = fist[j] + (this.build.handle[j] - fist[j]) * hold
-        const combat = d.fingerCurl[j] + (closed - d.fingerCurl[j]) * grip
-        eulerXYZ(0, s * (gait + (combat - gait) * w), 0, rig.local[f[k]].q)
+        const combat = stand + (closed - stand) * grip
+        rig.fingerFlex(side, gait + (combat - gait) * w, rig.local[f[k]].q)
       }
       const thumbs = this.idx.arm[side].thumbs
       for (let j = 0; j < thumbs.length; j++) {
         const k = thumbs[j]
-        eulerXYZ(j === 0 ? this.build.thumb[j] : 0, j === 0 ? 0 : s * this.build.thumb[j], 0, _q0)
+        if (j === 0) rig.thumbOppose(side, this.build.thumb[j], _q0)
+        else rig.thumbFlex(side, this.build.thumb[j], _q0)
         _q1.copy(rig.stand[k].q).multiply(_q0)
         rig.local[k].q.copy(this.gaitQ[k]).slerp(_q1, grip * w)
       }

@@ -4,7 +4,8 @@ The robots' combat weapons are authored procedurally in Blender (`blender/weapon
 - `assets/cybertruck-axe.{json,bin}`;
 - `assets/ferrari-f1-sword.{json,bin}`;
 - `assets/semi-gun.{json,bin}`;
-- `assets/bat-spear.{json,bin}`.
+- `assets/bat-spear.{json,bin}`;
+- `assets/impala-cutlass.{json,bin}`.
 
 The large character assets are not touched. Build, save the `.blend` and export with:
 
@@ -25,7 +26,8 @@ The large character assets are not touched. Build, save the `.blend` and export 
   - `glow`: the axe's light-bar strip;
   - `blade`: the sword's polished steel;
   - the gun's `glow`: its capacitor coils, driven by their charge;
-  - the spear's `lacquer` (the black shaft), `bronzeDark` (the flutes' patina) and `edge` (its honed edges); its bright flats are the car's `bronze`.
+  - the spear's `lacquer` (the black shaft), `bronzeDark` (the flutes' patina) and `edge` (its honed edges); its bright flats are the car's `bronze`;
+  - the cutlass's own four: `blade` (dark forged steel, grinding marks along it), `edge` (the bright ground edge), `guard` (the knuckle bow and quillon's forged steel, hammer marks in its sheen) and `grip` (dark wrapped leather, its turns set at an angle). It uses none of the car's slots.
   Blender materials are named `<weapon>.<slot>`. A boolean hands its cut faces the cutter's material, so `wpn.kit.cut` reassigns them.
 - **Kit:** the kit reuses the F1 build's polygon kit (`f1b.kit`: sections, lofts, revolves, bevel prisms, manifold booleans, the angle-limited bevel finish).
 
@@ -42,4 +44,5 @@ The large character assets are not touched. Build, save the `.blend` and export 
   - **Grip and pommel:** a banded grip, and a centre-lock wheel nut for a pommel, with a yellow drive ring as the car's nuts are colour-coded.
 - **Gun (Semi robot, 7 m):** 3.8 m overall, modelled as integrated, machined forms rather than primitives glued together: a receiver with pocketed bands and inserts; a railed optic; a skeletal stock with a grooved butt pad; swell-profile grips; a coil core with glowing coils inside a vented, hollow shroud round a radiator; a rotary machine gun under the coil cannon, whose bore opens through a ported muzzle brake; a D-shaped drum with ribbed, recessed covers. The truck's pearl white and graphite, with orange accents.
 - **Spear (Bat robot, 5.4 m):** 6.5 m overall, longer than the robot stands (a pike, as the concept drawing has it): a slim black-lacquered shaft with brushed bronze fittings (a knurled grip band between two rings at the main hand, a ringed socket collar, a knurled bulb and neck, a ribbed butt ferrule) and a long fluted leaf blade. The head was drawn for the first 4.3 m spear and is carried up the longer shaft (`HEAD_DZ`), the blade lengthened by a fifth. The main hand's grip band is at the origin, 1.6 m from the butt; the hand slides along the shaft in play (`w.slide`, combat.md). The off grip is a metre up toward the head. Its edge for the trail is the blade's axis (4.2 to 4.9 m).
+- **Cutlass (Impala robot, 5.47 m):** a cavalry cutlass, 3.41 m overall with a 2.87 m curved blade (a recessed fuller, a ground edge; the blade curves back toward its spine at the tip), a grooved oval grip, a D knuckle bow on the edge's side returning into a turned pommel, and a short swept quillon. Held in the left hand: its grip centre is the origin, the edge faces +x. The pommel end (0.2 m behind the grip) is the manifest's second grip; the robot's fists are too broad for two on it, and it is fought one-handed (combat.md). Its edge for the trail runs from the bolster to the tip.
 - **Joins:** every penetration is declared and structural: hafts through eyes, roots sunk into their sockets, strips 1 mm into their grooves. Plates and wraps are proud.

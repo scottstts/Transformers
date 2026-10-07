@@ -36,4 +36,14 @@ describe('hit bank', () => {
     // the blade's ring carries on after the chop is gone
     expect(band(slash, 0.25, 0.5, 3800, 13000)).toBeGreaterThan(band(slash, 0.25, 0.5, 60, 400))
   })
+
+  it('gives the cutlass a bright bite and a heavier blade\'s lower ring that dies away over most of a second', () => {
+    const cutlass = blowTake('cutlass', 0, RATE)
+    // the bite: bright at once
+    expect(band(cutlass, 0, 0.06, 5000, 12000)).toBeGreaterThan(band(cutlass, 0, 0.06, 60, 400))
+    // the ring: the metal's partials (1.3-4.7 kHz) carry on over the low body, and fade
+    expect(band(cutlass, 0.2, 0.45, 1200, 5000)).toBeGreaterThan(band(cutlass, 0.2, 0.45, 60, 400))
+    expect(band(cutlass, 0.5, 0.75, 1200, 5000)).toBeLessThan(band(cutlass, 0.2, 0.45, 1200, 5000))
+    expect(band(cutlass, 0.5, 0.75, 1200, 5000)).toBeGreaterThan(0)
+  })
 })

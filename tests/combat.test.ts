@@ -4,6 +4,7 @@ import { createCybertruck } from '../src/content/cybertruck/index.ts'
 import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { createSemi } from '../src/content/semi/index.ts'
 import { createBat } from '../src/content/bat/index.ts'
+import { createImpala } from '../src/content/impala/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CH, CHANNEL_NAMES } from '../src/content/transformer/combat/pose.ts'
 import type { Character } from '../src/content/transformer/character.ts'
@@ -51,6 +52,15 @@ const FIGHTERS: Fighter[] = [
     // the spear reaches: the thrust lunges, the sweep steps in, the flurry braces and lunges, the spin steps back and sweeps through
     travel: [0.8, 0.8, 0.8, 1.1],
     // the spear from the first thrust
+    armedFrom: 0,
+  },
+  {
+    name: 'impala',
+    make: () => createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix()),
+    clicks: [0, 0.38, 0.84, 1.45],
+    // the cutlass: the lunge, the swing steps in, the rising cut drives forward, the cyclone leaps
+    travel: [0.7, 0.5, 0.6, 4.5],
+    // the cutlass from the first thrust
     armedFrom: 0,
   },
 ]
@@ -113,7 +123,7 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
     const head = bodyCore(c, 'bone:head', 0.1)
     const inv = new Matrix4()
     const p = new Vector3()
-    const weapon = c.model.node('bone:hand.R').children.find((o) => o.name.startsWith('weapon:'))!
+    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))!
     expect(weapon).toBeDefined()
     expect(weapon.children.length).toBeGreaterThan(0)
     let frames = 0
@@ -144,8 +154,10 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
       if (weapon.visible && formed) {
         armed++
         if (c.combat.overlay.pose.v[CH['w.two']] > 0.999 && fight.poseWeight === 1) {
+          // the other hand's grip centre (the build's is the right hand's; the left mirrors x)
+          const off = c.combat.overlay.build.main === 'R' ? 'L' : 'R'
           const [x, y, z] = c.combat.overlay.build.grip
-          const palm = new Vector3(-x, y, z).applyMatrix4(c.model.node('bone:hand.L').matrixWorld)
+          const palm = new Vector3(off === 'L' ? -x : x, y, z).applyMatrix4(c.model.node(`bone:hand.${off}`).matrixWorld)
           const grip = new Vector3(...formed.asset.manifest.grips.off).applyMatrix4(weapon.matrixWorld)
           expect(palm.distanceTo(grip), `off-hand grip at ${t.toFixed(2)}`).toBeLessThan(0.08)
         }
@@ -179,7 +191,7 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
   it('a single click plays move 1 and recovers', () => {
     const c = make()
     let seenWeapon = false
-    const weapon = c.model.node('bone:hand.R').children.find((o) => o.name.startsWith('weapon:'))!
+    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))!
     const combat = runFight(c, [0], 3, () => { seenWeapon ||= weapon.visible })
     expect(seenWeapon).toBe(armedFrom === 0)
     expect(weapon.visible).toBe(false)
@@ -261,25 +273,29 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
     c.model.overlay = overlay
     overlay.weight = 1
     overlay.pose.v.set(overlay.neutral)
-    overlay.pose.v[CH['R.grip']] = 1
+    const main = overlay.build.main
+    overlay.pose.v[CH[`${main}.grip`]] = 1
     overlay.pose.v[CH['w.wield']] = 1
     overlay.pose.v[CH['w.y']] = 0.6
     c.model.pose(1, c.gait.update(0, 0, 0, false, true, null))
-    const hand = c.model.node('bone:hand.R')
+    const hand = c.model.node(`bone:hand.${main}`)
     const inverse = hand.matrixWorld.clone().invert()
-    const points = [1, 2, 3].map((j) => new Vector3().setFromMatrixPosition(c.model.node(`bone:middle${j}.R`).matrixWorld).applyMatrix4(inverse))
+    const points = [1, 2, 3].map((j) => new Vector3().setFromMatrixPosition(c.model.node(`bone:middle${j}.${main}`).matrixWorld).applyMatrix4(inverse))
     // Terminal phalanx is 85 mm on both rigs; test its pad centre.
-    points.push(new Vector3(0, 0, -0.075).applyMatrix4(c.model.node('bone:middle3.R').matrixWorld).applyMatrix4(inverse))
-    const [x, , z] = overlay.build.grip
+    points.push(new Vector3(0, 0, -0.075).applyMatrix4(c.model.node(`bone:middle3.${main}`).matrixWorld).applyMatrix4(inverse))
+    const [gx, gy, z] = overlay.build.grip
+    // the curl plane: across the palm (x on the rigs whose fingers flex about y, y on the Impala's) and along the fingers
+    const across = c.model.rig.hand.flex === 'y' ? (p: Vector3) => p.x : (p: Vector3) => p.y
+    const x = c.model.rig.hand.flex === 'y' ? (main === 'R' ? gx : -gx) : gy
     // Winding in the curl plane: the handle axis must be inside the finger loop.
     let enclosed = false
     for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
       const a = points[i], b = points[j]
-      if ((a.z > z) !== (b.z > z) && x < (b.x - a.x) * (z - a.z) / (b.z - a.z) + a.x) enclosed = !enclosed
+      if ((a.z > z) !== (b.z > z) && x < (across(b) - across(a)) * (z - a.z) / (b.z - a.z) + across(a)) enclosed = !enclosed
     }
     expect(enclosed).toBe(true)
-    const thumb = new Vector3().setFromMatrixPosition(c.model.node('bone:thumb3.R').matrixWorld).applyMatrix4(inverse)
-    expect(Math.hypot(thumb.x - x, thumb.z - z)).toBeLessThan(0.14)
+    const thumb = new Vector3().setFromMatrixPosition(c.model.node(`bone:thumb3.${main}`).matrixWorld).applyMatrix4(inverse)
+    expect(Math.hypot(across(thumb) - x, thumb.z - z)).toBeLessThan(0.14)
   })
 
   it.each([1 / 30, 1 / 120])('advances on every move and keeps the gained ground through recovery at dt=%s', (dt) => {
@@ -289,7 +305,9 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
     let began = false
     const advances = [0, 0, 0, 0]
     runFight(c, clicks, 7, (t) => {
-      const position = c.model.root.position.dot(forward)
+      // the robot's standing point (the root is the car's origin, behind it: a move that turns the body round swings it about)
+      const yaw = c.model.root.rotation.y
+      const position = c.model.root.position.dot(forward) + (Math.sin(yaw) * forward.x + Math.cos(yaw) * forward.z) * c.robotOffset
       if (!began) { previous = position; began = true }
       const delta = position - previous
       expect(delta, `backwards at ${t.toFixed(2)}`).toBeGreaterThanOrEqual(-1e-5)

@@ -54,10 +54,10 @@ export class SoldierAudio {
   private readonly cans: AudioBuffer[][] = Array.from({ length: CAN_OBJECTS }, () => [])
   private cansReady = 0
   /** the blows' takes by kind, rendered after the shells, a take per frame */
-  private readonly blows: Record<BlowKind, AudioBuffer[]> = { punch: [], heavy: [], slash: [] }
+  private readonly blows: Record<BlowKind, AudioBuffer[]> = { punch: [], heavy: [], slash: [], cutlass: [] }
   private blowsReady = 0
   /** when the last blow of each kind sounded (a sweep catching soldiers frame after frame is one blow, not a rattle) */
-  private readonly lastBlow: Record<BlowKind, number> = { punch: -1, heavy: -1, slash: -1 }
+  private readonly lastBlow: Record<BlowKind, number> = { punch: -1, heavy: -1, slash: -1, cutlass: -1 }
 
   constructor(mix: AudioMix) {
     this.mix = mix

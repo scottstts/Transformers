@@ -129,7 +129,7 @@ export class Fighter implements CombatEffects {
     if (this.trail) this.object.add(this.trail.mesh)
     this.tracked = ['hand.R', 'hand.L', 'foot.R', 'foot.L'].map((b) => model.node(`bone:${b}`))
     this.lastPos = this.tracked.map(() => new Vector3())
-    if (weapon) weapon.attach(model.node('bone:hand.R'))
+    if (weapon) weapon.attach(model.node(`bone:hand.${weapon.hand}`))
   }
 
   begin(): void {}

@@ -12,7 +12,7 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 
 - Top left, a strip of 12 skewed cells in a small glass plate (the entry button's chamfer), lit from the left like shift lights. There is no text. The cells read one registered custom property (`--level`), so a change is one style write and CSS animates it.
 - A gain flashes the strip. Full lights the diamond core, glows and runs a shine along the strip. Spending discharges it.
-- It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange, the Semi's coil violet, the Bat's afterburner gold). It shows only while the robot stands, changing with the hint pill (hud.md), and hides during the cutscene and the menu.
+- It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange, the Semi's coil violet, the Bat's afterburner gold, the Impala's crimson). It shows only while the robot stands, changing with the hint pill (hud.md), and hides during the cutscene and the menu.
 - The robot's hint pill always shows "F for special"; while the meter is full, the F key lights up. Both labels are the same line, so the pill keeps its width.
 - Letterbox bars (`CinemaBars`) slide in on `body.cinematic`, sized toward 2.39:1 and capped at 12 % of the height. The garage pill hides under the same class.
 
@@ -63,6 +63,8 @@ A special's hits are far bigger than the combo's (`hits.ts`, enemies.md). They a
 
 - **Descent**: the ring's cuts (16 damage every 0.14 s, aimed at its centre) mark whatever the vortex draws in (a pull on the centre, 24 m, from the first lap to just before the plunge). The plunge at the centre (20 m) is the last blow and breaks it all.
 
+- **Black Thunder**: the whirl throws everything within 16 m all round straight up (lift 19: about 20 m, some four seconds in the air). The lightning's strikes (every 0.3 s over its run, the whole 16 m) mark what they reach without lifting it, so the bodies fall as they were thrown and are down as the cutlass comes out of the sand. The swing's wave (22 m all round) is the last blow and breaks everything at once.
+
 Soldiers cannot reach the robot during the cutscene (the target is absent).
 
 ## Skyfall (Cybertruck)
@@ -95,6 +97,15 @@ Soldiers cannot reach the robot during the cutscene (the target is absent).
 - **The spear rides the body through the flips** (`held`): the weapon channels are in the heading's frame, which the body's pitch does not turn, so a grip held still there had the torso turn through it. The grip (the fist and the point's direction) is held in the torso's frame and turned with the pitch into the channels at each key; of the equivalent yaw and pitch pairs each key takes the one nearest the last (the grips are converted in time order), so no key swings the shaft the long way round.
 - The jet is the fighter's `burn` override; in flight the jet points back along the body and drives it. The vortex is drawn about the ring's centre, fixed on the sand (`mark`) before it leaves the ground.
 - Real length: about 13.6 s for 10 s of special time.
+
+## Black Thunder (Impala)
+
+- The cutlass and the Impala's crimson charge, taken to a storm. Beats: the face, the eyes blazing as the cutlass forms, the colour draining; the spring forward (9 m), the sand it leaves breaking into a crater with cracks run out behind and crust thrown up; the landing into a crouch and the whirl straight back up off the ground, one full turn (the root's `turn`) rising on a small hop, the blade spiralling up round it, everything round it thrown into the sky (filmed wide and low ahead, slowing as they fly); the blade brought forward over the head and turned point down, driven into the sand; the lightning running out from it over the ground all round, leaping up into the bodies falling over it (filmed high and wide, then from beside it looking up); the blade drawn out as they land, laid flat at the left shoulder, edge out, the free fist clenched; the held moment, close and square on (tempo 0.22, the mix hushed); a cut to far off ahead and above for the one swing from left to right and its wave going out all round; the open finish held, the blade lowered and gone; handback behind.
+- **The lightning** (`ThunderFx`, impala.md): its front runs out from the blade's point at 7.5 m/s to 18 m; ten main channels out to the front are struck again every few hundredths of a second in a ragged rhythm, with strays between, and each lays a fused trace in the sand (two kinked furrows, heat 0.65) once it reaches full length. Every 75 ms the bodies in the air over the front (`CombatFrame.airborne`, queried 26 m up and taken by their ground distance) are struck from the sand under them, now and then by a long arc straight from the blade's root. Thunderclaps come every third of a second or so, the arc voice under them. The discharge's light follows the newest channel.
+- **The ground break** at the spring is a cold crater (heat 0), cold furrows for the cracks, crust thrown back and up, dust rolling out.
+- **The held moment's blade** crackles: small bolts along it, heat shimmer round it, the charge's glow running to the tip.
+- **The wave:** two shock rings (the blade's height, 40 m over 1 s; low, 30 m), the surge, a wall of dust all round, crust thrown, the discharge let go along the sand, a crimson flash, the lens's blast wave, the explosion as heard from the wide shot (36 m).
+- One-handed throughout (combat.md: the Impala's hilt takes one fist). Real length: about 13.9 s for 8.6 s of special time.
 
 ## Red Line (Ferrari F1)
 

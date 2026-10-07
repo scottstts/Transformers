@@ -49,7 +49,7 @@ export async function probeFight(car: string, tokens: string[], until: number, e
   // PROBE_DT=<s> steps the fight finer (the combat tests run at 1/120)
   const DT = Number(process.env.PROBE_DT ?? 1 / 60)
   const q = [...clicks]
-  const weapon = player.model.node('bone:hand.R').children.find((c) => c.name.startsWith('weapon:'))
+  const weapon = player.model.node(`bone:hand.${player.combat.overlay.build.main}`).children.find((c) => c.name.startsWith('weapon:'))
   const edge = asset.weapon.manifest.edge
   const tip = (k: 0 | 1): string => {
     if (!weapon?.visible) return '-'
@@ -76,7 +76,8 @@ export async function probeFight(car: string, tokens: string[], until: number, e
   }
   const offGap = (): string => {
     if (!weapon?.visible) return '-'
-    const hand = new Vector3(-g[0], g[1], g[2]).applyMatrix4(player.model.node('bone:hand.L').matrixWorld)
+    const off = player.combat.overlay.build.main === 'R' ? 'L' : 'R'
+    const hand = new Vector3(off === 'L' ? -g[0] : g[0], g[1], g[2]).applyMatrix4(player.model.node(`bone:hand.${off}`).matrixWorld)
     return hand.distanceTo(new Vector3(...offGrip).applyMatrix4(weapon.matrixWorld)).toFixed(2)
   }
   const rel = (name: string): string => relPoint(new Vector3().setFromMatrixPosition(player.model.node(name).matrixWorld))

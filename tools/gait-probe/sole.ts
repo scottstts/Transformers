@@ -1,25 +1,20 @@
 import { Matrix4, Vector3 } from 'three/webgpu'
-import { AudioMix } from '../../src/audio/mix.ts'
+import { probeRobot } from './robot.ts'
 import type { GaitStyle } from '../../src/content/transformer/animation/gait.ts'
 import type { Character } from '../../src/content/transformer/character.ts'
-import { createF1 } from '../../src/content/ferrari-f1/index.ts'
-import { createCybertruck } from '../../src/content/cybertruck/index.ts'
-import { createSemi } from '../../src/content/semi/index.ts'
-import { createBat } from '../../src/content/bat/index.ts'
 import { supportPoints } from '../../src/content/transformer/asset/loader.ts'
 import { edgeDepth } from '../../src/content/transformer/animation/sole.ts'
-import { NO_CONTACT, readAsset, REST_GAIT } from '../../tests/support/assets.ts'
+import { readAsset, REST_GAIT } from '../../tests/support/assets.ts'
 
 /**
  * A robot's sole in the ankle frame: its lowest point against the gait's foot pitch
  * (the levelling tilt added), from the full mesh and from the 26-point support set
  * the ground projection uses, beside the heel/toe edge model the gait rolls on.
  */
-const create: Record<string, typeof createF1> = { 'ferrari-f1': createF1, cybertruck: createCybertruck, semi: createSemi, bat: createBat }
 
 export function sole(name: string): void {
   const asset = readAsset(name)
-  const robot: Character = create[name](asset, NO_CONTACT, new AudioMix())
+  const robot: Character = probeRobot(name, asset)
   const style = (robot.gait as unknown as { style: GaitStyle }).style
   if (process.env.GAIT) Object.assign(style, JSON.parse(process.env.GAIT))
   robot.model.pose(1, REST_GAIT)
