@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { createMotionState } from '../src/game/types'
-import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions } from '../src/game/movement'
+import { advanceTransformation, isTransforming, requestTransformation, resolveCircleCollisions, updateRobot } from '../src/game/movement'
 import { updateCar } from '../src/game/car-dynamics'
 import { RobotJump } from '../src/game/jump'
 import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck'
+import { F1_PROFILE, RACER_GAIT } from '../src/content/ferrari-f1'
+import { SEMI_PROFILE, SEMI_GAIT } from '../src/content/semi'
+import { BAT_PROFILE, BAT_GAIT } from '../src/content/bat'
+import { HEAVY_GAIT, RobotGait } from '../src/content/transformer/animation/gait'
 
 const CAR = CYBERTRUCK_PROFILE.drive
 
@@ -70,6 +75,88 @@ describe('world collisions', () => {
     resolveCircleCollisions(state, [{ x: 2.4, z: 0, r: 1 }], 0.3, CYBERTRUCK_PROFILE)
     expect(state.pos.x).toBe(0)
     expect(state.speed).toBe(10)
+  })
+
+  it.each([0, 0.5, 0.9])('still slows collisions before the robot finishes forming (progress %s)', (progress) => {
+    const state = createMotionState()
+    state.progress = progress
+    state.yaw = 0
+    state.speed = 10
+    const profile = { carRadius: 1.2, robotRadius: 1.5 }
+    const wall = [{ ax: -10, az: 2, bx: 10, bz: 2, r: 1 }]
+    expect(resolveCircleCollisions(state, [], 0, profile, wall)).toBe(true)
+    expect(state.speed).toBeCloseTo(1)
+
+    state.pos.set(0, 0, 0)
+    state.speed = 10
+    resolveCircleCollisions(state, [{ x: 0, z: 2, r: 1 }], 0, profile)
+    expect(state.speed).toBe(5)
+  })
+})
+
+describe.each([
+  { name: 'cybertruck', profile: CYBERTRUCK_PROFILE, style: HEAVY_GAIT },
+  { name: 'ferrari-f1', profile: F1_PROFILE, style: RACER_GAIT },
+  { name: 'semi', profile: SEMI_PROFILE, style: SEMI_GAIT },
+  { name: 'bat', profile: BAT_PROFILE, style: BAT_GAIT },
+])('$name obstructed robot movement', ({ profile, style }) => {
+  describe.each(['wall', 'rock'])('%s', (obstacle) => {
+    it.each([false, true])('keeps its gait while blocked, resumes freely and stops on key release (running %s)', (running) => {
+      for (const fps of [30, 60, 120]) {
+        const dt = 1 / fps
+        const state = createMotionState()
+        state.mode = 'robot'
+        state.progress = state.target = 1
+        state.yaw = 0
+        const speed = running ? profile.robot.runSpeed : profile.robot.walkSpeed
+        state.speed = speed
+        const robotOffset = 0.3
+        const radius = obstacle === 'rock' ? 2 : 0.25
+        const limit = 8 - radius - profile.robotRadius
+        state.pos.z = limit - robotOffset
+        const circles = obstacle === 'rock' ? [{ x: 0, z: 8, r: radius }] : []
+        const segments = obstacle === 'wall' ? [{ ax: -20, az: 8, bx: 20, bz: 8, r: radius }] : []
+        let direction: Vector3 | null = new Vector3(0, 0, 1)
+        const controls = { running, movementDirection: () => direction }
+        const camera = new PerspectiveCamera()
+        const gait = new RobotGait(style)
+        const freeGait = new RobotGait(style)
+
+        for (let frame = 0; frame < fps * 2; frame++) {
+          updateRobot(state, controls, camera, dt, false, robotOffset, profile.robot)
+          expect(resolveCircleCollisions(state, circles, robotOffset, profile, segments)).toBe(obstacle === 'wall')
+          expect(state.pos.x).toBeCloseTo(0, 8)
+          expect(state.pos.z + robotOffset).toBeCloseTo(limit, 8)
+          expect(state.speed).toBeCloseTo(speed, 8)
+          gait.update(dt, state.speed, state.yawRate, running, true)
+          freeGait.update(dt, speed, 0, running, true)
+        }
+        expect(gait.phase).toBeCloseTo(freeGait.phase, 8)
+        expect(gait.amp).toBeGreaterThan(0.99)
+        expect(gait.run).toBeCloseTo(freeGait.run, 8)
+        if (running) expect(gait.run).toBeGreaterThan(0.99)
+
+        // Clearing the obstruction keeps the stride and restores full travel immediately.
+        const previousZ = state.pos.z
+        const phase = gait.phase
+        updateRobot(state, controls, camera, dt, false, robotOffset, profile.robot)
+        resolveCircleCollisions(state, [], robotOffset, profile)
+        gait.update(dt, state.speed, state.yawRate, running, true)
+        expect(state.pos.z - previousZ).toBeCloseTo(speed * dt, 8)
+        expect(gait.phase).toBeGreaterThan(phase)
+
+        // Releasing movement settles the gait even if Shift remains held at the obstacle.
+        direction = null
+        for (let frame = 0; frame < fps * 2; frame++) {
+          updateRobot(state, controls, camera, dt, false, robotOffset, profile.robot)
+          resolveCircleCollisions(state, circles, robotOffset, profile, segments)
+          gait.update(dt, state.speed, state.yawRate, running, true)
+        }
+        expect(state.speed).toBe(0)
+        expect(gait.amp).toBeLessThan(0.01)
+        expect(gait.run).toBeLessThan(0.01)
+      }
+    })
   })
 })
 

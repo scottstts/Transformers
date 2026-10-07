@@ -2,7 +2,7 @@ import type { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import type { CircleCollider, Form, MotionState, SegmentCollider } from './types'
 import { pushOut, type Contact } from './collide'
 import { clamp, damp, easedRange, lerp, wrap } from './math'
-import { GameInput } from './input'
+import type { GameInput } from './input'
 import type { CharacterProfile, RobotProfile, TrailerProfile } from '../content/transformer/character'
 
 /**
@@ -22,7 +22,7 @@ const DECELERATE = 7
 const TURN_SPEED_SHIFT = 0.3
 
 /** Camera-relative robot movement; walking and running (Shift) speeds come from the robot profile. */
-export function updateRobot(state: MotionState, input: GameInput, camera: PerspectiveCamera, dt: number, locked: boolean, robotOffset: number, robot: RobotProfile, airborne = false): void {
+export function updateRobot(state: MotionState, input: Pick<GameInput, 'movementDirection' | 'running'>, camera: PerspectiveCamera, dt: number, locked: boolean, robotOffset: number, robot: RobotProfile, airborne = false): void {
   const dir = locked || airborne ? null : input.movementDirection(camera)
   const run = input.running
   if (airborne) {
@@ -62,7 +62,7 @@ export function updateRobot(state: MotionState, input: GameInput, camera: Perspe
   state.longAccel = state.latAccel = 0
 }
 
-/** Push the body out of rocks and walls; returns true when it is against a wall (a segment). */
+/** Push the body out of rocks and walls without stopping a robot's stride; returns true against a wall (a segment). */
 export function resolveCircleCollisions(state: MotionState, colliders: CircleCollider[], robotOffset: number, profile: Pick<CharacterProfile, 'carRadius' | 'robotRadius' | 'carBody'> & { drive?: Pick<CharacterProfile['drive'], 'trailer'> }, segments: readonly SegmentCollider[] = []): boolean {
   const transition = easedRange(state.progress, 0.3, 0.7)
   // a long rig in car form: a chain of circles along the car, and along its trailer as it swings
@@ -71,6 +71,8 @@ export function resolveCircleCollisions(state: MotionState, colliders: CircleCol
   const radius = lerp(profile.carRadius, profile.robotRadius, transition)
   const forwardX = Math.sin(state.yaw)
   const forwardZ = Math.cos(state.yaw)
+  // A formed robot keeps walking/running into contact; scenery constrains its position.
+  const robot = state.progress >= 1
   // walls and building sides (the forts): the body's centre pushed out of the capsules
   let walled = false
   if (segments.length) {
@@ -81,7 +83,7 @@ export function resolveCircleCollisions(state: MotionState, colliders: CircleCol
       walled = true
       state.pos.x = _p.x - forwardX * offset
       state.pos.z = _p.z - forwardZ * offset
-      scrape(state, c, forwardX, forwardZ)
+      if (!robot) scrape(state, c, forwardX, forwardZ)
     }
   }
   for (const collider of colliders) {
@@ -94,8 +96,10 @@ export function resolveCircleCollisions(state: MotionState, colliders: CircleCol
     if (distance < minimum && distance > 1e-4) {
       state.pos.x += dx / distance * (minimum - distance)
       state.pos.z += dz / distance * (minimum - distance)
-      state.speed *= 0.5
-      state.lateral *= 0.5
+      if (!robot) {
+        state.speed *= 0.5
+        state.lateral *= 0.5
+      }
     }
   }
   return walled

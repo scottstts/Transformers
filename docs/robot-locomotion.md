@@ -34,6 +34,7 @@ Lengths scale with the robot and times with its square root. Tuning a stride for
 
 - Camera-relative, answered at once: the turn rate asked is 9 rad/s per radian off the wanted heading (ceiling 9 rad/s walking, 6 running), taken up at 18/s, damped just under critical. Facing the other way from a stand takes about 0.4 s. The old rate (2 rad/s ceiling, 6/s response) stepped slowly round and read as unresponsive.
 - Speed rises at 4.5/s and falls at 7/s; while turning, the speed kept is (cos(angle off) + 0.3) / 1.3, so a sharp turn pivots before it runs.
+- Rocks and walls constrain a fully formed robot's position without reducing its locomotion speed. Holding movement keeps the current walk/run cadence at contact; clearing the obstruction resumes travel immediately. Releasing movement or locking controls still slows and settles the gait normally. The stride uses locomotion speed rather than the distance actually travelled while blocked; car and transformation collisions retain their speed loss.
 - The gait's stepping takes a turn on the spot as at most 2.6 m/s of motion (`TURN_STEP_MAX`): a fast pivot shuffles instead of sprinting in place. The head's turn into a turn is capped at 18°.
 
 ## Carriage per robot

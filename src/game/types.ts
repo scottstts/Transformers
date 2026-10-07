@@ -8,7 +8,10 @@ export interface MotionState {
   progress: number
   pos: Vector3
   yaw: number
-  /** forward speed (m/s); in car form `lateral` is the body's sideways velocity (m/s, + left) */
+  /**
+   * Forward speed (m/s); a formed robot's locomotion speed before scenery constrains
+   * its travel. In car form `lateral` is the body's sideways velocity (m/s, + left).
+   */
   speed: number
   lateral: number
   yawRate: number

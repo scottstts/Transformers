@@ -68,7 +68,7 @@ Run `node tools/switch-probe.mjs <from> <to>` for every switch direction a new c
 
 `tests/platform.test.ts` checks that the boot gate accepts desktop Chromium and rejects Safari, Firefox, mobile browsers, iPad desktop mode and touch-only input.
 
-`tests/movement.test.ts` checks that transform requests cannot reverse or queue during braking or playback in either direction. `tests/jump.test.ts` checks:
+`tests/movement.test.ts` checks that transform requests cannot reverse or queue during braking or playback in either direction, and that all four robots preserve their walk/run gait against rocks and walls at 30/60/120 Hz, remain outside the obstruction, resume travel immediately when clear, and settle on key release. Car and transformation contacts still slow the body. `tests/jump.test.ts` checks:
 - frame-rate-independent jump timing at any momentum;
 - one-shot take-off and landing events, and replay;
 - a shorter, shallower take-off from a run;
