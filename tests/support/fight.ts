@@ -42,6 +42,7 @@ export function runFight(c: Character, clicks: number[], until: number, each: (t
     c.model.root.position.copy(state.pos)
     c.model.root.rotation.set(0, state.yaw, 0)
     c.model.pose(1, pose)
+    c.combat.effects.afterPose()
     c.effects.update(step, state)
     if (t >= 0) each(t, combat)
   }

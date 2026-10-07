@@ -69,6 +69,12 @@ class CybertruckFighter extends Fighter {
     this.skyfall.reset()
   }
 
+  interrupt(): void {
+    super.interrupt()
+    this.boostTarget = this.boostPower = 0
+    this.truck.thrusters.boost(0, this.exhaust)
+  }
+
   cue(cue: MoveCue, frame: CombatFrame): void {
     const v = cue.value ?? 1
     if (cue.cue === 'boost') this.jet('back', v)

@@ -30,8 +30,9 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   const pace = tokens.find((c) => c === 'walk' || c === 'run')
   // `G`: the guard held throughout
   const guard = tokens.includes('G')
-  const clicks = tokens.filter((c) => !c.startsWith('F') && c !== pace && c !== 'G').map(Number)
+  const clicks = tokens.filter((c) => !/^[FE]/.test(c) && c !== pace && c !== 'G').map(Number)
   const specials = tokens.filter((c) => c.startsWith('F')).map((c) => Number(c.slice(1)))
+  const flashes = tokens.filter((c) => c.startsWith('E')).map((c) => Number(c.slice(1)))
   const entry = rosterEntry(car)
   const read = (name: string): [unknown, ArrayBuffer] => {
     const bin = readMirror(`${name}.bin`)
@@ -87,6 +88,7 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   for (let t = -1; t <= until; t += DT) {
     while (q.length && q[0] <= t) { q.shift(); fight.press() }
     while (specials.length && specials[0] <= t) { specials.shift(); fight.startSpecial(state, aim) }
+    while (flashes.length && flashes[0] <= t) { flashes.shift(); fight.startFlash(state, aim) }
     aim.position.set(state.pos.x, 3, state.pos.z)
     aim.lookAt(state.pos.x + Math.sin(state.yaw), 3, state.pos.z + Math.cos(state.yaw))
     aim.updateMatrixWorld()
@@ -99,6 +101,7 @@ export async function probeClash(car: string, tokens: string[], until: number): 
     model.root.position.copy(state.pos)
     model.root.rotation.set(0, state.yaw, 0)
     model.pose(1, pose)
+    player.combat.effects.afterPose()
     player.effects.update(step, state)
     if (t < 0) continue
 

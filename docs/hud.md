@@ -2,6 +2,8 @@
 
 The speedometer (`src/ui/speedometer.ts`) and the hit streak (`src/ui/hit-counter.ts`) follow the energy meter's language: the special's colour as the accent, chamfered glass plates, mono labels. They hide with the rest of the HUD before the game is ready, with the vehicle menu open and while paused. The speedometer also hides under a cutscene; the hit streak stays up through one. The session feeds them through two hooks (`onHits`, `onFrame`), wired in `attachControls`.
 
+The bottom robot hint includes **E — Flash Move** alongside fight, guard, transformation, vehicle switching and special. Both energy-meter states share that label, keeping the hint's width stable when F becomes ready.
+
 ## Speedometer
 
 - Bottom left, with no plate: the dial lies directly on the picture. An edgeless radial shade and dark drop shadows on the marks and text keep it readable over bright sand. A boxed glass plate looked heavy there.

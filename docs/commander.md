@@ -35,10 +35,11 @@ The lance core's brightness is the `glow` channel. A move's effect cues (`flash`
 - **Roll:** `comboLength`: moves 1-2, or the whole combo one time in three. The roll itself was never wrong: the player's blows used to break full combos early, and a broken one looked like a pair. A full combo's lance burns 1.3x hotter from the first move, the tell that the knock-back is coming.
 - **Taking blows** is the combat contract (combat.md, `game/combat/contract.ts`). Mid-combo (any combo, `inCombo`), only a special's blow or vacuum interrupts it: other blows take health and rock its springs, and health running out still destroys it. Out of a combo it takes every blow as a soldier does, through the same code, at its weight:
   - 40 % of the push (`push`);
-  - thrown only past a lift of 7.5 m/s, never by knock alone;
+  - a combat launch only past a lift of 7.5 m/s, never by knock alone;
   - a special's lift reaches it whole, at a soldier's threshold, so a special throws it as high as the soldiers;
   - it brakes and skids a little harder and lies longer (1.4-2.2 s, rising over 1.3 s).
   It also takes the soldiers' body blows: thrown into a wall, barged by the robot, and bowling or bowled by a flying body. There is no poise. In a special, emptied, it is held with the soldiers until the special's last blow.
+  Flash Move uses the contract's crowd throw: 40 % of the varied horizontal/lift impulse and body pitch. It stays off balance with loose limbs throughout flight, catches after landing and brakes surviving momentum. The response causes no damage and has no combat launch/down/get-up sequence; mid-combo protection still applies.
 - **No reel:** soldiers don't swing for 1.2 s after a blow; the commander may start a combo as soon as a flinch or fall ends. The next combo after one of its own waits 0.7-1.3 s.
 - **Health:** 2000.
 - **Bodies:** it and the robot push each other apart (`Horde.shove`), and soldiers give way to it.

@@ -34,7 +34,7 @@ const VIEWS: Record<string, { from: [number, number, number]; at: [number, numbe
 
 export interface FightSheet {
   car: string | null
-  /** click times (s); `F<t>` plays the special at t */
+  /** click times (s); `F<t>` plays the special, `E<t>` starts Flash Move */
   clicks: string[]
   /** frame times (s) */
   frames: number[]
@@ -76,6 +76,8 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
   const lens = new Lens()
   // FX_LENS=0 renders without the lens reactions, to tell their artefacts from the scene's
   const pipeline = createPostPipeline(renderer, scene, camera, process.env.FX_LENS === '0' ? undefined : lens)
+  // NO_POST=1 checks the scene's silhouettes and emissive effects without bloom or grading.
+  const noPost = process.env.NO_POST === '1'
 
   const state = createMotionState()
   state.mode = 'robot'
@@ -130,16 +132,18 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
     },
   }
   const specials = sheet.clicks.filter((c) => c.startsWith('F')).map((c) => Number(c.slice(1)))
+  const flashes = sheet.clicks.filter((c) => c.startsWith('E')).map((c) => Number(c.slice(1)))
   const views = sheet.views.map((name) => ({ name, ...(VIEWS[name] ?? VIEWS.side) }))
   const zoom = sheet.zoom ?? 1
   const frames = [...sheet.frames].sort((a, b) => a - b)
-  const clicks = sheet.clicks.filter((c) => !c.startsWith('F') && !c.startsWith('G')).map(Number).sort((a, b) => a - b)
+  const clicks = sheet.clicks.filter((c) => !/^[FEG]/.test(c)).map(Number).sort((a, b) => a - b)
   const rows = Math.ceil(frames.length / COLUMNS)
   const images = views.map(() => new Uint8Array(CELL_W * COLUMNS * CELL_H * rows * 4))
   const point = new Vector3()
 
   /** One frame; returns the world time it advanced (hit-stop and the special's slow motion slow it). */
   const step = (t: number): number => {
+    fight.setGuard(guards.some(([a, b]) => t >= a && t < b))
     while (clicks.length && clicks[0] <= t) {
       clicks.shift()
       fight.press()
@@ -149,13 +153,16 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
       fight.startSpecial(state, aim)
       director.start(player.combat.special, fight.groundOrigin, fight.groundHeading)
     }
+    while (flashes.length && flashes[0] <= t) {
+      flashes.shift()
+      fight.startFlash(state, aim)
+    }
     fx.update(DT)
     const dt = DT * fx.timeScale * fight.tempo
     fx.updateWorld(dt)
     aim.position.set(state.pos.x, 3, state.pos.z)
     aim.lookAt(state.pos.x + Math.sin(state.yaw), 3, state.pos.z + Math.cos(state.yaw))
     aim.updateMatrixWorld()
-    fight.setGuard(guards.some(([a, b]) => t >= a && t < b))
     fight.update(dt, state, aim)
     // GAIT=walk|run: the robot walks (or runs) straight ahead instead of fighting
     if (gaitMode) {
@@ -169,6 +176,7 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
     player.model.root.position.copy(state.pos)
     player.model.root.rotation.set(0, state.yaw, 0)
     player.model.pose(1, pose)
+    player.combat.effects.afterPose()
     player.effects.timeline(1, 1)
     player.effects.update(dt, state)
     if (horde) {
@@ -177,6 +185,7 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
       target.heading = state.yaw
       target.present = !fight.cinematic && fight.air < 1
       target.guard = fight.guarded ? player.combat.effects.guardReach() : 0
+      target.flash = fight.flashContact
       horde.update(dt, target, aim)
     }
     if (director.active && !fight.cinematic) director.stop()
@@ -203,7 +212,8 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
         camera.updateMatrixWorld()
         world.world.update(camera, subject.body.getWorldPosition(new Vector3()))
         await renderer.compileAsync(scene, camera)
-        pipeline.render()
+        if (noPost) renderer.render(scene, camera)
+        else pipeline.render()
         const cell = await grab()
         const cx = (k % COLUMNS) * CELL_W
         const cy = Math.floor(k / COLUMNS) * CELL_H
@@ -224,7 +234,8 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
       horde?.drawFor(camera)
       world.world.update(camera, point)
       await renderer.compileAsync(scene, camera)
-      pipeline.render()
+      if (noPost) renderer.render(scene, camera)
+      else pipeline.render()
       const cell = await grab()
       const cx = (k % COLUMNS) * CELL_W
       const cy = Math.floor(k / COLUMNS) * CELL_H

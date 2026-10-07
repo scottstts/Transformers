@@ -1,10 +1,11 @@
 // Headless contact sheet of a fighting combo (Dawn WebGPU in Node, no browser).
 // Usage: node tools/fight-sheet.mjs <out> [car] [clicks] [from:to:count] [views] [zoom]   (writes <out>-<view>.png)
-//   clicks: comma-separated click times (s), e.g. 0,0.6,1.3,2.5; F<t> plays the special at t (frames are then in the world's clock)
+//   clicks: comma-separated click times (s), e.g. 0,0.6,1.3,2.5; F<t> plays the special, E<t> starts Flash Move
 //   frames: from:to:count evenly spaced frame times, or a comma-separated list
 //   clicks may also hold guard windows: G<t0>-<t1>; BRAWL=<district index> fights that district's garrison in its yard
 //   GAIT=walk|run walks or runs straight ahead instead of fighting
 //   views:  comma-separated: side | right | front | back | quarter | low | top | director (the special's own camera)
+//   NO_POST=1 omits bloom and grading for a scene-only VFX baseline.
 import { createServer } from 'vite'
 
 globalThis.self = globalThis

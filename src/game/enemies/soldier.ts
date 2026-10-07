@@ -3,10 +3,11 @@ import type { SoldierManifest, SoldierPiece } from '../../content/soldier/asset'
 import type { HordeInstance } from '../../content/soldier/horde-renderer'
 import { SoldierRig, createSoldierPose } from '../../content/soldier/rig'
 import { POSES, SC, SOLDIER_CHANNEL_COUNT, approach, blend, writePose } from '../../content/soldier/poses'
-import type { HitKind } from '../../content/transformer/combat/hits'
+import type { HitKind, HitReaction } from '../../content/transformer/combat/hits'
 import { wrap } from '../math'
 import type { Debris } from './debris'
 import { enemyReacts } from '../combat/contract'
+import { TOSS_SPEED_LIMIT, TossReaction } from './toss'
 
 /** Soldier tuning: speeds (m/s), accelerations (m/s^2), times (s). */
 export const SOLDIER = {
@@ -55,7 +56,7 @@ export type UnitTuning = { readonly [K in keyof typeof SOLDIER]: (typeof SOLDIER
 /** A unit's key poses on the soldier's channels (poses.ts). */
 export type UnitPoses = { readonly [K in keyof typeof POSES]: Float32Array }
 
-export type SoldierMode ='post' | 'move' | 'attack' | 'hit' | 'stagger' | 'air' | 'down' | 'rise' | 'dead'
+export type SoldierMode ='post' | 'move' | 'attack' | 'hit' | 'stagger' | 'toss' | 'air' | 'down' | 'rise' | 'dead'
 
 /** A blow as it reaches one soldier: which way it is thrown and how hard. */
 export interface SoldierImpact {
@@ -65,6 +66,7 @@ export interface SoldierImpact {
   lift: number
   damage: number
   kind: HitKind
+  reaction?: HitReaction
   special: boolean
 }
 
@@ -86,6 +88,7 @@ const SEIZE_HOLD = 0.25
 const TMP_TILT = new Quaternion()
 const X = new Vector3(1, 0, 0)
 const Y = new Vector3(0, 1, 0)
+const Z = new Vector3(0, 0, 1)
 
 /**
  * One robot soldier: a wheeled body with a rigid-part skeleton.
@@ -183,6 +186,7 @@ export class Soldier implements HordeInstance {
   /** its parts once destroyed (kept with the soldier and reused) */
   debris: Debris | null = null
   protected readonly tilt = new Quaternion()
+  private readonly toss = new TossReaction()
   protected tumbleX = 0
   protected tumbleY = 0
   protected downTime = 0
@@ -220,6 +224,7 @@ export class Soldier implements HordeInstance {
     this.mode = 'post'
     this.t = 0
     this.tilt.identity()
+    this.toss.reset()
     this.tumbleX = this.tumbleY = 0
     this.spring.fill(0)
     this.anim.set(this.poses.guard)
@@ -265,6 +270,12 @@ export class Soldier implements HordeInstance {
     return !this.doomed && (this.mode === 'post' || this.mode === 'move')
   }
 
+  /** A Flash Move crowd throw, including landing balance and braking. */
+  get tossing(): boolean { return this.mode === 'toss' }
+
+  /** Off its wheels, either in an ordinary launch or a crowd throw. */
+  get airborne(): boolean { return this.mode === 'air' || this.tossing && this.toss.airborne }
+
   /** Begin a slash (the horde decides when). */
   attack(): void {
     if (!this.free) return
@@ -280,6 +291,7 @@ export class Soldier implements HordeInstance {
    */
   impact(blow: SoldierImpact, hold = false): boolean {
     if (!this.alive) return false
+    if (blow.reaction === 'toss' && this.doomed) return false
     const hit = this.weigh(blow)
     // the bar's chip keeps what the health was before the blow, and holds a moment
     this.chip = Math.max(this.chip, this.vitality)
@@ -297,6 +309,29 @@ export class Soldier implements HordeInstance {
     const [along, across] = this.jolt(hit.dirX, hit.dirZ, k)
     // the combat contract: mid-combo only a special's blow interrupts (its health and springs still take it)
     if (!enemyReacts(this.inCombo, hit.special)) return false
+    if (hit.reaction === 'toss') {
+      // Rule 7: a weighted crowd throw, with footing restored after landing.
+      // Existing falls and special holds keep ownership.
+      if (!this.doomed && this.mode !== 'air' && this.mode !== 'down' && this.mode !== 'rise') {
+        const flying = this.tossing && this.airborne
+        this.mode = 'toss'
+        const speed = Math.hypot(this.vx, this.vz)
+        const limit = TOSS_SPEED_LIMIT * this.tune.push
+        if (speed > limit) { this.vx *= limit / speed; this.vz *= limit / speed }
+        this.landed = false
+        // Another burst redirects a flying body without stacking its lift
+        // or snapping it back to the floor to restart the hop.
+        if (!flying) {
+          this.t = 0
+          this.vy = hit.lift
+          this.y = 0
+          this.tilt.identity()
+          this.tumbleX = this.tumbleY = 0
+          this.toss.start(hit.lift, this.tune.gravity, this.tune.push, along, across, this.serial)
+        } else this.toss.redirect(along, across)
+      }
+      return false
+    }
     if (this.launches(hit)) {
       this.mode = 'air'
       this.t = 0
@@ -308,7 +343,7 @@ export class Soldier implements HordeInstance {
       const rate = Math.min(4, Math.max(1, (1.9 + hit.knock * 0.03) / Math.max(0.3, flight)))
       this.tumbleX = along * rate
       this.tumbleY = across * rate
-    } else if (this.mode !== 'air' && this.mode !== 'down' && this.mode !== 'rise') {
+    } else if (this.mode !== 'air' && this.mode !== 'down' && this.mode !== 'rise' && !this.tossing) {
       // the flinch: into the other hit pose from the last, held a moment by how hard it was
       this.mode = 'hit'
       this.t = 0
@@ -335,6 +370,7 @@ export class Soldier implements HordeInstance {
     if (share === 1) return hit
     const w = this.weighed
     w.dirX = hit.dirX; w.dirZ = hit.dirZ; w.damage = hit.damage; w.kind = hit.kind; w.special = hit.special
+    w.reaction = hit.reaction
     w.knock = hit.knock * share
     w.lift = hit.special ? hit.lift : hit.lift * share
     return w
@@ -379,7 +415,7 @@ export class Soldier implements HordeInstance {
     const d = Math.hypot(dx, dz)
     if (d < 1e-3) return
     const want = Math.min(speed, d * PULL_ARRIVE)
-    const k = Math.min(1, dt * (this.mode === 'air' ? PULL_GRIP_AIR : PULL_GRIP))
+    const k = Math.min(1, dt * (this.airborne ? PULL_GRIP_AIR : PULL_GRIP))
     this.vx += ((dx / d) * want - this.vx) * k
     this.vz += ((dz / d) * want - this.vz) * k
     if (this.mode === 'post' || this.mode === 'move' || this.mode === 'attack' || this.mode === 'stagger') {
@@ -409,10 +445,14 @@ export class Soldier implements HordeInstance {
     this.chipHold -= dt
     if (this.chipHold <= 0) this.chip = Math.max(this.vitality, this.chip - this.tune.chipDrain * dt)
     if (this.mode === 'dead') return
-    const onGround = this.mode !== 'air'
-    const accel = onGround && this.rootMotion?.(dt) ? 0 : this.drive(dt, onGround)
-    this.x += this.vx * dt
-    this.z += this.vz * dt
+    const onGround = !this.airborne
+    let accel = 0
+    if (this.tossing) this.updateToss(dt)
+    else {
+      accel = onGround && this.rootMotion?.(dt) ? 0 : this.drive(dt, onGround)
+      this.x += this.vx * dt
+      this.z += this.vz * dt
+    }
     this.accelLean += (Math.max(-8, Math.min(8, accel)) * 1.4 - this.accelLean) * Math.min(1, dt * 5)
     const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw)
     const fwd = this.vx * fx + this.vz * fz
@@ -430,6 +470,26 @@ export class Soldier implements HordeInstance {
     this.modes()
     this.seizing(dt)
     this.animate(dt)
+  }
+
+  /** Momentum survives landing; return control only after balance and braking. */
+  private updateToss(dt: number): void {
+    const toss = this.toss
+    toss.update(dt)
+    this.x += this.vx * toss.advance
+    this.z += this.vz * toss.advance
+    this.vx *= toss.decay
+    this.vz *= toss.decay
+    this.y = toss.y
+    this.vy = toss.vy
+    this.tilt.setFromAxisAngle(X, toss.tipX)
+    this.tilt.multiply(TMP_TILT.setFromAxisAngle(Y, toss.tipY))
+    this.tilt.multiply(TMP_TILT.setFromAxisAngle(Z, toss.tipZ))
+    if (toss.done && this.vx * this.vx + this.vz * this.vz <= 16) {
+      this.mode = 'move'
+      this.t = 0
+      this.tilt.identity()
+    }
   }
 
   /**
@@ -620,6 +680,10 @@ export class Soldier implements HordeInstance {
         T.set(this.poses.flung)
         rate = 6
         break
+      case 'toss':
+        this.toss.pose(T, this.poses.ready, this.poses.flung, this.rig.dims.height)
+        rate = 0
+        break
       case 'down':
         T.set(this.poses.down)
         rate = 8
@@ -660,7 +724,7 @@ export class Soldier implements HordeInstance {
     this.heat = Math.max(0, this.heat - dt * 0.5)
     // lying: the pelvis near the floor
     const lie = 1 - _v.set(0, 0, 1).applyQuaternion(this.tilt).z
-    const lying = Math.min(1, Math.max(0, lie)) * (this.rig.dims.hipZ - this.tune.lie)
+    const lying = this.tossing ? 0 : Math.min(1, Math.max(0, lie)) * (this.rig.dims.hipZ - this.tune.lie)
     this.place.x = this.x
     this.place.z = this.z
     this.place.y = this.floor + this.y - lying

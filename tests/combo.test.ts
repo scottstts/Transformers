@@ -67,14 +67,27 @@ describe('click combo', () => {
     expect(combo.move).toBe(0)
   })
 
-  it('takes buffered input when a frame crosses the entire chain window', () => {
+  it('discards an early click even when the next frame crosses the entire chain window', () => {
     const combo = new ComboController([{ duration: 0.5, chain: [0.49, 0.5] }, MOVES[1]], RECOVER)
     const moves: number[] = []
     const emit = (e: ComboEvent): void => { if (e.type === 'start') moves.push(e.move) }
     combo.press()
     combo.update(0, emit)
     combo.update(0.48, emit)
+    expect(combo.press()).toBe(false)
+    combo.update(1 / 30, emit)
+    expect(moves).toEqual([0])
+  })
+
+  it('keeps a click accepted inside the window even if its draw lands past the close', () => {
+    const combo = new ComboController([{ duration: 0.5, chain: [0.49, 0.5] }, MOVES[1]], RECOVER)
+    const moves: number[] = []
+    const emit = (e: ComboEvent): void => { if (e.type === 'start') moves.push(e.move) }
     combo.press()
+    combo.update(0, emit)
+    combo.update(0.495, emit)
+    expect(combo.press()).toBe(true)
+    expect(combo.press()).toBe(false)
     combo.update(1 / 30, emit)
     expect(moves).toEqual([0, 1])
   })
@@ -88,11 +101,13 @@ describe('click combo', () => {
     expect(combo.cancellable).toBe(false)
     combo.update(0.02, emit)
     expect(combo.cancellable).toBe(true)
-    combo.press()
-    expect(combo.cancellable).toBe(false)
+    expect(combo.press()).toBe(false) // movement can exit before the attack window opens
+    expect(combo.cancellable).toBe(true)
     combo.update(0.02, emit)
-    expect(combo.cancellable).toBe(false)
     combo.update(0.1, emit)
+    expect(combo.press()).toBe(true)
+    expect(combo.cancellable).toBe(false)
+    combo.update(0, emit)
     expect(combo.move).toBe(1)
   })
   it('plays one move per click: once is move 1 only, then back to the stance', () => {
@@ -108,15 +123,12 @@ describe('click combo', () => {
     expect(play([0, 0.6, 1.3, 2.5], 6).moves).toEqual([0, 1, 2, 3])
   })
 
-  it('buffers a click before the window opens: it chains as the window opens', () => {
-    // a mash at 0.2 and 0.3 chains move 2 at 0.5 (move 1's window), not before
+  it('drops rapid extra clicks: waiting afterwards plays only the initiated move', () => {
     const { moves, events } = play([0, 0.2, 0.3], 3)
-    expect(moves).toEqual([0, 1])
-    expect(events[1][0]).toBeGreaterThanOrEqual(0.5 - 1e-9)
-    expect(events[1][0]).toBeLessThan(0.5 + 2 * DT)
-    // a mash chains the whole combo at the authored cadence
-    const mash = Array.from({ length: 40 }, (_, i) => i * 0.1)
-    expect(play(mash, 5).moves.slice(0, 4)).toEqual([0, 1, 2, 3])
+    expect(moves).toEqual([0])
+    expect(events.map((e) => e[1])).toEqual(['start', 'recover', 'end'])
+    expect(play([0, 0.02, 0.04], 3).moves).toEqual([0])
+    expect(play([0, 0.2, 0.3, 0.65], 4).moves).toEqual([0, 1])
   })
 
   it('lets movement cut a move short only once its window has been open a moment with no click waiting', () => {
@@ -128,17 +140,16 @@ describe('click combo', () => {
     expect(combo.cancellable).toBe(false)
     for (let t = 0.55; t < 0.7; t += DT) combo.update(DT, emit)
     expect(combo.cancellable).toBe(true)
-    // a buffered click holds the move
+    // early clicks do not hold the move or delay its movement exit
     const held = new ComboController(MOVES, RECOVER)
     held.press()
     held.update(DT, emit)
     held.update(DT, emit)
     held.press()
     held.update(DT, emit)
-    for (let t = 0; t < 0.45; t += DT) {
-      held.update(DT, emit)
-      expect(held.cancellable).toBe(false)
-    }
+    held.update(0.65, emit)
+    expect(held.move).toBe(0)
+    expect(held.cancellable).toBe(true)
   })
 
   it('resets to move 1 when a click comes after the window closed', () => {
@@ -172,8 +183,8 @@ describe('click combo', () => {
       }
       return { moves: started, events }
     }
-    // move 4 starts at 2.5: a click at 3.6 (1.1 in) waits for its window (1.4 in), 4.0 is inside it
-    expect(run([0, 0.6, 1.3, 2.5, 3.6]).moves).toEqual([0, 1, 2, 3, 0])
+    // move 4 starts at 2.5: 3.6 is too early and discarded; 4.0 is inside its window
+    expect(run([0, 0.6, 1.3, 2.5, 3.6]).moves).toEqual([0, 1, 2, 3])
     expect(run([0, 0.6, 1.3, 2.5, 4.0]).moves).toEqual([0, 1, 2, 3, 0])
     // 4.55 is just into the recovery after it: no waiting out the restart delay
     const late = run([0, 0.6, 1.3, 2.5, 4.55])

@@ -15,6 +15,7 @@ import { bodyAttitude, standOnGround } from './ground-follow'
 import { createMotionState, type Form } from './types'
 import { RobotJump } from './jump'
 import { RobotCombat } from './combat/robot-combat'
+import { flashClearance } from './combat/flash-travel'
 import { CameraFx } from './combat/camera-fx'
 import { Director, type DirectorSubject } from './combat/director'
 import { Energy } from './combat/energy'
@@ -136,7 +137,8 @@ export class GameSession {
     this.cameraRig = new FollowCamera(this.camera, renderer.domElement, this.state.yaw, this.character.robotOffset, this.character.profile.camera)
     this.cameraRig.ground = this.world.ground
     this.cameraRig.showSide(this.state.yaw)
-    this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.audio.resume())
+    this.input = new GameInput(renderer.domElement, () => this.toggleForm(), () => this.audio.resume(),
+      () => this.acceptAttack(), () => this.flashMove())
     this.pipeline = createPostPipeline(renderer, this.scene, this.camera, this.lens)
     this.cameraRig.update(1 / 60, this.state, this.character.model.root)
     this.world.update(this.camera, this.cameraRig.focusPoint(this.state, this.character.model.root))
@@ -155,6 +157,25 @@ export class GameSession {
 
   toggleForm(): void {
     this.selectForm(this.state.mode === 'car' ? 'robot' : 'car')
+  }
+
+  /** Event-time acceptance: an early click or E never waits in an input queue. */
+  private get combatInputReady(): boolean {
+    const state = this.state
+    return !this.paused && !this.switching && !isTransforming(state) && state.mode === 'robot' && state.progress === 1 && !this.jump.active && !this.fight.cinematic
+  }
+
+  private acceptAttack(): boolean {
+    if (!this.combatInputReady) return false
+    this.fight.setGuard(this.input.guarding)
+    return this.fight.press()
+  }
+
+  private flashMove(): void {
+    if (!this.combatInputReady) return
+    this.fight.setGuard(this.input.guarding)
+    this.fight.setSteer(this.input.movementDirection(this.camera))
+    this.fight.startFlash(this.state, this.camera)
   }
 
   /** A special's cutscene is playing: the game takes no input. */
@@ -360,6 +381,8 @@ export class GameSession {
     let fight = this.fights.get(character.id)
     if (!fight) {
       fight = new RobotCombat(character.combat, character.model, character.robotOffset, this.state, this.cameraFx)
+      fight.flashSweep = (x, z, dx, dz, distance) => flashClearance(x, z, dx, dz, distance,
+        character.profile.robotRadius, this.world.colliders, this.world.segments)
       fight.onStrike = (move) => this.energy.strike(move)
       // a blow that catches soldiers bites: a moment of hit-stop on a landed strike
       fight.aimAssist = (x, z, heading, range, cone) => this.horde.assist(x, z, heading, range, cone)
@@ -489,7 +512,6 @@ export class GameSession {
       this.setCinematic(true)
     }
     const attack = this.input.consumeAttack() && stance && !this.jump.active && !special
-    if (attack) fight.press()
     fight.setGuard(this.input.guarding && stance && !this.jump.active && !special)
     // the movement keys aim each move of the fight, and take the robot back from it once the combo allows
     const steer = stance ? this.input.movementDirection(this.camera) : null
@@ -555,6 +577,7 @@ export class GameSession {
     model.root.position.copy(state.pos)
     bodyAttitude(state, model.root.quaternion)
     model.pose(state.progress, pose)
+    this.character.combat.effects.afterPose()
     effects.timeline(previous, state.progress)
     effects.update(dt, state)
 
@@ -615,6 +638,7 @@ export class GameSession {
     t.height = robot ? this.character.model.dims.hipZ * 1.8 : 1.6
     t.heading = state.yaw
     t.guard = this.fight.guarded ? this.character.combat.effects.guardReach() : 0
+    t.flash = this.fight.flashContact
     // out of reach while the special carries it off or it is in the air
     t.present = !this.fight.cinematic && this.fight.air < 1 && !this.jump.active
   }

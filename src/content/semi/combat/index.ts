@@ -67,6 +67,16 @@ class SemiFighter extends Fighter {
     this.juggernaut.reset()
   }
 
+  interrupt(): void {
+    super.interrupt()
+    this.gun?.fire(false)
+    this.gun?.seek(false)
+    this.gun?.chargeTo(0)
+    if (this.gun) this.gun.charge = 0
+    this.coils.value = COILS.rest
+    this.fuse = FUSE
+  }
+
   cue(cue: MoveCue, frame: CombatFrame): void {
     const v = cue.value ?? 1
     const gun = this.gun

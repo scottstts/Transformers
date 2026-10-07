@@ -11,6 +11,9 @@ import { readAsset, readSoldier, readWeapon } from '../../tests/support/assets'
 import { Horde, type EnemyTarget } from '../../src/game/enemies/horde'
 import type { Character } from '../../src/content/transformer/character'
 import { mirrorCitadel } from '../mirror'
+import { RobotCombat } from '../../src/game/combat/robot-combat'
+import { CameraFx } from '../../src/game/combat/camera-fx'
+import { createMotionState } from '../../src/game/types'
 
 /**
  * Pipelines built during play after a car switch: the boot warm-up of the
@@ -145,6 +148,22 @@ export async function probeSwitch(from: string, to: string): Promise<void> {
     restoreCulling()
     restoreWorld()
     second.combat.effects.warm(false)
+    // Exercise the real Flash Move, including its live rig/storage rows and
+    // residue, after covered warm-up rather than just forcing visibility.
+    const state = createMotionState()
+    state.mode = 'robot'; state.target = state.progress = 1; state.yaw = 0
+    const fight = new RobotCombat(second.combat, second.model, second.robotOffset, state, new CameraFx())
+    second.model.pose(1, second.gait.update(0, 0, 0, false, true, null))
+    if (!fight.startFlash(state, camera)) throw new Error('Switch probe could not start Flash Move')
+    for (let i = 0; i < 24; i++) {
+      fight.update(1 / 60, state, camera)
+      second.model.root.position.copy(state.pos)
+      second.model.root.rotation.set(0, state.yaw, 0)
+      second.model.pose(1, second.gait.update(1 / 60, 0, 0, false, true, null))
+      second.combat.effects.afterPose()
+      frame()
+    }
+    fight.cancel()
     const newPrograms = programs - switched[0], newPipelines = pipelines - switched[1]
     console.log(`${previous.id} -> ${second.id} (${cold ? 'first use' : 'cached'}): built in play ${newPrograms} programs, ${newPipelines} pipelines`)
     if (newPrograms || newPipelines) throw new Error('Shaders or pipelines built during play')

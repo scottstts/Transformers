@@ -59,6 +59,10 @@ export interface CombatEffects {
   begin(): void
   /** the special begins (from whatever the fight was doing) */
   beginSpecial(): void
+  /** Cancel weapon, trail and ongoing attack emitters before changing body ownership; existing particles may decay. */
+  interrupt(): void
+  /** Flash Move's shared body corona and directional wakes. */
+  flash(on: boolean, heading: number): void
   /** a move starts */
   moveStart(move: number, camera: CombatCamera): void
   cue(cue: MoveCue, frame: CombatFrame): void
@@ -69,6 +73,8 @@ export interface CombatEffects {
   update(dt: number, frame: CombatFrame): void
   /** a frame outside the fight: what still plays out (sparks landing, the shield dropping) */
   ambient(dt: number, yaw: number): void
+  /** Synchronize rig-bound effects after this frame's model.pose. */
+  afterPose(): void
   /** the combo has ended and the stance is back */
   end(): void
   /** stop everything at once (the character leaves the scene or the stance) */

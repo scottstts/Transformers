@@ -1,4 +1,4 @@
-import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material, type Node, type UniformNode } from 'three/webgpu'
+import { Box3, Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Material, type Node, type UniformNode } from 'three/webgpu'
 import { Fn, attribute, mix, normalGeometry, normalLocal, normalize, positionGeometry, positionPrevious, uniform } from 'three/tsl'
 import type { TransformerAsset } from '../asset/loader'
 import { supportPoints } from '../asset/loader'
@@ -77,6 +77,8 @@ export interface TransformerOptions {
 }
 
 export class TransformerModel {
+  /** Full standing geometry height, measured once at load (m), independent of the current pose. */
+  readonly robotHeight: number
   readonly label: string
   /** game-world placement (position / yaw), owned by the session */
   readonly root = new Group()
@@ -205,6 +207,15 @@ export class TransformerModel {
       if (record.kind === 'bone') this.boneOf[i] = this.rig.index[record.name.slice(5)]
     })
     if (options.rollSupport) this.rollSupport(asset)
+    this.pose(1, null)
+    const bounds = new Box3()
+    this.root.traverse((object) => {
+      const mesh = object as Mesh
+      if (!mesh.isMesh) return
+      const points = mesh.geometry.getAttribute('morphPosition') ?? mesh.geometry.getAttribute('position')
+      for (let i = 0; i < points.count; i++) bounds.expandByPoint(_v.fromBufferAttribute(points, i).applyMatrix4(mesh.matrixWorld))
+    })
+    this.robotHeight = bounds.max.y - bounds.min.y
     this.pose(0, null)
   }
 

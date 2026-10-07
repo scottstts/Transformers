@@ -146,7 +146,7 @@ export class CommanderPost {
     else this.patrol(clock)
     u.update(dt)
     this.lanceTrail(dt)
-    this.audio.update(u.mode === 'down' || u.mode === 'air' ? 0 : Math.hypot(u.vx, u.vz), this.distance())
+    this.audio.update(u.mode === 'down' || u.airborne ? 0 : Math.hypot(u.vx, u.vz), this.distance())
   }
 
   /** At the fight: round to its stand-off toward the robot's front, through the gates if need be; a combo when in reach. */

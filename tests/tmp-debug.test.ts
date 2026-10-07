@@ -1,5 +1,7 @@
 import { it } from 'vitest'
 import { writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Scene } from 'three/webgpu'
 import { Citadel } from '../src/worlds/desert/citadel'
 import { CitadelDistricts } from '../src/worlds/desert/citadel/districts'
@@ -32,5 +34,5 @@ it('debug', async () => {
     if (step - lastLog > 600 || here !== lastHere) { lastLog = step; lastHere = here; seen.push(step + ': (' + p.x.toFixed(1) + ', ' + p.z.toFixed(1) + ') here ' + here + ' gate ' + gate + ' ' + plan.gates[gate]?.id + ' ' + JSON.stringify(plan.gates[gate]?.inside) + JSON.stringify(plan.gates[gate]?.outside) + ' next (' + next.x.toFixed(1) + ',' + next.z.toFixed(1) + ') walk ' + nav.walkable(p.x, p.z)) }
   }
   }
-  writeFileSync('/private/tmp/claude-501/-Users-scott-Documents-Projects-Node-Transformers/64245d75-3bb9-4764-9826-01be1d437287/scratchpad/debug.txt', seen.slice(0, 40).join('\n'))
+  writeFileSync(join(tmpdir(), 'transformers-navigation-debug.txt'), seen.slice(0, 40).join('\n'))
 })

@@ -7,6 +7,8 @@ import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 export class GameInput {
   private readonly onTransform: () => void
   private readonly onInteraction: () => void
+  private readonly onAttack: () => boolean
+  private readonly onFlash: () => void
   private readonly keys = new Set<string>()
   private jumpPressed = false
   private attackPressed = false
@@ -26,22 +28,26 @@ export class GameInput {
     if (event.code === 'KeyR') this.onTransform()
     if (event.code === 'Space') this.jumpPressed = true
     if (event.code === 'KeyF') this.specialPressed = true
+    if (event.code === 'KeyE') this.onFlash()
   }
   private readonly onKeyUp = (event: KeyboardEvent): void => { this.keys.delete(event.code) }
   private readonly onBlur = (): void => {
     this.keys.clear()
     this.guardMouse = false
+    this.jumpPressed = this.attackPressed = this.specialPressed = false
   }
   private readonly onPointerLockChange = (): void => {
     if (document.pointerLockElement !== this.canvas) {
       this.keys.clear()
       this.guardMouse = false
+      this.jumpPressed = this.attackPressed = this.specialPressed = false
     }
   }
   private readonly onPointerDown = (event: PointerEvent): void => {
     this.onInteraction()
     if (document.pointerLockElement !== this.canvas) return
-    if (event.button === 0) this.attackPressed = true
+    // Eligibility belongs to the event, never a later frame/window.
+    if (event.button === 0 && this.onAttack()) this.attackPressed = true
     if (event.button === 2) this.guardMouse = true
   }
   private readonly onPointerUp = (event: PointerEvent): void => {
@@ -52,10 +58,12 @@ export class GameInput {
     if (document.pointerLockElement === this.canvas || event.target === this.canvas) event.preventDefault()
   }
 
-  constructor(canvas: HTMLCanvasElement, onTransform: () => void, onInteraction: () => void) {
+  constructor(canvas: HTMLCanvasElement, onTransform: () => void, onInteraction: () => void, onAttack: () => boolean, onFlash: () => void) {
     this.canvas = canvas
     this.onTransform = onTransform
     this.onInteraction = onInteraction
+    this.onAttack = onAttack
+    this.onFlash = onFlash
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
     window.addEventListener('blur', this.onBlur)

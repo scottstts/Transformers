@@ -16,6 +16,7 @@ import { SwingVoice, type SwingTuning } from './audio/swing'
 import { dissolve, forge, slam, type ForgeTuning } from './audio/shots'
 import type { Weapon } from './weapon'
 import { Shield } from './fx/shield'
+import { FlashFx } from './fx/flash'
 import { armourStruck, guardBlocked, guardDrop, guardRaise } from './audio/guard'
 import { footScuff } from '../audio/footfall'
 
@@ -81,6 +82,7 @@ export class Fighter implements CombatEffects {
   protected readonly trail: SwingTrail | null
   /** the guard's energy shield */
   protected readonly shield: Shield
+  protected readonly flashFx: FlashFx
   protected readonly voice: SwingVoice
   protected readonly light: PointLight
   protected camera: CombatCamera | null = null
@@ -119,9 +121,11 @@ export class Fighter implements CombatEffects {
     this.light = new PointLight(style.light, 0, 14, 2)
     // the shield encloses the robot's own parts, fitted as it moves
     this.shield = new Shield(style.shield, model.node('bone:pelvis'), model.root)
+    this.flashFx = new FlashFx(model, style.shield)
     this.sparks.ground = contact
     this.billows.ground = contact
     this.object.add(this.sparks.mesh, this.light, this.billows.mesh, this.blast.light, this.haze.mesh, this.shield.mesh)
+    this.object.add(this.flashFx.object)
     if (this.trail) this.object.add(this.trail.mesh)
     this.tracked = ['hand.R', 'hand.L', 'foot.R', 'foot.L'].map((b) => model.node(`bone:${b}`))
     this.lastPos = this.tracked.map(() => new Vector3())
@@ -131,6 +135,23 @@ export class Fighter implements CombatEffects {
   begin(): void {}
 
   beginSpecial(): void {}
+
+  interrupt(): void {
+    this.presenceTarget = 0
+    if (this.weapon) { this.weapon.presence = 0; this.weapon.update(0) }
+    this.trail?.reset()
+    this.endCut()
+    this.charged = this.lightLevel = this.light.intensity = 0
+    this.voice.update(0)
+    this.primed = false
+  }
+
+  flash(on: boolean, heading: number): void {
+    if (on) this.flashFx.start(heading)
+    else this.flashFx.stop()
+  }
+
+  afterPose(): void { this.flashFx.afterPose() }
 
   moveStart(_move: number, camera: CombatCamera): void {
     this.camera = camera
@@ -165,6 +186,7 @@ export class Fighter implements CombatEffects {
   }
 
   update(dt: number, frame: CombatFrame): void {
+    this.flashFx.update(dt)
     this.shield.update(dt, frame.state.yaw)
     this.sparks.update(dt)
     this.billows.update(dt)
@@ -209,6 +231,7 @@ export class Fighter implements CombatEffects {
   }
 
   ambient(dt: number, yaw: number): void {
+    this.flashFx.update(dt)
     this.shield.update(dt, yaw)
     this.sparks.update(dt)
   }
@@ -218,6 +241,7 @@ export class Fighter implements CombatEffects {
   }
 
   reset(): void {
+    this.flashFx.reset()
     this.cutting = false
     this.presenceTarget = 0
     if (this.weapon) {
@@ -234,6 +258,7 @@ export class Fighter implements CombatEffects {
   }
 
   warm(on: boolean): void {
+    this.flashFx.warm(on)
     this.weapon?.warm(on)
     if (this.trail) this.trail.mesh.visible = on
     this.sparks.mesh.visible = on

@@ -83,6 +83,14 @@ class BatFighter extends Fighter {
     this.descent.reset()
   }
 
+  interrupt(): void {
+    super.interrupt()
+    this.bat.burn = null
+    this.vortexOn = false
+    this.vortex.release()
+    this.eyesTarget = 0
+  }
+
   cue(cue: MoveCue, frame: CombatFrame): void {
     const v = cue.value ?? 1
     switch (cue.cue) {

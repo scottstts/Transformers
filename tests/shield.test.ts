@@ -17,6 +17,16 @@ function fixture(height = 0): { root: Group; shield: Shield } {
 }
 
 describe('defense shield on raised ground', () => {
+  it('is fully visible and protective on its first update, including a zero-dt frame', () => {
+    const { shield } = fixture()
+    shield.set(false)
+    shield.update(1, 0)
+    shield.set(true)
+    shield.update(0, 0)
+    expect(shield.raised).toBe(true)
+    expect(shield.mesh.visible).toBe(true)
+    expect(shield.reach(1.6)).toBeGreaterThan(0)
+  })
   it.each([8, 16, 20, 24])('preserves the original ground-level size on a %s m floor', (height) => {
     const original = fixture().shield
     const elevated = fixture(height).shield

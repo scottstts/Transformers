@@ -9,7 +9,8 @@ import { FootPlanner } from '../../content/transformer/combat/feet'
 import { Curve } from '../../content/transformer/combat/curves'
 import { toePivot } from '../../content/transformer/combat/overlay'
 import { KNOCKBACK_HOLD, knockbackMove } from '../../content/transformer/combat/knockback'
-import { robotKnockedBack } from './contract'
+import { FLASH_HALF_WIDTH, FLASH_HEIGHTS, FLASH_KNOCK, FLASH_LIFT, FLASH_TIME, flashMove } from '../../content/transformer/combat/flash'
+import { robotCanFlash, robotCanGuard, robotKnockedBack } from './contract'
 import { CH, LEG, SIDES, type Side } from '../../content/transformer/combat/pose'
 import type { MotionState } from '../types'
 import { ComboController, type ComboEvent } from './combo'
@@ -31,6 +32,8 @@ const PIVOT_STEP: readonly [number, number] = [0.12, 0.17]
 const SETTLE_SHARE = 0.72
 const STANCE_SLACK = 0.07
 const STANCE_TURN = 0.17
+/** Sweep identities remain distinct when the player switches to another robot. */
+let sweepSerial = 0
 
 /**
  * The robot's fighting, around the session: clicks drive the combo
@@ -79,6 +82,13 @@ export class RobotCombat {
   /** the knock-back reaction (knockback.ts) for this robot, and whether it is playing */
   private readonly knock: CombatMove
   private reeling = false
+  private readonly flash: CombatMove
+  private dashing = false
+  private flashDistance = 0
+  private flashedThisFrame = false
+  private readonly flashFrom = new Vector3()
+  /** Scenery limits the complete swept burst; the session supplies the world and body radius. */
+  flashSweep: ((x: number, z: number, dx: number, dz: number, distance: number) => number) | null = null
   /** a combo move's blow lands (it charges the special) */
   onStrike: ((move: number) => void) | null = null
   /** turns a move's aim (rad) from the standing point (x, z) toward something to hit within `range` m and `cone` rad, if anything is there */
@@ -101,7 +111,6 @@ export class RobotCombat {
   private nextStrike = 0
   private nextBlast = 0
   private sweepBase = 0
-  private sweepSerial = 0
   private readonly lastDesired = new Vector3()
   /** the heading the player steers toward (camera-relative input), if any */
   private steerYaw = 0
@@ -136,6 +145,7 @@ export class RobotCombat {
     const recover = combat.moveset.recover
     this.combo = new ComboController(this.moves, recover)
     this.knock = knockbackMove(model.dims, combat.stepLift)
+    this.flash = flashMove(model.dims)
     this.frame = { weight: 0, values: this.player.values, move: -1, time: 0, state, camera, probe: null, airborne: null }
     this.frameState = state
     this.player.reset(combat.overlay.neutral)
@@ -143,7 +153,7 @@ export class RobotCombat {
 
   /** The fight owns the robot (movement, jumps and transforming wait). */
   get active(): boolean {
-    return this.combo.active || this.special !== null || (this.weight > 0 && !this.loose) || this.guarding || this.reeling
+    return this.combo.active || this.special !== null || this.dashing || (this.weight > 0 && !this.loose) || this.guarding || this.reeling
   }
 
   /** Knocked back and not yet able to answer (the reaction's first KNOCKBACK_HOLD s). */
@@ -160,7 +170,7 @@ export class RobotCombat {
   /** Movement may take the robot back from the fight now (a recovery, or a move whose window has passed its strike). */
   get releasable(): boolean {
     if (this.reeling) return !this.staggered && !this.guardHeld
-    return !this.special && !this.guarding && !this.guardHeld && !this.loose && this.combo.cancellable
+    return !this.special && !this.dashing && !this.guarding && !this.guardHeld && !this.loose && this.combo.cancellable
   }
 
   /**
@@ -186,11 +196,13 @@ export class RobotCombat {
     return this.guarding
   }
 
+  get flashing(): boolean { return this.dashing }
+  /** Includes the completion frame: ordinary body ramming must not duplicate the swept flash hit. */
+  get flashContact(): boolean { return this.dashing || this.flashedThisFrame }
+
   /**
-   * Hold or release the guard. It rises whenever no move is playing (a combo's
-   * recovery gives way to it) or a move could be cut short (`releasable`), and
-   * holds while held; releasing it recovers into the stance. A click from the
-   * guard starts the combo from the guard pose.
+   * Hold or release the guard. Outside a special or the initial knock-back
+   * lock it interrupts immediately, before any remaining combo hit or cue.
    */
   setGuard(held: boolean): void {
     this.guardHeld = held
@@ -230,10 +242,40 @@ export class RobotCombat {
     return this.player.values[CH.air]
   }
 
-  press(): void {
+  press(): boolean {
     // knocked back: no answer until the robot has caught itself
-    if (this.staggered) return
-    this.combo.press()
+    if (this.staggered || this.cinematic || this.dashing || this.guardHeld) return false
+    if (this.guarding) {
+      this.endGuard()
+      this.combo.recover(this.onComboEvent)
+    }
+    return this.combo.press()
+  }
+
+  /** E: no queue, aim assist, damage or invulnerability; guard keeps ownership. */
+  startFlash(state: MotionState, camera: PerspectiveCamera): boolean {
+    const grounded = state.mode === 'robot' && state.progress === 1 && state.target === 1 && !state.airborne && this.air * this.poseWeight < 0.05
+    if (!robotCanFlash(this, this.guardHeld, grounded)) return false
+    this.frameState = state
+    this.frameCamera = camera
+    if (this.weight === 0) {
+      this.player.reset(this.combat.overlay.neutral)
+      this.combat.effects.begin()
+    }
+    this.plantFeet()
+    this.combo.cancel()
+    this.queued.length = 0
+    this.reeling = false
+    this.exiting = false
+    this.combat.effects.interrupt()
+    const heading = this.steering ? this.steerYaw : state.yaw
+    this.beginMove(this.flash, state, camera, false, heading)
+    this.flashFrom.copy(this.origin)
+    const distance = this.model.robotHeight * FLASH_HEIGHTS
+    this.flashDistance = this.flashSweep?.(this.origin.x, this.origin.z, Math.sin(heading), Math.cos(heading), distance) ?? distance
+    this.dashing = true
+    this.combat.effects.flash(true, heading)
+    return true
   }
 
   /**
@@ -249,6 +291,7 @@ export class RobotCombat {
    */
   knockback(from: Vector3): void {
     if (!robotKnockedBack(this)) return
+    this.stopFlash()
     const state = this.frameState
     if (this.weight === 0) {
       this.player.reset(this.combat.overlay.neutral)
@@ -281,6 +324,7 @@ export class RobotCombat {
     const special = this.combat.special
     this.frameState = state
     this.frameCamera = camera
+    this.stopFlash()
     if (this.weight === 0) {
       this.player.reset(this.combat.overlay.neutral)
       this.combat.effects.begin()
@@ -303,6 +347,7 @@ export class RobotCombat {
 
   /** Drop the fight at once and hand the pose back (the robot leaves the stance, or the character is swapped out). */
   cancel(): void {
+    this.stopFlash()
     this.special = null
     this.reeling = false
     this.hits = null
@@ -318,11 +363,12 @@ export class RobotCombat {
   }
 
   update(dt: number, state: MotionState, camera: PerspectiveCamera): void {
+    this.flashedThisFrame = false
     this.frameState = state
     this.frameCamera = camera
-    if (!this.special) this.combo.update(dt, this.onComboEvent)
     this.updateGuard(state, camera)
-    if (!this.combo.active && !this.special && this.weight === 0 && !this.guarding && !this.reeling) {
+    if (!this.special && !this.guarding && !this.dashing) this.combo.update(dt, this.onComboEvent)
+    if (!this.combo.active && !this.special && !this.dashing && this.weight === 0 && !this.guarding && !this.reeling) {
       this.loose = false
       this.combat.effects.ambient(dt, state.yaw)
       return
@@ -333,6 +379,12 @@ export class RobotCombat {
     }
 
     this.player.update(dt, this.onMoveCue)
+    if (this.dashing) {
+      this.flashedThisFrame = true
+      const u = Math.min(1, this.player.time / FLASH_TIME)
+      this.player.values[CH.advance] = this.flashDistance * smooth(u)
+      this.player.values[CH.strafe] = 0
+    }
     if (!this.special && this.combo.phase === 'move' && !this.struck) {
       const strike = this.moves[this.combo.move].strike
       if (strike !== undefined && this.player.time >= strike) {
@@ -351,11 +403,11 @@ export class RobotCombat {
       this.reeling = false
       this.combo.recover(this.onComboEvent)
     }
-    const owning = this.combo.active || this.special !== null || this.guarding || this.reeling
+    const owning = this.combo.active || this.special !== null || this.dashing || this.guarding || this.reeling
 
     // weight: in over the first moments, out as the recovery settles
     if (this.combo.phase === 'recover' && this.combo.time > this.combat.moveset.recover - EXIT) this.exiting = true
-    if (this.combo.phase === 'move' || this.special) this.exiting = false
+    if (this.combo.phase === 'move' || this.special || this.dashing) this.exiting = false
     this.weight = this.exiting || !owning ? Math.max(0, this.weight - dt / EXIT) : Math.min(1, this.weight + dt / ENTRY)
     this.combat.overlay.weight = smooth(this.weight)
     this.model.overlay = this.weight > 0 ? this.combat.overlay : null
@@ -363,7 +415,15 @@ export class RobotCombat {
     this.combat.overlay.pose.v.set(this.player.values)
     this.applyRoot(state)
     this.poseFeet(state, dt)
+    if (this.dashing && dt > 0) this.emitFlashHit()
     this.emitHits(state, dt)
+    if (this.dashing && this.player.time >= FLASH_TIME) {
+      this.stopFlash()
+      this.setGround(state, state.yaw)
+      this.loose = true
+      this.exiting = true
+      this.player.settle(this.combat.overlay.neutral, RELEASE)
+    }
 
     const f = this.frame
     f.weight = this.combat.overlay.weight
@@ -431,12 +491,12 @@ export class RobotCombat {
    * player steers (else the way the robot faces), then onto the nearest
    * soldier near that line; a turn past PIVOT_TURN pivots the feet into it.
    */
-  private beginMove(move: CombatMove, state: MotionState, _camera: PerspectiveCamera, aimed: boolean): void {
+  private beginMove(move: CombatMove, state: MotionState, _camera: PerspectiveCamera, aimed: boolean, fixedHeading?: number): void {
     const fromGait = this.loose || this.weight === 0
     const fromHeading = fromGait ? state.yaw : this.heading
     const forwardVelocity = fromGait ? state.speed : this.player.velocity(CH.advance)
     const lateralVelocity = fromGait ? 0 : this.player.velocity(CH.strafe)
-    let heading = state.yaw
+    let heading = fixedHeading ?? state.yaw
     if (aimed) {
       const steered = this.steering
       heading = steered ? this.steerYaw : state.yaw
@@ -465,15 +525,15 @@ export class RobotCombat {
     this.hits = null
     this.nextStrike = 0
     this.nextBlast = 0
-    this.sweepBase = this.sweepSerial
-    this.sweepSerial += 16
+    this.sweepBase = sweepSerial
+    sweepSerial += 16
     this.lastDesired.set(NaN, 0, 0)
   }
 
-  /** Raise the guard when it is held and nothing else plays; lower it when released. */
+  /** Guard owns the frame before attack playback, irrespective of combo timing. */
   private updateGuard(state: MotionState, camera: PerspectiveCamera): void {
-    // it rises in a recovery, or cuts a move short once movement could (its window open, no click waiting)
-    if (this.guardHeld && !this.guarding && !this.special && !this.staggered && (this.combo.phase !== 'move' || this.combo.cancellable)) {
+    if (this.guardHeld && !this.guarding && robotCanGuard(this)) {
+      this.stopFlash()
       if (this.weight === 0) {
         this.player.reset(this.combat.overlay.neutral)
         this.combat.effects.begin()
@@ -485,6 +545,7 @@ export class RobotCombat {
       this.loose = false
       this.reeling = false
       this.guarding = true
+      this.combat.effects.interrupt()
       this.beginMove(this.combat.guard, state, camera, false)
       this.combat.effects.guard(true)
     } else if (!this.guardHeld && this.guarding) {
@@ -499,6 +560,27 @@ export class RobotCombat {
     this.combat.effects.guard(false)
   }
 
+  private stopFlash(): void {
+    if (!this.dashing) return
+    this.dashing = false
+    this.combat.effects.flash(false, this.heading)
+  }
+
+  /** A zero-damage crowd impact front across the complete frame's travel. */
+  private emitFlashHit(): void {
+    const e = this.hit
+    e.shape = 'capsule'; e.kind = 'blunt'; e.blowSound = 'heavy'
+    e.reaction = 'toss'
+    e.fromX = this.flashFrom.x; e.fromZ = this.flashFrom.z
+    e.x = this.desired.x; e.z = this.desired.z; e.heading = this.heading
+    e.reach = this.model.robotHeight * FLASH_HALF_WIDTH; e.arc = Math.PI * 2
+    e.damage = 0; e.knock = FLASH_KNOCK; e.lift = FLASH_LIFT; e.motion = 0
+    e.sweep = this.sweepBase; e.radial = false; e.toward = undefined
+    e.special = false; e.final = false; e.bite = false
+    this.onHit?.(e)
+    this.flashFrom.copy(this.desired)
+  }
+
   /** The current move's strikes and blasts whose time has come, and its sweeps while they run. */
   private emitHits(state: MotionState, dt: number): void {
     const hits = this.hits
@@ -510,6 +592,7 @@ export class RobotCombat {
     const t = this.player.time
     const e = this.hit
     e.special = this.special !== null
+    e.reaction = undefined
     e.final = false
     e.toward = undefined
     const strikes = hits.strikes

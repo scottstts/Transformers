@@ -21,6 +21,7 @@ import { Debris, DEBRIS_FADE, DEBRIS_LIE } from './debris'
 import { aliveIn, createGarrison, patrol, reinforce, station, updateAlert, type Garrison } from './garrison'
 import { engage, REEL, SLASH_REACH } from './engage'
 import { CitadelNav } from './navigation'
+import { throwVariation } from './toss'
 
 /** The slash's cone (rad) either side of the soldier's heading (its reach is engage.ts's). */
 const SLASH_CONE = 1.05
@@ -88,6 +89,8 @@ export interface EnemyTarget {
   guard: number
   /** it can be fought (it stands in robot form, or is anywhere once they are alerted) */
   present: boolean
+  /** Flash Move already delivers a swept toss; omit ordinary damaging body ramming this frame. */
+  flash?: boolean
 }
 
 /** The citadel, the soldiers' way-finding in it and its districts' garrisons. */
@@ -313,17 +316,19 @@ export class Horde {
     let nearest = Infinity
     // a special's blows before its last cannot destroy: an emptied soldier is held doomed until then
     const hold = enemyHeld(e.special, this.special, e.final)
+    const hx = Math.sin(e.heading), hz = Math.cos(e.heading)
+    const span = e.shape === 'capsule' ? Math.hypot(e.x - (e.fromX ?? e.x), e.z - (e.fromZ ?? e.z)) : 0
     // (every garrison: a soldier may have followed the fight out of its own district)
     for (const g of this.garrisons) {
       for (const s of g.soldiers) {
-        if (!this.blowOn(e, s, SOLDIER.radius, hold)) continue
+        if (!this.blowOn(e, s, SOLDIER.radius, hold, hx, hz, span)) continue
         nearest = Math.min(nearest, this.listener.distanceTo(_v.set(s.x, s.floor + 1.5, s.z)))
         n++
       }
     }
     for (const post of this.posts) {
       const c = post.unit
-      if (!this.blowOn(e, c, COMMANDER.radius, hold)) continue
+      if (!this.blowOn(e, c, COMMANDER.radius, hold, hx, hz, span)) continue
       nearest = Math.min(nearest, this.listener.distanceTo(_v.set(c.x, c.floor + 3, c.z)))
       n++
     }
@@ -337,12 +342,28 @@ export class Horde {
   }
 
   /** Whether blow `e` catches unit `s` (body `radius` m, on the robot's level): if so it takes it (thrown along the blow, out from a blast). */
-  private blowOn(e: HitEvent, s: Soldier, radius: number, hold: boolean): boolean {
+  private blowOn(e: HitEvent, s: Soldier, radius: number, hold: boolean, hx: number, hz: number, span: number): boolean {
     if (!s.alive || Math.abs(s.floor - this.targetFloor) > LEVEL_REACH) return false
-    const dx = s.x - e.x, dz = s.z - e.z
+    let dx = s.x - e.x, dz = s.z - e.z
+    if (e.shape === 'capsule') {
+      const ax = e.fromX ?? e.x, az = e.fromZ ?? e.z
+      const ex = e.x - ax, ez = e.z - az
+      if (e.reaction === 'toss') {
+        // A broad moving front: width catches the crowd beside the mesh,
+        // but doesn't reach a width's distance ahead of the actual travel.
+        const along = (s.x - ax) * hx + (s.z - az) * hz
+        const side = (s.x - ax) * hz - (s.z - az) * hx
+        if (along < -radius || along > span + radius) return false
+        dx = side * hz; dz = -side * hx
+      } else {
+        const length = span * span
+        const along = length > 0 ? Math.max(0, Math.min(1, ((s.x - ax) * ex + (s.z - az) * ez) / length)) : 0
+        dx = s.x - (ax + ex * along)
+        dz = s.z - (az + ez * along)
+      }
+    }
     const d = Math.hypot(dx, dz)
     if (d > e.reach + radius) return false
-    const hx = Math.sin(e.heading), hz = Math.cos(e.heading)
     if (e.shape === 'sector') {
       const ang = Math.abs(wrap(Math.atan2(dx, dz) - e.heading))
       if (d > 0.8 && ang > e.arc / 2 + Math.atan2(radius, d)) return false
@@ -352,8 +373,19 @@ export class Horde {
       s.lastSweep = e.sweep
     }
     const rx = d > 1e-3 ? dx / d : hx, rz = d > 1e-3 ? dz / d : hz
-    let dirX: number, dirZ: number, knock = e.knock, damage = e.damage
-    if (e.toward) {
+    let dirX: number, dirZ: number, knock = e.knock, lift = e.lift, damage = e.damage
+    if (e.reaction === 'toss') {
+      // Rule 7: a forward crowd wave, with independent kick/lift and a
+      // small outward fan. Weight is applied once in Soldier.impact.
+      const lane = Math.max(-1, Math.min(1, (dx * hz - dz * hx) / Math.max(0.001, e.reach)))
+      const kick = throwVariation(s.serial, 0)
+      const angle = lane * 0.16 + (kick - 0.5) * 0.08
+      const ca = Math.cos(angle), sa = Math.sin(angle)
+      dirX = hx * ca + hz * sa
+      dirZ = hz * ca - hx * sa
+      knock *= (0.82 + 0.4 * kick) * (1 - 0.18 * Math.abs(lane))
+      lift *= 0.72 + 0.63 * throwVariation(s.serial, 1)
+    } else if (e.toward) {
       dirX = e.toward[0] - s.x
       dirZ = e.toward[1] - s.z
     } else if (e.radial) {
@@ -362,20 +394,21 @@ export class Horde {
       dirX = rx; dirZ = rz
       knock *= f
       if (e.shape === 'circle') damage *= Math.min(1, 0.4 + 0.6 * (1 - d / e.reach) * 1.6)
-    } else if (e.shape === 'circle') {
+    } else if (e.shape === 'circle' || e.shape === 'capsule') {
       // ploughed through: along the motion and out of the path
       const side = Math.sign(dx * hz - dz * hx) || 1
       dirX = hx * 0.8 + hz * side * 0.6
       dirZ = hz * 0.8 - hx * side * 0.6
-      knock = Math.min(16, knock + e.motion * 0.2)
+      if (e.shape === 'circle') knock = Math.min(16, knock + e.motion * 0.2)
     } else {
       dirX = rx * 0.55 + hx * 0.45
       dirZ = rz * 0.55 + hz * 0.45
     }
     const l = Math.hypot(dirX, dirZ) || 1
-    const lift = e.lift * (e.radial ? 1 - 0.5 * Math.min(1, d / e.reach) : 1)
+    if (e.radial) lift *= 1 - 0.5 * Math.min(1, d / e.reach)
     const hit = _impact
     hit.dirX = dirX / l; hit.dirZ = dirZ / l; hit.knock = knock; hit.lift = lift; hit.damage = damage; hit.kind = e.kind; hit.special = e.special
+    hit.reaction = e.reaction
     this.impact(s, hit, hold)
     return true
   }
@@ -422,7 +455,7 @@ export class Horde {
     for (const g of this.garrisons) {
       if (!g.alert) continue
       for (const s of g.soldiers) {
-        if (!s.alive || s.doomed || s.mode === 'down' || s.mode === 'air' || Math.abs(s.floor - this.targetFloor) > LEVEL_REACH) continue
+        if (!s.alive || s.doomed || s.mode === 'down' || s.airborne || Math.abs(s.floor - this.targetFloor) > LEVEL_REACH) continue
         const d = Math.hypot(s.x - x, s.z - z)
         if (d >= bd) continue
         const bearing = Math.atan2(s.x - x, s.z - z)
@@ -432,7 +465,7 @@ export class Horde {
       }
     }
     for (const { unit: c } of this.posts) {
-      if (!c.alive || c.doomed || c.mode === 'down' || c.mode === 'air' || Math.abs(c.floor - this.targetFloor) > LEVEL_REACH) continue
+      if (!c.alive || c.doomed || c.mode === 'down' || c.airborne || Math.abs(c.floor - this.targetFloor) > LEVEL_REACH) continue
       // its body is broader: it is in reach as far beyond a soldier's as it is wider
       const d = Math.hypot(c.x - x, c.z - z) - (COMMANDER.radius - SOLDIER.radius)
       if (d >= bd) continue
@@ -545,7 +578,7 @@ export class Horde {
           // a body thrown into a wall stops against it (a little bounce)
           s.vx -= c.nx * into * 1.25
           s.vz -= c.nz * into * 1.25
-          if (into < -7) this.impact(s, { dirX: c.nx, dirZ: c.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+          if (into < -7 && !s.tossing) this.impact(s, { dirX: c.nx, dirZ: c.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
         }
       }
       // the robot's body (on its level): soldiers give way; a body moving fast into them shoves them
@@ -559,8 +592,10 @@ export class Horde {
           s.z = t.z + nz * min
           const push = t.vx * nx + t.vz * nz
           const rel = push - (s.vx * nx + s.vz * nz)
-          if (rel > 2.5 && s.free) this.impact(s, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
-          else if (rel > 0) { s.vx += nx * rel; s.vz += nz * rel }
+          if (!t.flash) {
+            if (rel > 2.5 && s.free) this.impact(s, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+            else if (rel > 0) { s.vx += nx * rel; s.vz += nz * rel }
+          }
         }
       }
     }
@@ -586,8 +621,10 @@ export class Horde {
         if (rel > 5 && (!a.free || !b.free)) {
           // momentum shared: the struck one is thrown on, the thrown one slowed
           const share = rel * 0.55
+          const harmless = a.tossing || b.tossing
           a.vx -= nx * share; a.vz -= nz * share
-          this.impact(b, { dirX: nx, dirZ: nz, knock: share, lift: share * 0.15, damage: share * 3, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+          this.impact(b, { dirX: nx, dirZ: nz, knock: share, lift: share * 0.15, damage: harmless ? 0 : share * 3,
+            kind: 'blunt', special: false, reaction: harmless ? 'toss' : undefined }, enemyHeld(false, this.special, false))
         } else {
           const k = rel * 0.5
           a.vx -= nx * k; a.vz -= nz * k
@@ -619,7 +656,7 @@ export class Horde {
       if (into < 0) {
         c.vx -= wall.nx * into * 1.25
         c.vz -= wall.nz * into * 1.25
-        if (into < -7) this.impact(c, { dirX: wall.nx, dirZ: wall.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+        if (into < -7 && !c.tossing) this.impact(c, { dirX: wall.nx, dirZ: wall.nz, knock: 0, lift: 0, damage: (-into - 7) * 6, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
       }
     }
     if (t.present && c.mode !== 'down' && Math.abs(c.floor - this.targetFloor) <= LEVEL_REACH) {
@@ -634,8 +671,10 @@ export class Horde {
         this.shove.x -= nx * over * (1 - COMMANDER_YIELD)
         this.shove.z -= nz * over * (1 - COMMANDER_YIELD)
         const rel = (t.vx - c.vx) * nx + (t.vz - c.vz) * nz
-        if (rel > 2.5 && c.free) this.impact(c, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
-        else if (rel > 0) { c.vx += nx * rel * COMMANDER_YIELD; c.vz += nz * rel * COMMANDER_YIELD }
+        if (!t.flash) {
+          if (rel > 2.5 && c.free) this.impact(c, { dirX: nx, dirZ: nz, knock: rel * 1.1, lift: rel * 0.12, damage: rel * 2, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
+          else if (rel > 0) { c.vx += nx * rel * COMMANDER_YIELD; c.vz += nz * rel * COMMANDER_YIELD }
+        }
       }
     }
     for (const s of this.stepped) {
@@ -649,7 +688,20 @@ export class Horde {
       s.x = c.x + nx * min
       s.z = c.z + nz * min
       const rel = (c.vx - s.vx) * nx + (c.vz - s.vz) * nz
-      if (rel > 5 && (!c.free || !s.free) && c.mode === 'air') {
+      if (rel > 5 && (c.tossing || s.tossing)) {
+        // Either tossed body can be the incoming one: rel is positive for
+        // approach in both directions. Its recipient keeps the harmless response.
+        const share = rel * 0.55
+        if (c.tossing) {
+          c.vx -= nx * share; c.vz -= nz * share
+          this.impact(s, { dirX: nx, dirZ: nz, knock: share, lift: share * 0.15, damage: 0,
+            kind: 'blunt', special: false, reaction: 'toss' }, enemyHeld(false, this.special, false))
+        } else {
+          s.vx += nx * share; s.vz += nz * share
+          this.impact(c, { dirX: -nx, dirZ: -nz, knock: share, lift: share * 0.15, damage: 0,
+            kind: 'blunt', special: false, reaction: 'toss' }, enemyHeld(false, this.special, false))
+        }
+      } else if (rel > 5 && (!c.free || !s.free) && c.mode === 'air') {
         // the commander thrown into a soldier: the soldier is bowled over, the commander slowed
         const share = rel * 0.55
         c.vx -= nx * share; c.vz -= nz * share
@@ -659,7 +711,7 @@ export class Horde {
         const share = -rel * 0.55
         s.vx += nx * share; s.vz += nz * share
         this.impact(c, { dirX: -nx, dirZ: -nz, knock: share, lift: share * 0.15, damage: share * 3, kind: 'blunt', special: false }, enemyHeld(false, this.special, false))
-      } else if (rel > 0) { s.vx += nx * rel; s.vz += nz * rel }
+      } else if (rel > 0 || c.tossing || s.tossing) { s.vx += nx * rel; s.vz += nz * rel }
     }
     c.floor = post.citadel.floorAt(c.x, c.z)
   }
@@ -811,7 +863,7 @@ export class Horde {
     })
     if (!destroyed) {
       // it reels: no swing back while the blows keep coming
-      s.nextSwing = Math.max(s.nextSwing, this.clock + REEL)
+      if (hit.reaction !== 'toss') s.nextSwing = Math.max(s.nextSwing, this.clock + REEL)
       this.audio.impact(hit.kind, strength, dist)
       // a thrown body scuffs a little sand up; the fight's dust supports the blows, it is not a storm of its own
       if (hit.knock > 9) this.contact.burst(_v.set(s.x, this.contact.height(s.x, s.z), s.z), Math.min(0.9, hit.knock / 16), 4)

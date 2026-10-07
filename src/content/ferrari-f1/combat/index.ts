@@ -64,6 +64,12 @@ class F1Fighter extends Fighter {
     this.redLine.reset()
   }
 
+  interrupt(): void {
+    super.interrupt()
+    this.ersTarget = this.ers = this.tail = 0
+    this.racer.rev = null
+  }
+
   cue(cue: MoveCue, frame: CombatFrame): void {
     if (cue.cue === 'ers') {
       this.ersTarget = cue.value ?? 1

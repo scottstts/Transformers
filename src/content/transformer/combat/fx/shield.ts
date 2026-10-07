@@ -12,8 +12,9 @@ const IMPACTS = 8
 /** Ripple speed across the shell (rad/s of arc) and an impact's life (s). */
 const RIPPLE_SPEED = 2.6
 const IMPACT_LIFE = 1.2
-/** Formation and collapse times (s). */
-const FORM_TIME = 0.35
+/** The pose arrives while the shield already protects; fit it during this interval (s). */
+const FIT_TIME = 0.25
+/** Collapse time (s). */
 const DROP_TIME = 0.25
 /** Geodesic frequency of the tiling: 10 f^2 + 2 tiles over the sphere (12 of them pentagons). */
 const FREQUENCY = 8
@@ -67,6 +68,7 @@ export class Shield {
   private radius = 3
   private centerY = 1.5
   private fitted = false
+  private fitRemaining = 0
   private yaw = 0
 
   /**
@@ -142,8 +144,15 @@ export class Shield {
 
   /** Form (true) or drop (false) the field. */
   set(on: boolean): void {
+    if (on && this.target === 0) {
+      this.fitted = false
+      this.fitRemaining = FIT_TIME
+      this.level = 1
+      this.form.value = 1
+      this.pulse.value = Math.max(this.pulse.value, 0.65)
+      this.mesh.visible = true
+    }
     this.target = on ? 1 : 0
-    if (on && this.level === 0) this.fitted = false
   }
 
   get raised(): boolean {
@@ -177,8 +186,7 @@ export class Shield {
   update(dt: number, yaw: number): void {
     this.time += dt
     this.clock.value = this.time
-    const rate = this.target > this.level ? 1 / FORM_TIME : 1 / DROP_TIME
-    this.level = this.target > this.level ? Math.min(1, this.level + dt * rate) : Math.max(0, this.level - dt * rate)
+    this.level = this.target > 0 ? 1 : Math.max(0, this.level - dt / DROP_TIME)
     this.form.value = this.level
     this.pulse.value = Math.max(0, this.pulse.value - dt * 2.5)
     for (const k of this.impacts) k.w += dt
@@ -188,7 +196,8 @@ export class Shield {
     // The model root stands on the floor: elevation is placement, not body height.
     this.ground.value = _c.setFromMatrixPosition(this.root.matrixWorld).y
     // sized while it forms, then rigid
-    if (this.target > 0 && (!this.fitted || this.level < 1)) this.fit()
+    if (this.target > 0 && (!this.fitted || this.fitRemaining > 0)) this.fit()
+    this.fitRemaining = Math.max(0, this.fitRemaining - dt)
     const p = _c.setFromMatrixPosition(this.anchor.matrixWorld)
     this.mesh.position.set(p.x, this.ground.value + this.centerY, p.z)
     this.mesh.rotation.set(0, yaw, 0)

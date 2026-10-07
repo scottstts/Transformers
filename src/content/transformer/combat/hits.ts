@@ -27,6 +27,8 @@
  * (m/s) it is thrown at along the ground and `lift` straight up.
  */
 export type HitKind = 'blunt' | 'cut' | 'blast'
+/** A crowd collision throw keeps loose limbs through flight and catches on landing. */
+export type HitReaction = 'toss'
 
 export interface StrikeHit {
   t: number
@@ -93,18 +95,22 @@ export interface CombatHits {
 /**
  * One resolved hit in the world, as the fight hands it to whatever can be
  * hit. `x`, `z` are the shape's centre (strike: the standing point; sweep: the
- * pushed circle's centre; blast: its ground point), `heading` the direction
+ * pushed circle's centre; blast: its ground point; capsule: its endpoint), `heading` the direction
  * the robot faces or moves (rad, three.js yaw), `motion` the robot's ground
  * speed along it (m/s, sweeps).
  */
 export interface HitEvent {
-  shape: 'sector' | 'circle'
+  shape: 'sector' | 'circle' | 'capsule'
   kind: HitKind
+  reaction?: HitReaction
   blowSound?: 'punch' | 'heavy' | 'slash'
   x: number
   z: number
+  /** Capsule start; x/z are its endpoint. The whole segment is swept, including between frames. */
+  fromX?: number
+  fromZ?: number
   heading: number
-  /** sector depth or circle radius (m) */
+  /** Sector depth, circle/capsule radius; a toss capsule uses this as its moving front's half-width (m). */
   reach: number
   /** sector full angle (rad) */
   arc: number
