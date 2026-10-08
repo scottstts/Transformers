@@ -141,7 +141,7 @@ export class SkyfallFx {
       _d.set(Math.cos(a), 0.12, Math.sin(a))
       p.billows.emit({ count: 1, at: _c, jitter: 1.2, dir: _d, spread: 0.12, speed: [10, 18], life: [2.6, 4.2], size: [1.4, 6.5], heat: 0, drag: 1.7, buoyancy: 0.3, tone: 1, opacity: 0.5 })
     }
-    slam(p.mix, 0.9 * strength, 40)
+    slam(p.mix, 0.9 * strength, 40, false)
     frame.camera.kick(0.6)
   }
 
@@ -185,7 +185,7 @@ export class SkyfallFx {
     cam.shake(1)
     cam.hitStop(0.1, 0.05)
     explosion(p.mix, { strength: 1.3 * strength, distance: IMPACT_HEARD_AT, subHz: 36, debris: 1 })
-    slam(p.mix, 1.4 * strength, 34)
+    slam(p.mix, 1.4 * strength, 34, false)
     sizzle(p.mix, 6, strength)
     this.smoke = SMOKE_TIME
   }

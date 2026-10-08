@@ -46,6 +46,8 @@ Crackle is what makes it a rocket rather than wind: steep positive shocks with a
 
 The fighting charge and the special's launch and dive burn the same jets, so they are the same voice. The fighting sounds themselves (swing, forming, slam) are in combat.md.
 
+The Cybertruck's axe-stump, ground slam and special's slam sounds keep their ground pressure and impact body, but omit the falling-sand tail: the sustained white-noise hiss, low roar and delayed clod crackles read as trailing steam noise. Other characters retain the shared slam's sand tail.
+
 ## Driving and walking
 
 Driving plays only a plain electric drive motor: a soft hum following the driven wheels' speed (wheelspin winds it up) with a faint, heavily lowpassed whine, silent at rest. Rolling tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill).

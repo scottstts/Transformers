@@ -32,6 +32,8 @@ export interface FighterStyle {
   light: number
   /** step dust and sound at a fighting footfall (share of a running step) */
   step: number
+  /** falling-sand noise after a slam; defaults to true */
+  slamSandTail?: boolean
   /** the guard shield's energy colour (linear): the character's special light */
   shield: [number, number, number]
   /** width (m) of the gash the weapon's edge cuts wherever it goes below the ground; none without */
@@ -325,7 +327,7 @@ export class Fighter implements CombatEffects {
   protected slam(strength: number, cam: CombatCamera): void {
     const at = _p.copy(this.edgeBase.y < this.edgeTip.y ? this.edgeBase : this.edgeTip)
     at.y = this.contact.height(at.x, at.z)
-    slam(this.mix, strength)
+    slam(this.mix, strength, 48, this.style.slamSandTail)
     // the sand thrown up around it (the edge in the ground cuts its own gash)
     for (let k = 0; k < 10; k++) {
       const a = (k / 10) * Math.PI * 2

@@ -45,6 +45,7 @@ const STYLE: FighterStyle = {
   palette: 1,
   light: 0xa8c4ff,
   step: 0.9,
+  slamSandTail: false,
   shield: [0.35, 0.62, 1.0],
   cut: 0.32,
 }
@@ -80,7 +81,7 @@ class CybertruckFighter extends Fighter {
     if (cue.cue === 'boost') this.jet('back', v)
     else if (cue.cue === 'lift') this.jet('down', v)
     else if (cue.cue === 'dive') this.jet('up', v)
-    else if (cue.cue === 'axe-stump') slam(this.mix, v)
+    else if (cue.cue === 'axe-stump') slam(this.mix, v, 48, false)
     else if (!this.skyfall.cue(cue, frame)) super.cue(cue, frame)
   }
 

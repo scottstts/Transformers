@@ -23,12 +23,12 @@ export interface ForgeTuning {
   level: number
 }
 
-/** A blow into the sand, `strength` 0..1+ (a heavy axe slam is ~1). */
-export function slam(mix: AudioMix, strength: number, subHz = 48): void {
+/** A blow into the sand, `strength` 0..1+ (a heavy axe slam is ~1); optional falling-sand tail. */
+export function slam(mix: AudioMix, strength: number, subHz = 48, sandTail = true): void {
   const ctx = mix.ctx
   if (!ctx || !mix.enabled) return
   const t = ctx.currentTime + 0.005
-  const bus = voice(mix, 0.55, 0.6, 3)
+  const bus = voice(mix, 0.55, 0.6, sandTail ? 3 : 1.2)
   const g = Math.min(1.4, strength)
   // ground pressure
   const o = ctx.createOscillator()
@@ -41,8 +41,10 @@ export function slam(mix: AudioMix, strength: number, subHz = 48): void {
   o.connect(og).connect(bus)
   o.start(t)
   o.stop(t + 1.15)
-  // body of the impact, then the sand thrown up and falling back
+  // body of the impact
   noise(ctx, mix.tex.brown, bus, t, 0.6, 'lowpass', 280, 120, 0.004, 0.9 * g)
+  if (!sandTail) return
+  // sand thrown up and falling back
   noise(ctx, mix.tex.white, bus, t + 0.02, 1.4, 'bandpass', 1500, 900, 0.04, 0.09 * g, 0.7)
   noise(ctx, mix.tex.roar, bus, t, 0.9, 'bandpass', 420, 180, 0.01, 0.35 * g, 0.9)
   for (let i = 0; i < 9; i++) {
