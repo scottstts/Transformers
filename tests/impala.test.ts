@@ -9,6 +9,9 @@ import { ENGINE_BANDS, ENGINE_TIMBRE } from '../src/content/impala/audio/engine-
 import { Lightning } from '../src/content/impala/combat/fx/lightning.ts'
 import { BladeArcs } from '../src/content/impala/combat/fx/blade-arcs.ts'
 import { THROWS, THUNDER } from '../src/content/impala/combat/special.ts'
+import { IMPALA_HITS } from '../src/content/impala/combat/hits.ts'
+import { shockFront } from '../src/content/impala/combat/fx/shock-front.ts'
+import { lastHitTime } from '../src/content/transformer/combat/hits.ts'
 import { shapedNoise } from '../src/audio/spectral.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { createMotionState } from '../src/game/types.ts'
@@ -527,6 +530,115 @@ describe('impala fighting', () => {
       }
     }, 1 / 120, [0])
     expect(seen).toEqual(marks.map(([at]) => `at ${at}: held`))
+  })
+
+  it('throws the cutlass over the shortest way between the holds: no extra spins in the air', () => {
+    const c = createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix())
+    const weapon = c.model.node('bone:hand.L').children.find((o) => o.name.startsWith('weapon:'))!
+    const turned = THROWS.map(() => 0)
+    const q = new Quaternion(), last = new Quaternion()
+    let started = false
+    runFight(c, [], 14, (_t, combat) => {
+      if (!combat.special) return
+      const time = (combat as unknown as { player: { time: number } }).player.time
+      weapon.getWorldQuaternion(q)
+      if (started) {
+        const step = 2 * Math.acos(Math.min(1, Math.abs(q.dot(last)))) * 180 / Math.PI
+        THROWS.forEach((w, k) => { if (time > w.release && time <= w.catch) turned[k] += step })
+      }
+      last.copy(q)
+      started = true
+    }, 1 / 60, [0])
+    // the body turning under it adds a little; a whole extra turn adds 360
+    for (const deg of turned) expect(deg).toBeLessThan(180)
+  })
+
+  it('ends the finale swing with the sword arm straight out, the blade in line with it, the free hand in front of the body', () => {
+    const c = createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix())
+    const weapon = c.model.node('bone:hand.L').children.find((o) => o.name.startsWith('weapon:'))!
+    const at = (n: string, v: Vector3): Vector3 => v.setFromMatrixPosition(c.model.node(n).matrixWorld)
+    const S = new Vector3(), E = new Vector3(), W = new Vector3(), L = new Vector3(), R = new Vector3(), C = new Vector3(), H = new Vector3()
+    const blade = new Vector3(), q = new Quaternion(), up = new Vector3(0, 1, 0)
+    let frames = 0, bent = 0, off = 0, behind = Infinity
+    runFight(c, [], 14, (_t, combat) => {
+      const time = (combat as unknown as { player: { time: number } }).player.time
+      if (!combat.special || time < THUNDER.follow[0] || time > THUNDER.follow[1]) return
+      frames++
+      at('bone:upperarm.L', S); at('bone:forearm.L', E); at('bone:hand.L', W)
+      const upper = E.clone().sub(S), fore = W.clone().sub(E)
+      bent = Math.max(bent, upper.angleTo(fore) * 180 / Math.PI)
+      blade.set(0, 0, 1).applyQuaternion(weapon.getWorldQuaternion(q))
+      off = Math.max(off, blade.angleTo(fore) * 180 / Math.PI)
+      // the chest's front (the model's world is y up): square to the shoulders, the left one on its left
+      at('bone:upperarm.L', L); at('bone:upperarm.R', R); at('bone:chest', C); at('bone:hand.R', H)
+      const ahead = L.sub(R).cross(up).normalize()
+      behind = Math.min(behind, H.sub(C).dot(ahead))
+    }, 1 / 60, [0])
+    expect(frames).toBeGreaterThan(20)
+    expect(bent).toBeLessThan(25)
+    expect(off).toBeLessThan(25)
+    expect(behind).toBeGreaterThan(0.3)
+  })
+
+  it('raises the guard out of the first cut into one hold whenever it is pressed, and holds it still', () => {
+    // in the robot's own frame, the blade a moment after the guard is up and a second later
+    const held = (g: number): [Vector3, Vector3] => {
+      const c = createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix())
+      const weapon = c.model.node('bone:hand.L').children.find((o) => o.name.startsWith('weapon:'))!
+      const q = new Quaternion(), r = new Quaternion()
+      const out: Vector3[] = []
+      const marks = [g + 0.4, g + 1.4]
+      runFight(c, [0], g + 1.5, (t) => {
+        if (marks.length && t >= marks[0]) {
+          marks.shift()
+          out.push(new Vector3(0, 0, 1).applyQuaternion(weapon.getWorldQuaternion(q)).applyQuaternion(c.model.root.getWorldQuaternion(r).invert()))
+        }
+      }, 1 / 60, [], (t, combat) => { if (t >= g) combat.setGuard(true) })
+      return [out[0], out[1]]
+    }
+    // (pressed as the cut swings up, the hand kept the far side of its turn: the blade crept for a second, into another hold)
+    const holds = [0.1, 0.2, 0.3, 0.45].map(held)
+    const deg = (a: Vector3, b: Vector3): number => a.angleTo(b) * 180 / Math.PI
+    for (const [soon, later] of holds) {
+      // (the last few degrees settle at the hold's slack: it crept 68 degrees before)
+      expect(deg(soon, later)).toBeLessThan(3)
+      expect(deg(later, holds[0][1])).toBeLessThan(1)
+    }
+  })
+
+  it('strikes everything the lightning covers: each strike the whole circle its front has run out over, the last its whole reach', () => {
+    const strikes = IMPALA_HITS.special.strikes!.filter((s) => s.shock)
+    expect(strikes.length).toBeGreaterThan(3)
+    for (const s of strikes) {
+      expect(s.arc).toBe(360)
+      expect(s.reach).toBeCloseTo(Math.min(THUNDER.front.reach, 1 + THUNDER.front.speed * (s.t - THUNDER.lightning[0])), 6)
+      // and what it takes stays down until after the last swing, whenever it was struck
+      expect(s.t + s.stun!).toBeCloseTo(THUNDER.recover, 6)
+    }
+    expect(THUNDER.recover).toBeGreaterThan(THUNDER.finale)
+    expect(strikes[strikes.length - 1].reach).toBe(THUNDER.front.reach)
+    // past the flip's own reach: the bodies on the sand beyond it are taken too
+    expect(THUNDER.front.reach).toBeGreaterThan(THUNDER.reach)
+  })
+
+  it('sends the finale swing wave out through what stood beyond the swing: bands from its reach out to the ring, each struck as the front gets there', () => {
+    const strikes = IMPALA_HITS.special.strikes!
+    const swing = strikes.find((s) => s.t === THUNDER.finale && s.inner === undefined)!
+    const bands = strikes.filter((s) => s.inner !== undefined)
+    const { from, reach, life } = THUNDER.wave
+    expect(bands.length).toBeGreaterThan(5)
+    // the swing stays the special's last blow; the wave shares its finality
+    expect(lastHitTime(IMPALA_HITS.special)).toBe(THUNDER.finale)
+    bands.forEach((b, k) => {
+      expect(b.inner).toBeCloseTo(k ? bands[k - 1].reach : swing.reach, 6)
+      expect(b.reach).toBeGreaterThan(b.inner!)
+      expect(shockFront(from, reach, (b.t - THUNDER.finale) / life)).toBeCloseTo(b.reach, 6)
+      // thrown as the swing throws, without its stop
+      expect([b.kind, b.outward, b.bite]).toEqual([swing.kind, true, false])
+      expect(b.knock).toBeGreaterThan(swing.knock * 0.7)
+      expect(b.damage).toBeLessThan(swing.damage * 0.2)
+    })
+    expect(bands[bands.length - 1].reach).toBe(reach)
   })
 
   it('holds the cutlass with a natural arm through the special', () => {

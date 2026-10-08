@@ -320,6 +320,57 @@ describe('horde', () => {
     expect(s.vz).toBeLessThan(0)
   })
 
+  it('catches a soldier in a wave band once as the wave passes, thrown straight out at the full force of the band', () => {
+    const { horde, sector, target, at, run, blow } = make()
+    const yard = sector('forecourt').yard.at
+    at(yard[0], yard[1])
+    run(6)
+    const s = horde.nearby(target.x, target.z, 12).find((u) => Math.hypot(u.x - target.x, u.z - target.z) > 2)!
+    const d = Math.hypot(s.x - target.x, s.z - target.z)
+    s.vx = 0
+    s.vz = 0
+    const band = (inner: number, reach: number): HitEvent => blow(s, 10, { arc: Math.PI * 2, inner, reach, radial: true, kind: 'cut', knock: 20, lift: 4, sweep: 900, special: true, final: true, bite: false })
+    // a band short of it, then one beyond it, leave it be (each its own wave here: the soldiers they do catch are no matter)
+    horde.hit({ ...band(0.5, d - 0.05), sweep: 901 })
+    horde.hit({ ...band(d + 0.05, d + 3), sweep: 902 })
+    expect(Math.hypot(s.vx, s.vz)).toBe(0)
+    horde.hit(band(d - 0.5, d + 0.5))
+    // straight out from the centre, at the band's whole force wherever in it the soldier stands
+    expect(Math.hypot(s.vx, s.vz)).toBeGreaterThan(19)
+    expect((s.vx * (s.x - target.x) + s.vz * (s.z - target.z)) / d).toBeGreaterThan(19)
+    // the wave's next band, overtaking it, does not catch it again
+    s.vx = 0
+    s.vz = 0
+    horde.hit(band(0.5, d + 6))
+    expect(Math.hypot(s.vx, s.vz)).toBe(0)
+  })
+
+  it('holds a soldier the lightning catches on its feet seizing, throws it down as it lets go, and keeps it down until its stun runs out', () => {
+    const { horde, sector, target, at, run, blow } = make()
+    const yard = sector('forecourt').yard.at
+    at(yard[0], yard[1])
+    run(6)
+    const s = horde.nearby(target.x, target.z, 12)[0]
+    const d = Math.hypot(s.x - target.x, s.z - target.z)
+    const strike = (): HitEvent => blow(s, 5, { arc: Math.PI * 2, reach: d + 1, radial: true, kind: 'blast', knock: 0.6, lift: 0, special: true, bite: false, shock: 0.4, stun: 3 })
+    horde.hit(strike())
+    expect(s.mode).toBe('hit')
+    // struck again before it lets go: held on through both
+    run(0.3)
+    horde.hit(strike())
+    run(0.3)
+    expect(s.mode).toBe('hit')
+    // let go (0.7 s): thrown off its feet, down on the sand
+    run(1.2)
+    expect(s.mode).toBe('down')
+    // stunned until 3.3 s, well past its usual time lying
+    run(1.4)
+    expect(s.mode).toBe('down')
+    // then up, and back in the fight
+    run(1.6)
+    expect(['down', 'rise', 'hit', 'air']).not.toContain(s.mode)
+  })
+
   it('takes health off a soldier blow by blow: it flinches and recovers, and breaks apart only when its health is gone', () => {
     const { horde, sector, fort, target, at, run, blow } = make()
     const yard = sector('forecourt').yard.at

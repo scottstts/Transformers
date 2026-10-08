@@ -32,6 +32,10 @@ Resolved linear HDR feeds bloom. The bright pass uses a quadratic soft knee, avo
 
 Resizes commit through one `setDrawingBufferSize` call per animation frame. Base DPR is capped at 1.7 and at 4,000,000 drawing-buffer pixels, including when that requires DPR below 1. Temporal AA uses this same capped buffer; it does not raise resolution or add a lower-quality fallback.
 
+## Effect geometry in shaders
+
+A material that sets `positionNode` reassigns `positionLocal` to the placed point, in every stage after it. Effects that place their vertices in world space from parameters (rings, arcs, debris, casings) must read their own vertex coordinates with `positionGeometry` wherever the colour or opacity means "where on this mesh". Read through `positionLocal` in the colour, the Impala's shock ring and sweep ring lit only near world height 0 (a ring on the citadel's upper floors computed to black), the debris' noise slid over tumbling chips, and the Semi's casings darkened by world height. `positionLocal` stays correct inside the `positionNode` expression itself.
+
 ## Shadows and indirect light
 
 `SunShadowNode` takes the darker of moving-caster cascades and cached static citadel maps. Moving casters retain three 2048² cascades to 150 m, including enemy proxies on `SHADOW_ONLY_LAYER`; splits follow camera lens changes.

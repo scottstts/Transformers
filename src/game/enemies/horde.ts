@@ -363,7 +363,9 @@ export class Horde {
       }
     }
     const d = Math.hypot(dx, dz)
-    if (d > e.reach + radius) return false
+    const wave = (e.inner ?? 0) > 0
+    // a wave's band: from its inner edge out to its reach on the centre's distance, so a run of bands hands each body over once
+    if (wave ? d < e.inner! || d >= e.reach : d > e.reach + radius) return false
     if (e.shape === 'sector') {
       const ang = Math.abs(wrap(Math.atan2(dx, dz) - e.heading))
       if (d > 0.8 && ang > e.arc / 2 + Math.atan2(radius, d)) return false
@@ -389,8 +391,8 @@ export class Horde {
       dirX = e.toward[0] - s.x
       dirZ = e.toward[1] - s.z
     } else if (e.radial) {
-      // a blast: straight out from it, harder nearer
-      const f = 1 - 0.55 * Math.pow(Math.min(1, d / e.reach), 2)
+      // a blast: straight out from it, harder nearer (a wave throws everything it passes alike)
+      const f = wave ? 1 : 1 - 0.55 * Math.pow(Math.min(1, d / e.reach), 2)
       dirX = rx; dirZ = rz
       knock *= f
       if (e.shape === 'circle') damage *= Math.min(1, 0.4 + 0.6 * (1 - d / e.reach) * 1.6)
@@ -405,11 +407,12 @@ export class Horde {
       dirZ = rz * 0.55 + hz * 0.45
     }
     const l = Math.hypot(dirX, dirZ) || 1
-    if (e.radial) lift *= 1 - 0.5 * Math.min(1, d / e.reach)
+    if (e.radial && !wave) lift *= 1 - 0.5 * Math.min(1, d / e.reach)
     const hit = _impact
     hit.dirX = dirX / l; hit.dirZ = dirZ / l; hit.knock = knock; hit.lift = lift; hit.damage = damage; hit.kind = e.kind; hit.special = e.special
     hit.reaction = e.reaction
     hit.shock = e.shock ?? 0
+    hit.stun = e.stun ?? 0
     this.impact(s, hit, hold)
     return true
   }

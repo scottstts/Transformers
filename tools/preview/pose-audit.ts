@@ -24,7 +24,7 @@ import { CameraFx } from '../../src/game/combat/camera-fx'
  *  - `twist`: the main hand turned about its forearm from the stand's past
  *    TWIST (deg), the wrung-arm look.
  *
- * node tools/pose-audit.mjs [car] [clicks, F<t> the special] [until]
+ * node tools/pose-audit.mjs [car] [clicks, F<t> the special, G<t> the guard held from t] [until]
  */
 const TOUCH = 0.025
 const GAP = Number(process.env.AUDIT_GAP ?? 0.06)
@@ -36,6 +36,8 @@ const DT = 1 / 60
 const SAMPLE = 3500
 /** AUDIT_TRACE=t0,t1: every frame of the move's time t0..t1 */
 const TRACE = process.env.AUDIT_TRACE?.split(',').map(Number)
+/** AUDIT_WALL=1: AUDIT_TRACE in wall time (s from the start), through anything that is not a move (the guard) */
+const WALL = process.env.AUDIT_WALL === '1'
 /** AUDIT_PLACE=t,t..: the held weapon's placement at those move times, as a free flight is authored (grip from the pelvis at rest; blade, edge) */
 const PLACE = process.env.AUDIT_PLACE?.split(',').map(Number) ?? []
 
@@ -44,8 +46,9 @@ const _s0 = new Vector3(), _s1 = new Vector3(), _s2 = new Vector3(), _s3 = new V
 interface Part { name: string; object: Object3D; bone: string; local: Float32Array; world: Float32Array }
 
 export async function auditPose(car: string, tokens: string[], until: number): Promise<void> {
-  const clicks = tokens.filter((c) => !c.startsWith('F')).map(Number)
+  const clicks = tokens.filter((c) => !/^[FG]/.test(c)).map(Number)
   const specials = tokens.filter((c) => c.startsWith('F')).map((c) => Number(c.slice(1)))
+  const guards = tokens.filter((c) => c.startsWith('G')).map((c) => Number(c.slice(1)))
   const entry = rosterEntry(car)
   const read = (name: string): [unknown, ArrayBuffer] => {
     const bin = readMirror(`${name}.bin`)
@@ -258,6 +261,7 @@ export async function auditPose(car: string, tokens: string[], until: number): P
   for (let t = 0; t <= until; t += DT, frameNo++) {
     while (q.length && q[0] <= t) { q.shift(); fight.press() }
     while (specials.length && specials[0] <= t) { specials.shift(); fight.startSpecial(state, aim) }
+    while (guards.length && guards[0] <= t) { guards.shift(); fight.setGuard(true) }
     pose(DT * fight.tempo)
     times.push(moveAt())
     const strain = model.braces?.strain ?? 0
@@ -291,7 +295,7 @@ export async function auditPose(car: string, tokens: string[], until: number): P
       const f = (x: number, y: number, z: number): string => `[${x.toFixed(3)}, ${(-y).toFixed(3)}, ${z.toFixed(3)}]`
       console.log(`place ${moveAt()} grip ${f(p.x, p.y, p.z)} blade ${f(e[8], e[9], e[10])} edge ${f(e[0], e[1], e[2])}`)
     }
-    if (TRACE && frame.move >= 0 && frame.time >= TRACE[0] && frame.time <= TRACE[1]) {
+    if (TRACE && (WALL ? t >= TRACE[0] && t <= TRACE[1] : frame.move >= 0 && frame.time >= TRACE[0] && frame.time <= TRACE[1])) {
       const o = player.combat.overlay as unknown as { naturalRoll: Record<string, number>; pivot: Quaternion }
       const step = (k: number): string => watched[k].steps[watched[k].steps.length - 1].toFixed(1).padStart(5)
       // the elbow's side off the shoulder-fist line in the robot's heading frame (x its left, y ahead, z up), and its bend

@@ -1,5 +1,5 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, DoubleSide, Mesh, MeshBasicNodeMaterial, Vector3 } from 'three/webgpu'
-import { clamp, cos, exp, float, max, mix, positionLocal, pow, select, sin, smoothstep, uniform, vec3 } from 'three/tsl'
+import { clamp, cos, exp, float, max, mix, positionGeometry, pow, select, sin, smoothstep, uniform, vec3 } from 'three/tsl'
 
 /** Divisions round the circle. */
 const SEGMENTS = 256
@@ -45,7 +45,8 @@ export class SweepRing {
     geometry.setIndex(index)
 
     const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide, fog: false })
-    const along = positionLocal.x, across = positionLocal.y
+    // (the geometry's own attribute: positionLocal is the placed point once positionNode is set, so in the colour it read the world's position)
+    const along = positionGeometry.x, across = positionGeometry.y
     const sweep = this.timing.x, life = this.timing.y, strength = this.timing.z
     // each point born as the sweep passes it
     const age = this.time.sub(this.start.z.add(sweep.mul(along)))

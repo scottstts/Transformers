@@ -45,8 +45,22 @@ export interface StrikeHit {
   outward?: boolean
   /** false: a landed blow does not bite with a moment of hit-stop (one of a rapid flurry, which the stops would slow to a crawl) */
   bite?: boolean
-  /** a discharge: a body it catches in the air is held there, seizing, this long (s), thrown down when it lets go */
+  /**
+   * a discharge: a body it catches is held seizing this long (s), in the air
+   * where it reaches it or where it stands; as it lets go the body is thrown
+   * down, off its feet
+   */
   shock?: number
+  /** with a shock: the body it catches cannot get up again for this long (s), lying where it fell */
+  stun?: number
+  /**
+   * A wave's front (m): only what stands at least this far out is caught, so a
+   * run of strikes stepping out with a wave catches each body as it passes,
+   * once per move (they share one sweep's identity), all thrown alike (no
+   * falloff with distance). The wave rides out from the last blow and shares
+   * its finality.
+   */
+  inner?: number
 }
 
 export interface SweepHit {
@@ -132,8 +146,12 @@ export interface HitEvent {
   final: boolean
   /** a landed strike bites with a moment of hit-stop */
   bite: boolean
-  /** a strike's discharge hold on bodies in the air (s; 0 none) */
+  /** a strike's discharge hold on the bodies it catches (s; 0 none) */
   shock?: number
+  /** how long a body the discharge catches stays down after (s; 0 none) */
+  stun?: number
+  /** a wave front's inner edge (m; 0 none): the sector is a band from here out to `reach`, thrown alike across it */
+  inner?: number
 }
 
 /** A vacuum at work this frame (world): draws whatever stands within `radius` m of (x, z) toward it at up to `speed` m/s over `dt`. */
@@ -147,10 +165,10 @@ export interface PullEvent {
   special: boolean
 }
 
-/** When a move's last blow lands (s): its latest strike or blast, or the end of its latest sweep. */
+/** When a move's last blow lands (s): its latest strike or blast, or the end of its latest sweep (a wave riding out from it is not a blow of its own). */
 export function lastHitTime(h: MoveHits): number {
   let t = 0
-  for (const s of h.strikes ?? []) t = Math.max(t, s.t)
+  for (const s of h.strikes ?? []) if (s.inner === undefined) t = Math.max(t, s.t)
   for (const b of h.blasts ?? []) t = Math.max(t, b.t)
   for (const w of h.sweeps ?? []) t = Math.max(t, w.t1)
   return t

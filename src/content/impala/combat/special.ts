@@ -51,9 +51,10 @@ const DASH_EDGE = 0.07
 const CHARGED = 15.5
 /** where the slide stops, the centre of everything after (m ahead of where it began) */
 const CENTER = 16.3
-/** the cutlass flicked up off the flung arm, turning over in the air, caught reversed high overhead (point down: the raise), held, driven into the sand */
-const COCK = 1.8
-const REL1 = 1.94
+/** the flung arm drawn in and the cutlass popped up off it, turning over once outside the arm, caught reversed high overhead (point down: the raise), held, driven into the sand */
+const GATHER = 1.8
+const POP = 2.02
+const REL1 = 2.16
 const RAISE = 2.62
 const PLANT = 3.06
 /** how long the lightning runs; its hold on the bodies in the air lets go as it dies */
@@ -170,15 +171,21 @@ const RAISED: Frame = {
   hold: { at: [1.6, 0.34, 4.0], point: [0.86, -0.1, -0.5], reverse: true, out: 0.9 }, free: [26, -62, 0.72, 20, 1],
 }
 
-/** Cocked for the throw: the flung arm swung down low in front on the left, the blade pointing ahead (where the low arm holds it unturned), the body down in the crouch. */
-const COCKED: Frame = {
-  ...LANDED, drop: 1.24, shift: -0.3, roll: -9, pitch: 22, bend: 8, tilt: -15, nod: -16, head: 0.45,
-  hold: { at: reachOut(10, 26, 38, 28, 1.95), point: [0.12, 0.72, 0.68], out: 0.3 }, free: [55, -62, 1, 10, 0.4],
+/**
+ * Gathered for the throw: the flung arm drawn in and down, the fist before the
+ * face with the blade standing straight up in it (the one place the ordinary
+ * grip stands a blade up: with the arm still raised the forearm points up too,
+ * and a blade stood up along it spins the hand), the body starting up out of
+ * the crouch.
+ */
+const GATHERED: Frame = {
+  turn: 8, hips: 3, drop: 1.08, shift: -0.25, roll: -6, pitch: 15, bend: 4, tilt: -11, nod: -32, head: 0.45,
+  hold: { at: reachOut(8, 18, 30, -15, 1.45), point: [-0.05, 0.08, 0.99], out: 0.3 }, free: [54, -63, 0.95, 12, 0.6],
 }
-/** Let go: the arm whipped up past the face, the blade turned up and back over the top with it (swung in its own plane, the forearm never rolls), the eyes after it: it leaves turning end over end. */
-const THROWING: Frame = {
-  ...LANDED, drop: 1.1, shift: -0.25, bend: 2, nod: -40,
-  hold: { at: reachOut(10, 26, 36, -62, 2.1), point: [0.05, -0.55, 0.83], out: 0.6 },
+/** Let go: the fist popped up before the face, the blade still standing, the eyes on it; let go early in the drive, before the forearm stands up under the blade. */
+const POPPED: Frame = {
+  turn: 5, hips: 2, drop: 0.86, shift: -0.2, roll: -4, pitch: 9, bend: 2, tilt: -7, nod: -40, head: 0.5,
+  hold: { at: reachOut(5, 12, 33, -30, 1.52), point: [-0.08, 0.02, 0.99], out: 0.5 }, free: [46, -62, 0.9, 14, 0.8],
 }
 
 /** The last of the raise's wind before the stab: up a hand higher, the chest lifted. */
@@ -189,6 +196,16 @@ const CAUGHT: Frame = {
   turn: 4, hips: 2, drop: 0.22, pitch: -2, bend: -4, nod: -16, head: 0.6,
   hold: { at: reachOut(4, 0, 55, -52, 1.95), point: [-0.45, -0.6, 0.66], out: 0.8 }, free: [120, -30, 0.8, 18, 1],
 }
+
+/** The sword arm thrown straight out at the end of the finale's swing, toward `phi` (deg + left of the heading), the blade on along it (tipped a little ahead, trailing the arm), the grip pivoted in the fist to hold it there. */
+const OUT = (turn: number, lean: number, phi: number, drop: number): NonNullable<Frame['hold']> => ({ at: reachOut(turn, lean, phi, drop, 2.2), point: alongArm(phi, drop, 10), bend: 25 })
+/**
+ * The finale's follow-through: the hips and chest turned well round to the
+ * left, the whole sword arm thrown straight out on the left and carried a
+ * little past the shoulder's line toward the back, the blade in line with it;
+ * the free arm hanging bent in front of the body.
+ */
+const SWUNG: Frame = { turn: 48, hips: 26, drop: 0.74, pitch: 11, bend: 5, nod: 4, hold: OUT(48, 11, 158, 2), free: [-4, -60, 0.72, 24, 0.9] }
 
 const line = new Timeline()
   // ---- the gather: loading down, the blade levelled low at the crowd ahead, the free arm swung back, the head up
@@ -212,23 +229,25 @@ const line = new Timeline()
   ], { lead: 0.3, lag: 0.1 })
   // ---- the whole body's pose as the bodies fly (LANDED): still rising after the cut, the arm and the gaze carried on up
   .key(LAND + 0.34, LANDED)
-  // ---- the throw: the flung arm drops level out to the left, the blade stood up in the fist (cocked), then whips up and lets go at the top:
-  // the cutlass goes up spinning end over end, a turn and a half, rises a metre over the hand and hangs, the eyes on it, the body rising out
-  // of the crouch and the feet stepping in under it, the open hand going up to meet it and taking it reversed, point down, as it drops
-  .key(COCK - 0.16, { ...LANDED, drop: 1.2, nod: -30, hold: FLUNG(80, -60) })
-  // the blade opens forward off the arm's line as the arm starts down (folded under a blade on along the forearm, the elbow spun the hand)
-  .key(COCK - 0.08, { ...LANDED, drop: 1.22, nod: -24, hold: { at: reachOut(10, 26, 66, -32, 2.05), point: [0.3, 0.8, 0.52], out: 0.5 } })
-  .key(COCK, COCKED)
-  // (the whip turns the blade about as fast as it spins on in the air: a hand cannot let go of a spin it did not give; the hand goes on up
-  // past the release, the blade still turning back over the top, so the whip passes through the release at speed instead of easing into it)
-  .cut(COCK, COCK + 1.5 * (REL1 - COCK), [
-    COCKED,
-    { ...LANDED, drop: 1.18, shift: -0.28, bend: 5, nod: -30, hold: { at: reachOut(10, 26, 37, -20, 2.05), point: [0.04, 0.2, 0.98], out: 0.45 }, free: [58, -63, 1, 10, 0.4] },
-    THROWING,
-    { ...THROWING, drop: 1.04, nod: -44, hold: { at: reachOut(9, 22, 42, -74, 2.12), point: [-0.02, -0.86, 0.5], out: 0.65 } },
+  // ---- the throw, a plain toss and regrip: the flung arm drawn in, the blade stood up before the face as the body starts up out of the
+  // crouch, then popped up and let go; the cutlass rises some 0.6 m turning over once (the shortest way, about 140 degrees), its point
+  // swinging out and down outside the arm while the hilt comes up, and the open hand follows it up, the body standing and the feet
+  // stepping in under it, and takes it reversed, point down, at full stretch overhead just past the top of its rise
+  .key(GATHER, { ...LANDED, drop: 1.22, nod: -30, hold: FLUNG(80, -60) })
+  .cut(GATHER, POP, [
+    { ...LANDED, drop: 1.22, nod: -30, hold: FLUNG(80, -60) },
+    { ...LANDED, drop: 1.16, shift: -0.27, roll: -7, pitch: 17, bend: 5, tilt: -12, nod: -31, hold: { at: reachOut(9, 20, 56, -40, 1.75), point: [0.3, 0.36, 0.88], out: 0.5 } },
+    GATHERED,
+  ], { ease: smoothEase, lead: 0.25, lag: 0.05 })
+  // (the pop passes through the release at speed, the hand going on up after it: eased into the release, the toss left a hand at rest)
+  .cut(POP, REL1 + 0.06, [
+    GATHERED,
+    { ...GATHERED, drop: 0.98, pitch: 12, bend: 3, tilt: -9, nod: -36, hold: { at: reachOut(7, 16, 31, -22, 1.48), point: [-0.06, 0.05, 0.99], out: 0.4 } },
+    POPPED,
+    { ...POPPED, drop: 0.78, nod: -42, hold: { at: reachOut(4, 10, 35, -44, 1.65), point: [-0.05, 0, 1], out: 0.6 } },
   ], { ease: (s) => s, lead: 0.2, lag: 0 })
-  .key(2.24, { turn: 4, hips: 1.5, drop: 0.75, shift: -0.15, roll: -5, pitch: 10, bend: 0, tilt: -7, nod: -48, head: 0.5, hold: { at: reachOut(4, 12, 55, -78, 2.1), point: [-0.45, -0.35, 0.82], out: 0.8 }, free: [50, -60, 0.9, 14, 0.8] })
-  .key(2.46, { turn: -2, hips: -1, drop: 0.22, pitch: 3, bend: -3, tilt: -3, nod: -40, head: 0.6, hold: { ...RAISED.hold!, at: [1.6, 0.36, 3.86], bend: 6 }, free: [30, -62, 0.76, 18, 1] })
+  // the open hand following the hilt up, under it and inside the blade, the eyes on it
+  .key(2.4, { turn: 0, hips: 0, drop: 0.36, shift: -0.08, roll: -2, pitch: 4, bend: -2, tilt: -4, nod: -42, head: 0.55, hold: { ...RAISED.hold!, at: [1.4, 1.45, 3.12], bend: 6 }, free: [34, -62, 0.8, 16, 0.9] })
   // ---- the raise: caught reversed, the arm straight up, the blade hanging point down beside the head, the whole body stretched tall under it;
   // charging, held
   .key(RAISE, RAISED)
@@ -269,43 +288,46 @@ const line = new Timeline()
   .key(HOLD[0], { ...WOUND, turn: -18, hips: -8, drop: 0.48 })
   .key(HOLD[1], WOUND)
   // ---- the swing: a flat backhand right to left across the whole front and out round the left, the hips firing first, the chest after, the
-  // arm and blade last and fastest; the hand palm down throughout, so the blade stays level, trailing the fist through the front and coming
-  // round square to the arm to point out ahead on the left
+  // arm and blade last and fastest; the hand palm down throughout, so the blade stays level, trailing the fist through the front, then
+  // snapping into line with the arm as the arm is thrown straight out on the left; the free arm carried round in front of the body
   .cut(HOLD[1], FINALE + 0.1, [
     WOUND,
-    { turn: -10, hips: 6, drop: 0.62, pitch: 8, bend: 3, hold: { at: [0.35, 2.45, 1.75], point: [-0.95, -0.28, 0.02] }, free: [130, -36, 0.8, 20, 0.8] },
-    { turn: 24, hips: 18, drop: 0.72, pitch: 10, bend: 5, hold: { at: reachOut(24, 15, 40, 2, 2.0), point: [-0.45, 0.89, 0.02] }, free: [150, -26, 0.9, 14, 0.8] },
-    { turn: 58, hips: 26, drop: 0.76, pitch: 11, bend: 6, hold: { at: reachOut(58, 17, 100, 8, 1.95), point: [0.55, 0.83, 0.0] }, free: [155, -16, 0.94, 10, 0.8] },
+    { turn: -10, hips: 6, drop: 0.62, pitch: 8, bend: 3, hold: { at: [0.35, 2.45, 1.75], point: [-0.95, -0.28, 0.02] }, free: [70, -50, 0.78, 22, 0.9] },
+    { turn: 18, hips: 16, drop: 0.72, pitch: 10, bend: 5, hold: { at: reachOut(18, 14, 40, 2, 2.0), point: [-0.45, 0.89, 0.02] }, free: [20, -56, 0.74, 24, 0.9] },
+    { turn: 38, hips: 22, drop: 0.76, pitch: 10, bend: 5, hold: { at: reachOut(38, 13, 100, 2, 2.1), point: [0.86, 0.5, 0.0] }, free: [2, -58, 0.72, 24, 0.9] },
   ], { lead: 0.3, lag: 0.1 })
-  // ---- carried on round and held open to the left, the blade level, the free hand flung out behind on the right: then lowered and gone
-  .key(FINALE + 0.22, { turn: 68, hips: 28, drop: 0.72, pitch: 12, bend: 7, hold: { at: reachOut(68, 19, 118, 10, 1.85), point: [0.82, 0.57, -0.03] }, free: [158, -14, 0.94, 10, 0.8] })
-  .key(FINALE + 0.72, { turn: 62, hips: 26, drop: 0.6, pitch: 10, bend: 6, hold: { at: reachOut(62, 16, 120, 16, 1.78), point: [0.86, 0.48, -0.18] }, free: [150, -18, 0.92, 10, 0.8] })
-  // lowered by the side on the blade's own side, the blade settling level ahead as the arm comes down (where the lowered hand holds it: turned
-  // in across the body or down along the hanging forearm, it rolled the hand over)
-  .key(FINALE + 0.96, { turn: 26, hips: 10, drop: 0.44, pitch: 6, bend: 3, hold: { at: [1.75, 1.1, 0.45], point: [0.08, 0.99, 0.06] }, free: [80, -20, 0.85, 18, 0.7] })
-  .key(FINALE + 1.18, { turn: -12, hips: -4, drop: 0.3, pitch: 4, bend: 0, hold: { at: [1.4, 0.9, 0.12], point: [-0.05, 0.99, -0.08] }, free: [20, -14, 0.75, 24, 0.6] })
+  // ---- thrown out and held: the whole arm straight out on the left and carried a little past the shoulder's line toward the back, the
+  // blade in line with it, the free arm in front of the body: then lowered and gone
+  .key(FINALE + 0.22, SWUNG)
+  .key(FINALE + 0.72, { ...SWUNG, drop: 0.68, pitch: 10, free: [0, -62, 0.72, 24, 0.85] })
+  // brought back round ahead on the left as it comes down, the elbow giving, the blade level (lowered straight from behind, the elbow and
+  // the hand flipped over to bring the blade ahead), then lowered by the side on the blade's own side, the blade settling level ahead as
+  // the arm comes down (where the lowered hand holds it: turned in across the body or down along the hanging forearm, it rolled the hand)
+  .key(FINALE + 0.88, { turn: 40, hips: 22, drop: 0.6, pitch: 9, bend: 5, hold: { at: reachOut(40, 12, 116, 14, 1.85), point: [0.86, 0.45, -0.22] }, free: [6, -64, 0.72, 22, 0.8] })
+  .key(FINALE + 1.0, { turn: 26, hips: 10, drop: 0.44, pitch: 6, bend: 3, hold: { at: [1.75, 1.1, 0.45], point: [0.08, 0.99, 0.06] }, free: [10, -64, 0.74, 22, 0.8] })
+  .key(FINALE + 1.18, { turn: -12, hips: -4, drop: 0.3, pitch: 4, bend: 0, hold: { at: [1.4, 0.9, 0.12], point: [-0.05, 0.99, -0.08] }, free: [16, -66, 0.76, 22, 0.7] })
   .add(FINALE + 1.58, { hipDrop: 0.16, hipPitch: 2, 'L.out': 0 })
 
 /**
  * Where the hand holds the cutlass as it lets it go and as it takes it again
  * (the holds keyed above, as the overlay's natural hold finishes them:
- * measured by `AUDIT_PLACE=1.8,2.22,5.41,5.8 node tools/pose-audit.mjs`;
+ * measured by `AUDIT_PLACE=2.16,2.62,5.41,5.8 node tools/pose-audit.mjs`;
  * measure again after changing those holds). The flight runs between them.
  */
-const THROWN: Placement = { grip: [1.655, 1.53, 2.422], blade: [-0.019, -0.599, 0.8], edge: [0.696, 0.566, 0.441] }
-const RAISED_IN: Placement = { grip: [1.6, 0.341, 4.039], blade: [0.86, -0.101, -0.5], edge: [0.448, -0.319, 0.835] }
+const THROWN: Placement = { grip: [1.721, 1.486, 1.829], blade: [-0.317, -0.307, 0.897], edge: [0.541, 0.719, 0.437] }
+const RAISED_IN: Placement = { grip: [1.6, 0.34, 4.04], blade: [0.86, -0.1, -0.5], edge: [0.447, -0.322, 0.834] }
 const TORN: Placement = { grip: [1.398, 1.697, 2.436], blade: [0.924, 0.114, -0.365], edge: [0.261, 0.512, 0.818] }
 const CAUGHT_IN: Placement = { grip: [2.16, 0.737, 3.157], blade: [-0.45, -0.599, 0.662], edge: [0.621, 0.323, 0.714] }
 
 /**
  * The special's two throws of the cutlass, each turning over outside the arm
- * (s, placements, extra whole turns): whipped up from low in front, spinning
- * end over end the way the throw turned it, two whole turns more, and taken
- * reversed overhead as it drops; flicked out of the sand and taken in the
- * ordinary grip high on the left.
+ * (s, placements, extra whole turns), each the shortest turn between the
+ * holds and no more: popped up from the fist before the face, the blade
+ * standing, and taken reversed overhead just past the top of its rise;
+ * flicked out of the sand and taken in the ordinary grip high on the left.
  */
 export const THROWS = [
-  { release: REL1, catch: RAISE, from: THROWN, to: RAISED_IN, turns: 2 },
+  { release: REL1, catch: RAISE, from: THROWN, to: RAISED_IN, turns: 0 },
   { release: REL2, catch: CATCH2, from: TORN, to: CAUGHT_IN, turns: 0 },
 ] as const
 
@@ -406,11 +428,19 @@ export const THUNDER = {
   flip: FLIP,
   plant: PLANT,
   lightning: LIGHTNING,
+  /** the lightning's front running out over the sand from the blade (m/s, from 1 m) to its whole circle (m): what it covers it strikes, on the sand and in the air */
+  front: { speed: 26, reach: 24 },
   /** the lightning's strikes on the bodies, this far apart (s), each holding a body it reaches in the air this long (s) */
   beat: 0.3,
   shock: 0.4,
+  /** what the lightning took lies stunned until this (s): past the finale's swing, so nothing it held is up again before the swing */
+  recover: FINALE + 0.9,
   finale: FINALE,
-  /** everything within this of it is thrown up by the flip and fed by the lightning (m) */
+  /** the swing's wave through the air, from the finale (ShockRing): growing from `from` to `reach` m over `life` s */
+  wave: { from: 3, reach: 40, life: 1.0 },
+  /** the swing's follow-through, held: the sword arm thrown straight out on the left (s) */
+  follow: [FINALE + 0.22, FINALE + 0.72] as const,
+  /** everything within this of it is thrown up by the flip (m) */
   reach: 16,
 } as const
 
@@ -419,7 +449,7 @@ export const IMPALA_SPECIAL: SpecialMove = {
   handback: FINALE + 0.76,
   handbackView: { yaw: Math.PI, pitch: 0.18 },
   // the bodies thrown up hang a moment, and the pose a little longer; the throw turns over a little slow; the plant's blow bites; the lightning plays out a little slow; the held moment hangs; the wave's blow freezes, then plays out
-  tempo: [[FLIP + 0.02, 1], [FLIP + 0.12, 0.55], [1.46, 0.4], [COCK - 0.18, 0.4], [COCK - 0.06, 0.8], [REL1 + 0.04, 0.8], [REL1 + 0.12, 0.7], [RAISE - 0.1, 0.7], [RAISE, 1], [PLANT - 0.01, 1], [PLANT + 0.02, 0.3], [PLANT + 0.22, 0.8], [LIGHTNING[1] - 0.15, 0.8], [LIGHTNING[1], 1], [HOLD[0] - 0.12, 1], [HOLD[0] + 0.02, 0.22], [HOLD[1] - 0.04, 0.22], [HOLD[1] + 0.02, 1], [FINALE - 0.01, 1], [FINALE + 0.02, 0.16], [FINALE + 0.4, 0.4], [FINALE + 0.51, 1]],
+  tempo: [[FLIP + 0.02, 1], [FLIP + 0.12, 0.55], [1.46, 0.4], [GATHER - 0.04, 0.4], [GATHER + 0.1, 0.8], [REL1 + 0.04, 0.8], [REL1 + 0.12, 0.7], [RAISE - 0.1, 0.7], [RAISE, 1], [PLANT - 0.01, 1], [PLANT + 0.02, 0.3], [PLANT + 0.22, 0.8], [LIGHTNING[1] - 0.15, 0.8], [LIGHTNING[1], 1], [HOLD[0] - 0.12, 1], [HOLD[0] + 0.02, 0.22], [HOLD[1] - 0.04, 0.22], [HOLD[1] + 0.02, 1], [FINALE - 0.01, 1], [FINALE + 0.02, 0.16], [FINALE + 0.4, 0.4], [FINALE + 0.51, 1]],
   move: {
     name: 'black-thunder', duration: END, chain: [END, END], keys: keys(), cues: cues(),
     // out of the wide landing, the feet step back in under the body as the blade comes over for the raise
@@ -434,14 +464,13 @@ export const IMPALA_SPECIAL: SpecialMove = {
     // down on the sand off its left, panning with it: the charge tearing past, the sand breaking under it, the bodies bowled aside
     { at: TAKEOFF, eye: [[TAKEOFF, 10, 4, 0.5], [LAND, 11.5, 16, 0.8]], lookFrame: 'body', look: [[TAKEOFF, 0, 0.5, 0.6], [LAND, 0, 0.5, 0.3]], lag: 5, fov: [[TAKEOFF, 56], [LAND, 52]] },
     // wide and low ahead: the landing's rising cut and everything thrown up into the sky; then it stays on the pose, pushing in slowly
-    { at: LAND - 0.02, eye: [[LAND - 0.02, -13, CENTER + 19, 1.2], [1.46, -12.4, CENTER + 17.6, 1.3], [COCK - 0.1, -10.6, CENTER + 14.2, 1.4]], look: [[LAND - 0.02, 0, CENTER - 1, 2.5], [FLIP + 0.1, 0, CENTER, 4], [1.46, 0.3, CENTER, 4.4], [COCK - 0.1, 0.4, CENTER, 4.7]], fov: [[LAND - 0.02, 50], [1.46, 46], [COCK - 0.1, 40]] },
-    // low in front, looking up past the knees: cocked and thrown up into the sky among the bodies, followed up as it spins and hangs, taken
+    { at: LAND - 0.02, eye: [[LAND - 0.02, -13, CENTER + 19, 1.2], [1.46, -12.4, CENTER + 17.6, 1.3], [GATHER - 0.1, -10.6, CENTER + 14.2, 1.4]], look: [[LAND - 0.02, 0, CENTER - 1, 2.5], [FLIP + 0.1, 0, CENTER, 4], [1.46, 0.3, CENTER, 4.4], [GATHER - 0.1, 0.4, CENTER, 4.7]], fov: [[LAND - 0.02, 50], [1.46, 46], [GATHER - 0.1, 40]] },
+    // low in front, looking up past the knees: gathered and popped up among the bodies, followed up as it turns over, taken
     // high overhead point down, pushing in under it, held, and stabbed in
-    { at: COCK - 0.1, eye: [[COCK - 0.1, 4.4, CENTER + 8.4, 0.6], [RAISE, 3.2, CENTER + 5.4, 0.5], [PLANT + 0.4, 3.8, CENTER + 6.2, 0.9]], look: [[COCK - 0.1, 0.8, CENTER + 0.3, 4.6], [REL1, 1.2, CENTER + 0.4, 5.6], [2.3, 1.4, CENTER + 0.6, 7.6], [RAISE, 0.2, CENTER + 0.6, 6.4], [PLANT - 0.14, 0, CENTER + 0.6, 6.0], [PLANT, 0, CENTER + 1.4, 3.2], [PLANT + 0.4, 0, CENTER + 1.6, 2.4]], fov: [[COCK - 0.1, 50], [2.3, 54], [RAISE, 50], [PLANT + 0.4, 54]], roll: [[COCK - 0.1, 3], [PLANT + 0.4, 0]] },
-    // high and wide: the lightning bursting out over the sand all round, up into the bodies it holds
-    { at: PLANT + 0.4, eye: [[PLANT + 0.4, -17, CENTER - 9, 15], [3.95, -11, CENTER - 14, 18]], look: [[PLANT + 0.4, 0, CENTER, 3], [3.95, 0, CENTER, 6]], fov: [[PLANT + 0.4, 58], [3.95, 54]] },
-    // from beside it, low, looking up: the bodies seizing in the lightning against the sky
-    { at: 3.95, eye: [[3.95, 3.5, CENTER - 3.5, 1.2], [STRAIN, 3, CENTER - 4.5, 1.0]], look: [[3.95, -2, CENTER + 6, 12], [STRAIN, -1, CENTER + 6, 9]], fov: [[3.95, 58], [STRAIN, 54]], roll: [[3.95, -5], [STRAIN, -2]] },
+    { at: GATHER - 0.1, eye: [[GATHER - 0.1, 4.4, CENTER + 8.4, 0.6], [RAISE, 3.2, CENTER + 5.4, 0.5], [PLANT + 0.4, 3.8, CENTER + 6.2, 0.9]], look: [[GATHER - 0.1, 0.8, CENTER + 0.3, 4.6], [REL1, 1.3, CENTER + 0.4, 5.6], [REL1 + 0.18, 1.3, CENTER + 0.5, 6.6], [RAISE, 0.2, CENTER + 0.6, 6.4], [PLANT - 0.14, 0, CENTER + 0.6, 6.0], [PLANT, 0, CENTER + 1.4, 3.2], [PLANT + 0.4, 0, CENTER + 1.6, 2.4]], fov: [[GATHER - 0.1, 50], [REL1 + 0.18, 54], [RAISE, 50], [PLANT + 0.4, 54]], roll: [[GATHER - 0.1, 3], [PLANT + 0.4, 0]] },
+    // high and wide for the whole of the lightning: bursting out over the sand all round, up into the bodies it holds, drifting slowly round
+    // and up over it as they seize, the bodies coming down as it dies
+    { at: PLANT + 0.4, eye: [[PLANT + 0.4, -17, CENTER - 9, 15], [3.95, -12.5, CENTER - 13, 17.5], [STRAIN, -6, CENTER - 16, 19]], look: [[PLANT + 0.4, 0, CENTER, 3], [3.95, 0, CENTER, 6], [LIGHTNING[1], 0, CENTER, 5.5], [STRAIN, 0, CENTER, 4]], fov: [[PLANT + 0.4, 58], [3.95, 54], [STRAIN, 50]] },
     // off its left front: the haul on the buried blade, the bodies coming down, torn free and thrown up, eased back and up after it, taken
     { at: STRAIN, eye: [[STRAIN, 7, CENTER + 7, 2.2], [CATCH2, 8, CENTER + 8, 2.8], [HOLD[0], 5.5, CENTER + 6, 3.4]], lookFrame: 'body', look: [[STRAIN, 0, 0, 0.6], [PULL, 0, 0, 1.4], [CATCH2, 0, 0, 3.2], [HOLD[0], 0, 0, 1.8]], fov: [[STRAIN, 46], [CATCH2, 50], [HOLD[0], 42]] },
     // the held moment, close and square on: the face and the blade across the chest at the right shoulder, framed between them (the head's frame sits at its base:

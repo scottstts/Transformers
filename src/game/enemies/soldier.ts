@@ -68,8 +68,10 @@ export interface SoldierImpact {
   kind: HitKind
   reaction?: HitReaction
   special: boolean
-  /** a discharge holding a body in the air where it reaches it, seizing, this long (s; 0 none) */
+  /** a discharge holding a body seizing this long (s; 0 none), in the air where it reaches it or where it stands */
   shock?: number
+  /** with a shock: how long the body stays down after (s), unable to get up */
+  stun?: number
 }
 
 /** A vacuum: the speed it draws at per metre from its centre (1/s, so a body arrives rather than overshoots), and how fast it takes hold (1/s) on the ground and in the air. */
@@ -98,6 +100,14 @@ const SHOCK_SINK = 0.5
 const SHOCK_JERK = 0.05
 const SHOCK_FLIP = 15
 const SHOCK_DROP = 6
+/**
+ * Let go by a discharge that stuns it: on its feet it is thrown off them
+ * (up this fast, m/s, turning over this fast, rad/s: about a quarter turn,
+ * so it comes down lying); in the air it turns over this fast as it drops.
+ */
+const COLLAPSE_LIFT = 2.4
+const COLLAPSE_TUMBLE = 3.4
+const DROP_TUMBLE = 1.6
 
 const TMP_TILT = new Quaternion()
 const X = new Vector3(1, 0, 0)
@@ -190,6 +200,8 @@ export class Soldier implements HordeInstance {
   protected seizeZ = 0
   /** held in the air by a discharge: how much longer (s) */
   protected shocked = 0
+  /** how long it is still stunned (s): lying, it cannot get up */
+  protected stun = 0
   /** behaviour's bookkeeping (horde.ts): its post, where it is on the post's beat, when it may swing next,
    * whether it is still rolling out of its spawn door, and the district it stands in */
   post = 0
@@ -261,6 +273,7 @@ export class Soldier implements HordeInstance {
     this.seizeNext = 0
     this.seizeAge = 99
     this.shocked = 0
+    this.stun = 0
     this.post = 0
     this.beat.k = -1
     this.nextSwing = 0
@@ -349,9 +362,17 @@ export class Soldier implements HordeInstance {
       }
       return false
     }
-    if (hit.shock && this.mode === 'air') {
-      // caught by the discharge in the air: held there, seizing, while it lasts
-      this.shocked = Math.max(this.shocked, hit.shock)
+    if (hit.shock) {
+      this.stun = Math.max(this.stun, hit.stun ?? 0)
+      if (this.mode === 'air') {
+        // caught by the discharge in the air: held there, seizing, while it lasts
+        this.shocked = Math.max(this.shocked, hit.shock)
+      } else if (this.mode !== 'down' && this.mode !== 'rise' && !this.tossing) {
+        // on its feet: seizing where it stands while it lasts
+        if (this.mode !== 'hit' || this.shocked <= 0) this.t = 0
+        this.mode = 'hit'
+        this.shocked = Math.max(this.shocked, hit.shock)
+      }
     } else if (this.launches(hit)) {
       this.mode = 'air'
       this.t = 0
@@ -488,6 +509,8 @@ export class Soldier implements HordeInstance {
     this.wheelYaw += (rel - this.wheelYaw) * Math.min(1, dt * 8)
     if (onGround) this.spin += ((dir * speed) / this.rig.dims.wheelRadius) * dt
 
+    if (this.stun > 0) this.stun -= dt
+    this.shocked = this.shockedOnFeet(dt)
     this.modes()
     this.seizing(dt)
     this.animate(dt)
@@ -578,8 +601,11 @@ export class Soldier implements HordeInstance {
       this.tilt.multiply(TMP_TILT)
       TMP_TILT.setFromAxisAngle(Y, (Math.random() - 0.5) * 2 * SHOCK_JERK)
       this.tilt.multiply(TMP_TILT)
-      // let go: thrown down out of it
-      if (this.shocked <= 0) this.vy = Math.min(this.vy, -SHOCK_DROP)
+      // let go: thrown down out of it (stunned, turning over as it drops, so it comes down lying)
+      if (this.shocked <= 0) {
+        this.vy = Math.min(this.vy, -SHOCK_DROP)
+        if (this.stun > 0) this.tumbleX = (this.serial & 1 ? 1 : -1) * DROP_TUMBLE
+      }
       if (this.y <= 0 && this.vy < 0) this.land()
     } else {
       this.vy -= this.tune.gravity * dt
@@ -606,13 +632,39 @@ export class Soldier implements HordeInstance {
     this.jolt(this.seizeX, this.seizeZ, SEIZE_JOLT)
   }
 
-  /** The body comes down: on its wheels if it is still upright enough, otherwise flat. */
+  /** A discharge holding it on its feet runs down; as it lets go a stunned body is thrown off them. Returns what is left of it. */
+  private shockedOnFeet(dt: number): number {
+    if (this.mode !== 'hit' || this.shocked <= 0) return this.shocked
+    if (this.shocked > dt) return this.shocked - dt
+    if (this.stun > 0) this.collapse()
+    return 0
+  }
+
+  /**
+   * Let go by a discharge on its feet, stunned: thrown off them, turning
+   * over, so it comes down lying (land) and stays down while stunned.
+   */
+  protected collapse(): void {
+    this.shocked = 0
+    this.mode = 'air'
+    this.t = 0
+    this.y = Math.max(this.y, 0.05)
+    this.vy = COLLAPSE_LIFT
+    this.tumbleX = (this.serial & 1 ? 1 : -1) * COLLAPSE_TUMBLE
+    this.tumbleY = 0
+  }
+
+  /** The body comes down: on its wheels if it is still upright enough, otherwise flat (stunned, it does not catch itself). */
   protected land(): void {
     this.y = 0
     this.vy = 0
     this.shocked = 0
     this.tumbleX = this.tumbleY = 0
     const up = _v.set(0, 0, 1).applyQuaternion(this.tilt)
+    if (up.z > 0.72 && this.stun > 0) {
+      this.collapse()
+      return
+    }
     if (up.z > 0.72) {
       // on its wheels: it catches itself (a doomed one stays flinched)
       this.mode = this.doomed ? 'hit' : 'stagger'
@@ -634,6 +686,8 @@ export class Soldier implements HordeInstance {
         if (this.t >= 0) this.mode = this.doomed ? 'hit' : 'move'
         break
       case 'hit':
+        // seizing on its feet in a discharge (shocked(), until it lets go)
+        if (this.shocked > 0) break
         // a doomed soldier holds its flinch until the special's last blow
         if (this.t >= this.flinchTime && !this.doomed) {
           this.mode = 'move'
@@ -647,7 +701,7 @@ export class Soldier implements HordeInstance {
         }
         break
       case 'down':
-        if (this.t >= this.downTime && !this.doomed) {
+        if (this.t >= this.downTime && !this.doomed && this.stun <= 0) {
           this.mode = 'rise'
           this.t = 0
           this.rising.copy(this.tilt)
@@ -694,6 +748,13 @@ export class Soldier implements HordeInstance {
         break
       }
       case 'hit':
+        if (this.shocked > 0) {
+          // electrocuted where it stands: thrown between its hit poses many times a second, shaking, as in the air
+          T.set(Math.floor(this.t * SHOCK_FLIP) & 1 ? this.poses.hitLow : this.poses.hitHigh)
+          T[SC.lean] += Math.sin(this.t * 53) * 6
+          T[SC.headPitch] += Math.sin(this.t * 41 + 1) * 9
+          return this.tune.flinchSnap
+        }
         // snapped into, held; recovery is the stance's own ease once it frees
         T.set(this.flinchPose ? this.poses.hitLow : this.poses.hitHigh)
         rate = Math.min(this.t, this.seize > 0 ? this.seizeAge : 99) < 0.14 ? this.tune.flinchSnap : 10

@@ -34,6 +34,8 @@ const STANCE_SLACK = 0.07
 const STANCE_TURN = 0.17
 /** Sweep identities remain distinct when the player switches to another robot. */
 let sweepSerial = 0
+/** The sweep identity (past the move's own sweeps) its wave strikes share: a body is caught once per move's wave. */
+const WAVE_SWEEP = 15
 
 /**
  * The robot's fighting, around the session: clicks drive the combo
@@ -118,7 +120,7 @@ export class RobotCombat {
   /** released to movement: the pose is handing back to the gait, the fight no longer owns the robot */
   private loose = false
   private readonly pull: PullEvent = { x: 0, z: 0, radius: 0, speed: 0, dt: 0, special: false }
-  private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true }
+  private readonly hit: HitEvent = { shape: 'sector', kind: 'blunt', x: 0, z: 0, heading: 0, reach: 0, arc: 0, damage: 0, knock: 0, lift: 0, motion: 0, sweep: -1, radial: false, special: false, final: false, bite: true, inner: 0 }
   /** when the special's last blow lands (its time), so that blow can be marked final */
   private finalAt = -1
   /** the guard is held (the input), and the guard pose is up */
@@ -576,7 +578,7 @@ export class RobotCombat {
     e.reach = this.model.robotHeight * FLASH_HALF_WIDTH; e.arc = Math.PI * 2
     e.damage = 0; e.knock = FLASH_KNOCK; e.lift = FLASH_LIFT; e.motion = 0
     e.sweep = this.sweepBase; e.radial = false; e.toward = undefined
-    e.special = false; e.final = false; e.bite = false; e.shock = 0
+    e.special = false; e.final = false; e.bite = false; e.shock = 0; e.stun = 0; e.inner = 0
     this.onHit?.(e)
     this.flashFrom.copy(this.desired)
   }
@@ -601,13 +603,18 @@ export class RobotCombat {
       e.shape = 'sector'; e.kind = s.kind; e.blowSound = s.blowSound; e.x = d.x; e.z = d.z
       e.heading = state.yaw + ((s.aim ?? 0) * Math.PI) / 180
       e.reach = s.reach; e.arc = (s.arc * Math.PI) / 180
-      e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.sweep = -1; e.radial = s.outward ?? false
+      e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.radial = s.outward ?? false
+      e.sweep = s.inner === undefined ? -1 : this.sweepBase + WAVE_SWEEP
+      e.inner = s.inner ?? 0
       e.bite = s.bite ?? true
       e.shock = s.shock ?? 0
-      e.final = e.special && s.t === this.finalAt
+      e.stun = s.stun ?? 0
+      e.final = e.special && s.t >= this.finalAt
       sink(e)
     }
     e.shock = 0
+    e.stun = 0
+    e.inner = 0
     const blasts = hits.blasts
     const h = this.heading
     while (blasts && this.nextBlast < blasts.length && blasts[this.nextBlast].t <= t) {

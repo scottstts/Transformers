@@ -18,7 +18,7 @@ import { THUNDER } from './special'
 /** Where the listener stands from what the special does (m): its wide shots' camera distances. */
 const HEARD = { ground: 16, finale: 36 }
 /** The lightning: how fast its front runs out over the sand (m/s; it bursts out all round in under a second), how far (m), its main channels and how often each is struck again (s). */
-const FRONT = { speed: 26, reach: THUNDER.reach + 8, rays: 18, restrike: 0.07 }
+const FRONT = { ...THUNDER.front, rays: 18, restrike: 0.07 }
 /** Of the channels' re-strikes, this share also arches from high on the standing blade out over the sand to the front (the blade's height, m). */
 const ARCH = { share: 0.3, height: 3.4 }
 /** A body in the air is struck this often (s), from the sand under it, once the front has reached it; at most this many bodies a frame. */
@@ -484,7 +484,7 @@ export class ThunderFx {
     const height = w && w.presence > 0.5 ? _a.setFromMatrixPosition(w.object.matrixWorld).y : c.y + 3.4
     const reach = w ? w.asset.manifest.extent[1] : 4.5
     p.sweep.emit(_b.set(c.x, height, c.z), frame.state.yaw - Math.PI / 2, 1, CIRCLE.inner, CIRCLE.inner + reach + CIRCLE.beyond, CIRCLE.roll, CIRCLE.sweep, CIRCLE.life, CIRCLE.strength * strength)
-    p.rings.emit(_a.copy(c).setY(c.y + 2.6), 3, 40, 1.0, 2.8)
+    p.rings.emit(_a.copy(c).setY(c.y + 2.6), THUNDER.wave.from, THUNDER.wave.reach, THUNDER.wave.life, 2.8)
     p.rings.emit(_a.copy(c).setY(c.y + 0.7), 2, 30, 0.85, 1.2)
     p.contact.surge(c, 7, 1.0 * strength)
     p.contact.eject(c, 16 * strength, 60, _up, 0.85, 0.5)

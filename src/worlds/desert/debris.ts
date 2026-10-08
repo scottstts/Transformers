@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { cameraViewMatrix, color, cos, cross, float, instancedBufferAttribute, max, min, mix, normalLocal, positionLocal, select, sin, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
+import { cameraViewMatrix, color, cos, cross, float, instancedBufferAttribute, max, min, mix, normalLocal, positionGeometry, positionLocal, select, sin, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
 import { N } from '../../rendering/noise.ts';
 import { rockGeometry } from './world.ts';
 import type { Ground } from '../../game/ground.ts';
@@ -92,12 +92,13 @@ export class Debris {
 		const normal = rotate( normalLocal );
 		m.normalNode = normal.transformDirection( cameraViewMatrix );
 		// hardpan crust: pale, sun-bleached top and a darker, finer underside; some are stones
-		const n = N( positionLocal.xz.mul( 1.7 ).add( p0.w ) );
+		// the chip's own surface (positionLocal is the placed point once positionNode is set: the pattern slid over a tumbling chip)
+		const n = N( positionGeometry.xz.mul( 1.7 ).add( p0.w ) );
 		const crust = mix( color( 0x9c8266 ), color( 0xc9b090 ), n.r );
 		const stone = mix( color( 0x5f4d3e ), color( 0x8b735c ), n.g );
 		const sand = mix( crust, stone, smoothstep( 0.6, 0.75, v0.w.mul( 3.7 ).fract() ) );
 		// ceramic chips: the satin bone skin on their top, the grey substrate showing in their fractures
-		const aggregate = mix( color( 0x7a7671 ), color( 0x8e8a84 ), smoothstep( 0.45, 0.62, N( positionLocal.xz.mul( 6.1 ) ).r ) );
+		const aggregate = mix( color( 0x7a7671 ), color( 0x8e8a84 ), smoothstep( 0.45, 0.62, N( positionGeometry.xz.mul( 6.1 ) ).r ) );
 		const slab = mix( aggregate, mix( color( 0xc2bbae ), color( 0xd6d0c4 ), n.g ), smoothstep( 0.35, 0.8, normalLocal.y ) );
 		m.colorNode = mix( sand, slab, concrete ).mul( mix( float( 0.72 ), float( 1.04 ), smoothstep( - 0.6, 0.6, normalLocal.y ) ) );
 		m.roughnessNode = float( 0.93 );

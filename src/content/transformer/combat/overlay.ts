@@ -515,11 +515,19 @@ export class CombatOverlay implements RigOverlay {
     const turn = handTurn(_nb, _nf, _nh, this.handBlade(side))
     if (Math.abs(turn) > limits.twist) {
       // turned back to the limit on the side nearer where the blade last was: a wish half a turn off the hand's
-      // own side flips the turn's sign from frame to frame, and the nearer limit by sign threw the blade across
+      // own side flips the turn's sign from frame to frame, and the nearer limit by sign threw the blade across.
+      // It keeps that side only while the other holds the blade no more than TURN_SWITCH nearer the wish: kept
+      // regardless, an arm brought into a new pose from the far side (a guard raised mid-swing) stayed on it, its
+      // blade far off the pose's and creeping for a second
       const a = _nc.copy(_nb).applyAxisAngle(_nf, deg(limits.twist - turn))
       const b = _nb.applyAxisAngle(_nf, deg(-limits.twist - turn))
       const last = this.lastBlade[side]
-      const pick = this.naturalLive[side] && Math.abs(Math.abs(turn) - 180) < 60 ? a.dot(last) > b.dot(last) : turn > 0
+      let pick = turn > 0
+      if (this.naturalLive[side] && Math.abs(Math.abs(turn) - 180) < 60) {
+        const keepA = a.dot(last) > b.dot(last)
+        const nearer = a.angleTo(wish) - b.angleTo(wish)
+        pick = keepA ? nearer < TURN_SWITCH : nearer < -TURN_SWITCH
+      }
       if (pick) b.copy(a)
     }
     // where the holdable blade changes regime (the wrist's clamp, the hand's turn at its limit, one hold to another) it can
@@ -741,6 +749,8 @@ function bladeWithin(wish: Vector3, f: Vector3, bend: number, last: Vector3, out
 
 /** Below this sideways share (sine of the wish's angle off the forearm's line) the clamp keeps to the blade's last side. */
 const WISH_SIDE = 0.35
+/** How much nearer the wish (rad) the hand's other turned-back side must hold the blade before the hold leaves the side it is on. */
+const TURN_SWITCH = MathUtils.degToRad(40)
 /** What the held blade may turn in a frame over what its wish turns (rad): enough to settle, too little to pop. */
 const BLADE_SLACK = MathUtils.degToRad(2)
 

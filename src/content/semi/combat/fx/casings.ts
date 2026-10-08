@@ -1,5 +1,5 @@
 import { CylinderGeometry, DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshStandardNodeMaterial, type Vector3 } from 'three/webgpu'
-import { cameraViewMatrix, color, cos, cross, float, instancedBufferAttribute, max, min, mix, normalLocal, positionLocal, select, sin, smoothstep, sqrt, uniform, vec3 } from 'three/tsl'
+import { cameraViewMatrix, color, cos, cross, float, instancedBufferAttribute, max, min, mix, normalLocal, positionGeometry, positionLocal, select, sin, smoothstep, sqrt, uniform, vec3 } from 'three/tsl'
 import { N } from '../../../../rendering/noise.ts'
 import { FLAT_GROUND, type Ground } from '../../../../game/ground'
 
@@ -74,8 +74,9 @@ export class Casings {
     m.userData.temporalReactive = true
     m.positionNode = select(alive, rotate(positionLocal).add(centre), vec3(0, -1000, 0))
     m.normalNode = rotate(normalLocal).transformDirection(cameraViewMatrix)
-    const mouth = smoothstep(LENGTH * 0.25, LENGTH * 0.5, positionLocal.y)
-    const tarnish = N(positionLocal.xz.mul(40).add(v0.w.mul(9))).g
+    // the casing's own shape (positionLocal is the placed point once positionNode is set: the mouth followed the world's height)
+    const mouth = smoothstep(LENGTH * 0.25, LENGTH * 0.5, positionGeometry.y)
+    const tarnish = N(positionGeometry.xz.mul(40).add(v0.w.mul(9))).g
     m.colorNode = mix(mix(color(0xb88b46), color(0xd2a764), tarnish), color(0x4a3820), mouth.mul(0.7))
     m.metalness = 1
     m.roughnessNode = mix(float(0.28), float(0.55), mouth).add(tarnish.mul(0.08))

@@ -1,4 +1,4 @@
-// A fight's pose defects: parts coming apart, frames that snap, a wrung hand: node tools/pose-audit.mjs [car] [clicks, F<t> the special] [until]
+// A fight's pose defects: parts coming apart, frames that snap, a wrung hand: node tools/pose-audit.mjs [car] [clicks, F<t> the special, G<t> the guard held from t] [until]
 import { createServer } from 'vite'
 globalThis.self = globalThis
 const [car = 'impala', clicks = 'F0', until = '10'] = process.argv.slice(2)

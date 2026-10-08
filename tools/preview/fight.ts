@@ -98,6 +98,11 @@ export async function renderFightSheet(out: string, sheet: FightSheet): Promise<
     state.yaw = Math.atan2(h.x - c.x, h.z - c.z)
     state.pos.set(c.x - Math.sin(state.yaw) * player.robotOffset, fort.floorAt(c.x, c.z), c.z - Math.cos(state.yaw) * player.robotOffset)
   }
+  // PLACE=x,z: the robot starts at that world point on the ground there, facing +z (the ground stays at that height: pick a flat spot)
+  if (process.env.PLACE) {
+    const [x, z] = process.env.PLACE.split(',').map(Number)
+    state.pos.set(x, world.world.ground.height(x, z + player.robotOffset), z)
+  }
   const gaitMode = process.env.GAIT ?? ''
   const guards = sheet.clicks.filter((c) => c.startsWith('G')).map((c) => c.slice(1).split('-').map(Number) as [number, number])
   const fx = new CameraFx(lens)

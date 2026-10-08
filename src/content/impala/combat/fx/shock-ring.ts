@@ -1,6 +1,7 @@
 import { AdditiveBlending, BufferAttribute, DoubleSide, DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicNodeMaterial, Vector3 } from 'three/webgpu'
-import { clamp, cos, exp, float, instancedBufferAttribute, mix, positionLocal, pow, select, sin, smoothstep, uniform, vec2, vec3 } from 'three/tsl'
+import { clamp, cos, exp, float, instancedBufferAttribute, mix, positionGeometry, pow, select, sin, smoothstep, uniform, vec2, vec3 } from 'three/tsl'
 import { N } from '../../../../rendering/noise.ts'
+import { SHOCK_EASE } from './shock-front.ts'
 
 /** Rings at once (the oldest is overwritten), and the band's divisions round its circumference. */
 const RINGS = 3
@@ -52,10 +53,11 @@ export class ShockRing {
     const u = clamp(age.div(r.z), 0, 1)
     const alive = age.greaterThanEqual(0).and(age.lessThan(r.z))
     // eased out: fast off the blade, slowing as it spreads
-    const out = float(1).sub(pow(float(1).sub(u), 2.6))
+    const out = float(1).sub(pow(float(1).sub(u), SHOCK_EASE))
     const radius = r.x.add(r.y.sub(r.x).mul(out))
     const height = r.w.mul(mix(float(1), float(0.45), u))
-    const angle = positionLocal.x, up = positionLocal.y
+    // (the geometry's own attribute: positionLocal is the placed point once positionNode is set, so in the colour it read the world's height)
+    const angle = positionGeometry.x, up = positionGeometry.y
     m.positionNode = select(alive, vec3(c.x.add(cos(angle).mul(radius)), c.y.add(up.sub(0.5).mul(height)), c.z.add(sin(angle).mul(radius))), vec3(0, -1000, 0))
     // across the band: a hot line a little above its middle, its light falling off to both edges
     const line = exp(up.sub(0.58).div(0.07).pow(2).negate())
