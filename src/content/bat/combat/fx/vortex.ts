@@ -109,8 +109,10 @@ export class Vortex {
       .add(vec3(0, k.y.mul(1.6).mul(pow(max(inward, 1e-3), 0.6)).mul(v).div(r0), 0))
     const speed = vel.length()
     const axis = normalize(vel.add(vec3(0, 1e-4, 0)))
-    const side = normalize(cross(axis, pos.sub(cameraPosition)).add(vec3(1e-5, 0, 0)))
     const streak = k.w
+    // Correct the streak's side × axis winding; retain the already-visible
+    // puffs' side/up frame so their noise and shading keep the same orientation.
+    const side = normalize(cross(pos.sub(cameraPosition), axis).mul(mix(float(-1), float(1), streak)).add(vec3(1e-5, 0, 0)))
     const grow = mix(float(0.7), float(1.6), inward)
     const size = k.z.mul(grow)
     // a puff is round; a streak is stretched along its velocity by an exposure's worth of travel

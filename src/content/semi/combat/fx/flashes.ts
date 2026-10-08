@@ -71,7 +71,8 @@ export class MuzzleFlashes {
     const axis = normalize(p1.xyz) as any
     const grow = float(0.55).add(smoothstep(0, 0.35, u).mul(0.45))
     const centre = p0.xyz.add(axis.mul(p2.x.mul(grow).mul(0.5)))
-    const side = normalize(cross(axis, centre.sub(cameraPosition)).add(vec3(1e-5, 0, 0)))
+    // Plane local x/y span side/axis: their cross must point toward the camera.
+    const side = normalize(cross(centre.sub(cameraPosition), axis).add(vec3(1e-5, 0, 0)))
     const q = positionLocal
     pm.positionNode = select(alive, centre.add(axis.mul(q.y.mul(p2.x).mul(grow))).add(side.mul(q.x.mul(p2.y).mul(grow))), vec3(0, -1000, 0))
     pm.colorNode = Fn(() => {

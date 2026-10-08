@@ -68,16 +68,23 @@ export class Tracers {
     const landed = age.greaterThan(flight)
     const fade = select(landed, float(1).sub(clamp(age.sub(flight).div(max(linger, 0.02)), 0, 1)), float(1))
     const mid = a0.xyz.add(dir.mul(head.add(tail).mul(0.5)))
-    const side = normalize(cross(dir, mid.sub(cameraPosition)).add(vec3(1e-5, 0, 0)))
+    // Plane local x/y span side/dir: their cross must point toward the camera.
+    const side = normalize(cross(mid.sub(cameraPosition), dir).add(vec3(1e-5, 0, 0)))
     const q = positionLocal
     const thin = mix(float(1), fade.mul(0.6).add(0.4), channel)
-    m.positionNode = select(alive, mid.add(dir.mul(q.y.mul(max(head.sub(tail), 0.01)))).add(side.mul(q.x.mul(a2.x).mul(thin))), vec3(0, -1000, 0))
+    const span = max(head.sub(tail), 0.01)
+    m.positionNode = select(alive, mid.add(dir.mul(q.y.mul(span))).add(side.mul(q.x.mul(a2.x).mul(thin))), vec3(0, -1000, 0))
     m.colorNode = Fn(() => {
       const across = uv().x.sub(0.5).mul(2)
       const along = uv().y
-      const core = float(1).sub(across.mul(across)).max(0)
+      // A rounded, softly emitting muzzle end; its reach is in metres so a
+      // long channel keeps its bright body. Short shots reserve at least 3/4.
+      const rootLength = min(span.mul(0.25), max(a2.x.mul(4), 0.6))
+      const root = clamp(along.mul(span).div(rootLength), 0, 1)
+      const cap = float(1).sub(root).pow(2).mul(channel)
+      const core = float(1).sub(across.mul(across)).sub(cap).max(0)
       // a tracer is brightest at its head and fades along the smear; the channel flickers along its length
-      const streak = mix(along.pow(1.6), float(1), channel)
+      const streak = mix(along.pow(1.6), smoothstep(0, 1, root), channel)
       const flicker = N(vec2(along.mul(length.mul(0.35)).add(a0.w.mul(13)), this.time.mul(19))).r
       const shimmer = mix(float(1), flicker.mul(1.3).add(0.2).mul(sin(this.time.mul(90).add(a0.w.mul(7))).mul(0.2).add(0.8)), channel)
       const tracer = mix(vec3(2.2, 0.35, 0.06), vec3(7, 3.4, 1.2), core.pow(3))

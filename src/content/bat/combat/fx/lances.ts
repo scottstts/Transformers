@@ -55,7 +55,8 @@ export class Lances {
     const reach = d0.xyz.mul(run.mul(float(2).sub(run)))
     const axis = normalize(vec3(d0.x, d0.y, d0.z))
     const mid = p0.xyz.add(reach.mul(0.5))
-    const side = normalize(cross(axis, mid.sub(cameraPosition)).add(vec3(1e-5, 0, 0)))
+    // Plane local x/y span side/axis: their cross must point toward the camera.
+    const side = normalize(cross(mid.sub(cameraPosition), axis).add(vec3(1e-5, 0, 0)))
     const q = positionLocal
     const width = d0.w
     m.positionNode = select(alive, p0.xyz.add(reach.mul(q.y)).add(side.mul(q.x.mul(width))), vec3(0, -1000, 0))

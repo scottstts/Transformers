@@ -38,6 +38,7 @@ The export rebuilds the scene from the scripts and does not save the `.blend`; t
 
 ## Vortex dust (`combat/fx/vortex.ts`)
 
+- Round sand puffs are mixed with velocity-aligned streaks (40%) to show the airflow. The puffs retain their texture orientation; the streaks are now visible after correcting their quad winding, so review their contribution to dust density in game before retuning opacity.
 - A Rankine vortex: the free spiral's rate goes as 1 / r^2 only down to a core (where it would pass 16 m/s) that turns as one. The pure 1 / r^2 spiral whipped motes near the centre round at up to 27 turns a second, which strobed against the robot inside it.
 - Motes are drawn in at a steady rate and live at most 2.6 s; drawn in exponentially the far ones lived 11 s and hung on long after the vortex. When the vortex lets go (`release`) every mote still in the air fades within 0.6 s.
 - Motes fade out within 1.3–2.9 m of the fighter's upright axis, so no sprite slices through its body. Soft depth fading would need the scene pass's depth, which is 4x multisampled and cannot be copied into a single-sample texture mid-pass.
