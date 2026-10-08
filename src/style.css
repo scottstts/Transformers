@@ -132,32 +132,70 @@ body:not(.ready) .garage { opacity: 0; visibility: hidden; }
 
 /* ── special energy: a shift-light strip in a small glass plate, top left ─────────────── */
 @property --level { syntax: "<number>"; inherits: true; initial-value: 0; }
-.energy { --charge: #9cc4ff; --cell-w: 13px; --cell-h: 9px; --gap: 3px; --cut: 7px; position: fixed; z-index: 14; left: 18px; top: 18px; display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 11px; background: rgba(20, 22, 25, 0.5); backdrop-filter: blur(14px) saturate(1.2); clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); pointer-events: none; transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s ease 0.1s, transform 0.35s cubic-bezier(0.3, 0.8, 0.2, 1) 0.1s; }
+.energy { --charge: #9cc4ff; --cell-w: 13px; --cell-h: 9px; --gap: 3px; --cut: 7px; --pad: 11px; --core: 11px; --beat: 1.4s; position: fixed; z-index: 14; left: 18px; top: 18px; pointer-events: none; transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s ease 0.1s, transform 0.35s cubic-bezier(0.3, 0.8, 0.2, 1) 0.1s; }
 body:not(.ready) .energy, body.cinematic .energy, body.menu-open .energy { opacity: 0; transform: translateY(-6px); }
 /* out of the robot's stance (car form, transforming): gone, in step with the hint pill's label (out at once, in after 0.1 s) */
 .energy.idle { opacity: 0; transform: translateY(-6px); transition: --level 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s ease, transform 0.35s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.energy-body { position: relative; }
+.energy-plate { position: relative; display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px var(--pad); background: rgba(20, 22, 25, 0.5); backdrop-filter: blur(14px) saturate(1.2); clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
 /* a hairline rule along the plate's foot, as on the entry gauge */
-.energy::after { content: ""; position: absolute; left: var(--cut); right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, color-mix(in srgb, var(--charge) 55%, transparent), rgba(255, 255, 255, 0.08) 60%, transparent); }
-.energy-core { position: relative; width: 11px; height: 11px; border: 1.5px solid rgba(243, 238, 231, 0.45); transform: rotate(45deg); transition: border-color 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease; }
+.energy-plate::after { content: ""; position: absolute; left: var(--cut); right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, color-mix(in srgb, var(--charge) 55%, transparent), rgba(255, 255, 255, 0.08) 60%, transparent); }
+.energy-core { position: relative; width: var(--core); height: var(--core); border: 1.5px solid rgba(243, 238, 231, 0.45); transform: rotate(45deg); transition: border-color 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease; }
 .energy-core::after { content: ""; position: absolute; inset: 2px; background: var(--charge); opacity: calc(var(--level) * 0.55); }
 .energy-cells { position: relative; display: flex; gap: var(--gap); overflow: hidden; padding: 1px 3px; }
 .energy-cells i { --fill: clamp(0, calc(var(--level) * var(--cells) - var(--i)), 1); position: relative; width: var(--cell-w); height: var(--cell-h); background: rgba(243, 238, 231, 0.1); transform: skewX(-24deg); }
 /* each cell lights from its left edge; later cells burn hotter, as shift lights climb toward the limiter */
 .energy-cells i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--charge) calc(70% + var(--i) * 2.5%), #2a2d33), var(--charge)); filter: brightness(calc(0.78 + var(--i) * 0.03)); transform: scaleX(var(--fill)); transform-origin: left; }
+/* the light behind the glass (the plate's blur spreads it), the ring the core bursts and the arcs: dark until full */
+.energy-glow { position: absolute; inset: -16px -26px; background: radial-gradient(closest-side, color-mix(in srgb, var(--charge) 62%, transparent), color-mix(in srgb, var(--charge) 20%, transparent) 58%, transparent); mix-blend-mode: screen; opacity: 0; transition: opacity 0.4s ease; }
+.energy-ring { position: absolute; left: calc(var(--pad) + var(--core) / 2); top: 50%; width: var(--core); height: var(--core); margin: calc(var(--core) / -2); border: 1.5px solid color-mix(in srgb, var(--charge) 55%, #fff); box-shadow: 0 0 6px var(--charge), inset 0 0 4px var(--charge); rotate: 45deg; opacity: 0; }
+.energy-arcs { position: absolute; inset: -9px; width: calc(100% + 18px); height: calc(100% + 18px); overflow: visible; filter: drop-shadow(0 0 2px var(--charge)); }
+.energy-arcs polyline { fill: none; stroke: color-mix(in srgb, var(--charge) 45%, #fff); stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
 .energy.gain .energy-cells i::after { animation: energy-gain 0.46s ease-out; }
-.energy.full .energy-core { border-color: #fff; background: var(--charge); box-shadow: 0 0 8px var(--charge), 0 0 18px color-mix(in srgb, var(--charge) 60%, transparent); animation: energy-core 1.3s ease-in-out infinite; }
+/* full: one heartbeat drives everything. It buzzes, strains harder, compresses and thumps out at 86 % */
+.energy.full .energy-body { animation: energy-tremor 0.13s linear infinite; }
+.energy.full .energy-plate { animation: energy-strain var(--beat) linear infinite; }
+.energy.full .energy-glow { animation: energy-swell var(--beat) linear infinite; }
+.energy.full .energy-ring { animation: energy-ring var(--beat) linear infinite; }
+.energy.full .energy-arcs polyline { animation: energy-arc calc(0.9s + var(--a) * 0.37s) linear calc(var(--a) * -0.23s) infinite; }
+.energy.full .energy-core { border-color: #fff; background: var(--charge); box-shadow: 0 0 8px var(--charge), 0 0 18px color-mix(in srgb, var(--charge) 60%, transparent); animation: energy-core var(--beat) linear infinite; }
 .energy.full .energy-core::after { background: #fff; opacity: 0.85; inset: 3px; }
-.energy.full .energy-cells i::after { background: linear-gradient(90deg, var(--charge), color-mix(in srgb, var(--charge) 45%, #fff)); filter: none; box-shadow: 0 0 7px color-mix(in srgb, var(--charge) 80%, transparent); }
+.energy.full .energy-cells i::after { background: linear-gradient(90deg, var(--charge), color-mix(in srgb, var(--charge) 45%, #fff)); filter: none; box-shadow: 0 0 7px color-mix(in srgb, var(--charge) 80%, transparent); animation: energy-overdrive var(--beat) linear calc(var(--i) * 12ms) infinite; }
 .energy.full .energy-cells::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 40%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.75) 50%, transparent); mix-blend-mode: overlay; animation: energy-shine 1.9s cubic-bezier(0.45, 0, 0.2, 1) infinite; }
 .energy.charged .energy-cells i::after { animation: energy-charged 0.46s ease-out calc(var(--i) * 18ms) both; }
 .energy.spent .energy-cells i::after { animation: energy-spent 0.7s ease-out; }
 .energy.spent .energy-core { animation: energy-spent 0.7s ease-out; }
+body.paused .energy *, body.paused .energy *::after { animation-play-state: paused; }
 @keyframes energy-gain { 0% { filter: brightness(2.2); } 100% { filter: brightness(calc(0.78 + var(--i) * 0.03)); } }
 @keyframes energy-charged { 0% { filter: brightness(1); } 35% { filter: brightness(2.6); } 100% { filter: brightness(1); } }
 @keyframes energy-spent { 0% { filter: brightness(3); } 100% { filter: brightness(1); } }
-@keyframes energy-core { 50% { transform: rotate(45deg) scale(1.16); box-shadow: 0 0 12px var(--charge), 0 0 28px color-mix(in srgb, var(--charge) 70%, transparent); } }
+@keyframes energy-tremor { 0%, 100% { translate: 0.3px 0; } 25% { translate: -0.3px 0.25px; } 50% { translate: 0.2px -0.3px; } 75% { translate: -0.25px -0.15px; } }
+@keyframes energy-strain {
+  0%, 52% { translate: 0 0; scale: 1; }
+  58% { translate: 0.5px -0.3px; }
+  62% { translate: -0.6px 0.4px; }
+  66% { translate: 0.8px 0.2px; scale: 0.995; }
+  70% { translate: -0.9px -0.5px; }
+  74% { translate: 1px 0.5px; scale: 0.99; }
+  77% { translate: -1.1px -0.2px; }
+  80% { translate: 1.2px -0.5px; scale: 0.985; }
+  83% { translate: -0.7px 0.4px; scale: 0.978; animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1); }
+  86% { translate: 0 0; scale: 1.045; animation-timing-function: cubic-bezier(0.3, 0, 0.3, 1); }
+  92% { scale: 0.992; }
+  97%, 100% { translate: 0 0; scale: 1; }
+}
+@keyframes energy-swell { 0%, 100% { opacity: 0.4; scale: 1; } 50% { opacity: 0.48; } 83% { opacity: 0.7; scale: 1.02; animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1); } 86% { opacity: 1; scale: 1.14; animation-timing-function: ease-out; } }
+@keyframes energy-ring { 0%, 85% { opacity: 0; scale: 0.9; } 86% { opacity: 1; scale: 1; animation-timing-function: cubic-bezier(0.1, 0.7, 0.2, 1); } 100% { opacity: 0; scale: 3.6; } }
+@keyframes energy-core {
+  0%, 100% { transform: rotate(45deg) scale(1); }
+  50% { transform: rotate(45deg) scale(1.06); }
+  83% { transform: rotate(45deg) scale(0.92); box-shadow: 0 0 10px var(--charge), 0 0 22px color-mix(in srgb, var(--charge) 70%, transparent); animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1); }
+  86% { transform: rotate(45deg) scale(1.34); box-shadow: 0 0 14px #fff, 0 0 34px var(--charge); animation-timing-function: ease-out; }
+}
+@keyframes energy-overdrive { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.1); } 83% { filter: brightness(1.32); } 86% { filter: brightness(2.1); animation-timing-function: ease-out; } }
+@keyframes energy-arc { 0%, 90% { opacity: 0; } 91% { opacity: 1; } 93.5% { opacity: 0.3; } 95% { opacity: 0.9; } 98%, 100% { opacity: 0; } }
 @keyframes energy-shine { from { transform: translateX(-110%); } to { transform: translateX(290%); } }
-@media (max-width: 720px), (max-height: 480px) { .energy { --cell-w: 10px; --cell-h: 7px; --gap: 2.5px; --cut: 6px; gap: 8px; padding: 7px 11px 7px 9px; left: 12px; top: 12px; } .energy-core { width: 9px; height: 9px; } }
+@media (max-width: 720px), (max-height: 480px) { .energy { --cell-w: 10px; --cell-h: 7px; --gap: 2.5px; --cut: 6px; --pad: 9px; --core: 9px; left: 12px; top: 12px; } .energy-plate { gap: 8px; padding: 7px 11px 7px var(--pad); } }
 
 /* ── cutscene: letterbox bars slide in from the screen edges ─────────────────────────── */
 .cinema { position: fixed; inset: 0; z-index: 13; pointer-events: none; }
@@ -197,7 +235,8 @@ body.paused .garage, body.paused .energy, body.paused .fort-hint { opacity: 0; p
   .pause-resume.nudge { animation: none; }
   .entry-mark span, .entry-line, .entry-gauge, .entry-stage, body.entry .entry-button { animation: none; }
   .veil-sun, .entry-gauge-fill, .entry-gauge-mark, .garage-panel, .garage-hint, .garage-track, .garage-name, .garage-panel.loading .garage-view::after, .garage-cover { transition: none; animation: none; }
-  .energy.full .energy-cells::after, .energy.full .energy-core { animation: none; }
+  .energy.full .energy-cells::after, .energy.full .energy-core, .energy.full .energy-body, .energy.full .energy-plate, .energy.full .energy-glow, .energy.full .energy-ring, .energy.full .energy-arcs polyline, .energy.full .energy-cells i::after { animation: none; }
+  .energy.full .energy-glow { opacity: 0.5; }
   .garage-loader-rule i { animation-duration: 3s; }
 }
 .fort-hint { position: fixed; top: 22px; left: 50%; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 16px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 999px; background: rgba(18, 19, 21, 0.42); backdrop-filter: blur(10px); color: rgba(243, 238, 231, 0.9); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transform: translate(-50%, -6px); transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.3, 0.8, 0.2, 1); z-index: 5; }

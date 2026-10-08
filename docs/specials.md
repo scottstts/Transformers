@@ -12,9 +12,22 @@ Each robot has one special: a long cinematic move, unlocked by a full energy met
 
 - Top left, a strip of 12 skewed cells in a small glass plate (the entry button's chamfer), lit from the left like shift lights. There is no text. The cells read one registered custom property (`--level`), so a change is one style write and CSS animates it.
 - A gain flashes the strip. Full lights the diamond core, glows and runs a shine along the strip. Spending discharges it.
+- Full, it strains on one 1.4 s heartbeat (`--beat`): a constant fine buzz on the body, a shudder that grows over the second half of the beat and compresses the plate, then a thump at 86 % where the core flares, a diamond ring bursts off it, the cells surge left to right and the light behind the glass swells. Five small arcs crackle off the plate's top, bottom and right edges on staggered cycles; each is redrawn with a new random path every cycle (`animationiteration`), so they never repeat. Reduced motion drops all of it and leaves a steady glow.
+- The plate (`.energy-plate`) carries the chamfer clip-path; the glow, the ring and the arcs are its siblings in `.energy-body`, so they reach past the clipped edges. The buzz (`translate` on the body) and the strain (`translate` and `scale` on the plate) are separate individual-transform animations on nested elements, so they compose.
 - It takes the playing robot's special colour (`RosterEntry.special`: the truck's plasma blue, the racer's white-hot orange, the Semi's coil violet, the Bat's afterburner gold, the Impala's crimson). It shows only while the robot stands, changing with the hint pill (hud.md), and hides during the cutscene and the menu.
 - The robot's hint pill always shows "F for special"; while the meter is full, the F key lights up. Both labels are the same line, so the pill keeps its width.
 - Letterbox bars (`CinemaBars`) slide in on `body.cinematic`, sized toward 2.39:1 and capped at 12 % of the height. The garage pill hides under the same class.
+
+## Aura (`content/transformer/combat/fx/aura.ts`)
+
+- While the meter is full and the robot stands, an amorphous field of energy burns round it in its special colour (`FighterStyle.shield`, the guard shield's and Flash Move's colour, normalised to its brightest channel). It fades in over 0.45 s with a brief surge, out over 0.3 s when the robot leaves the stance, and a special cuts it on its first frame (`aura(..., cut)`), so the cutscene never shows it.
+- **Flames**: the envelope is 15 bone anchors (head, chest, pelvis, each limb's segments, hands, feet) with two sprites each, a tight bright layer and a wide slow one (1.55x). Each sprite is a soft blob of domain-warped noise flowing upward and eroding into tongues toward its top. It sits behind its anchor (22 % of its width, away from the camera), so the armour in front hides it and the light spills round the outline and through the gaps: the robot's own surfaces stay as they are. A shell fitted to the body read as an overlay, and an inflated outline would cost too much (the bodies run to 2.8 million vertices); a lathe column round the body read as a glass jar.
+- **Streams**: three helices climbing round the body, tapering at both ends, broken and filamented by flowing noise, each fading in and out on its own slow cycle. They are camera-facing strips built in the vertex stage from the helix and its tangent.
+- **Ground**: a turbulent pool on the sand, flame streaks running out across it, and a ripple sent out on each 1.4 s heartbeat (the meter's). It lies in the slope fitted from four height samples and fades as the body leaves the ground.
+- **Sparks** (rays shooting up, twinkling four-point stars) dim where they lie in front of the body. **Haze**: four patches a second of the fighter's heat haze rise off the chest.
+- Colour: the glow's body is the hue squared (additive light over bright sand washes toward white); only the hottest cores whiten.
+- All noise comes from the baked noise texture (`rendering/noise.ts`), three fetches a flame fragment. Every length is a share of `robotHeight`. It centres on the pelvis and stands where the feet would (`pelvis - hipZ`). It runs on world time: hit-stop slows it and a pause holds it.
+- Warmed with the fighter (`Fighter.warm`); `tools/switch-probe.mjs` plays it live (lit, held, faded) after each switch.
 
 ## Playback (`RobotCombat.startSpecial`)
 

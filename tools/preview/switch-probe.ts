@@ -149,7 +149,8 @@ export async function probeSwitch(from: string, to: string): Promise<void> {
     restoreWorld()
     second.combat.effects.warm(false)
     // Exercise the real Flash Move, including its live rig/storage rows and
-    // residue, after covered warm-up rather than just forcing visibility.
+    // residue, and the full meter's aura (lit, held, faded) on the same frames,
+    // after covered warm-up rather than just forcing visibility.
     const state = createMotionState()
     state.mode = 'robot'; state.target = state.progress = 1; state.yaw = 0
     const fight = new RobotCombat(second.combat, second.model, second.robotOffset, state, new CameraFx())
@@ -161,6 +162,7 @@ export async function probeSwitch(from: string, to: string): Promise<void> {
       second.model.root.rotation.set(0, state.yaw, 0)
       second.model.pose(1, second.gait.update(1 / 60, 0, 0, false, true, null))
       second.combat.effects.afterPose()
+      second.combat.effects.aura(i < 18, 1 / 60, false)
       frame()
     }
     fight.cancel()

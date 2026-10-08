@@ -75,6 +75,11 @@ export interface CombatEffects {
   ambient(dt: number, yaw: number): void
   /** Synchronize rig-bound effects after this frame's model.pose. */
   afterPose(): void
+  /**
+   * The full meter's aura, after this frame's pose: shown while `on` (fading
+   * in and out over world time `dt`); `cut` drops it at once (a special spent it).
+   */
+  aura(on: boolean, dt: number, cut: boolean): void
   /** the combo has ended and the stance is back */
   end(): void
   /** stop everything at once (the character leaves the scene or the stance) */

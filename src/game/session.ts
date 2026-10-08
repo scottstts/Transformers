@@ -578,6 +578,8 @@ export class GameSession {
     bodyAttitude(state, model.root.quaternion)
     model.pose(state.progress, pose)
     this.character.combat.effects.afterPose()
+    // the full meter's aura: while the robot stands to fight, never in the special's cutscene (it spent the meter)
+    this.character.combat.effects.aura(this.energy.full && standing && !fight.cinematic, dt, special)
     effects.timeline(previous, state.progress)
     effects.update(dt, state)
 
