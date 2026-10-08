@@ -163,9 +163,9 @@ export function createImpalaMaterials(): Record<string, Material> {
   M.clear_lens = emissive(linear(1, 0.84, 0.66), 3, IMPALA_LIGHTS.marker)
   M.amber = emissive(linear(1, 0.36, 0.04), 4, IMPALA_LIGHTS.marker)
   M.red_lens = emissive(linear(1, 0.035, 0.015), 5, IMPALA_LIGHTS.tail)
-  // the robot's eyes: the core's cyan-blue, the lens's deeper blue
-  M.eye_core = emissive(linear(0.05, 0.32, 1), 5, IMPALA_LIGHTS.eyes)
-  M.head_eye = emissive(linear(0.012, 0.05, 0.9), 3.6, IMPALA_LIGHTS.eyes)
+  // the robot's eyes: a luminous red core behind a deeper red lens
+  M.eye_core = emissive(linear(0.9, 0.045, 0.029), 5, IMPALA_LIGHTS.eyes)
+  M.head_eye = emissive(linear(0.65, 0.008, 0.008), 3.6, IMPALA_LIGHTS.eyes)
   M.plastic = plain(linear(0.02, 0.022, 0.025), 0, 0.6)
   return M
 }

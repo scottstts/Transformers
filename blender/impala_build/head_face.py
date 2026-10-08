@@ -1,4 +1,4 @@
-"""Angular silver face, inset blue eyes and rectangular black cheek mechanics."""
+"""Angular silver face, inset red eyes and rectangular black cheek mechanics."""
 import math
 from mathutils import Vector
 from . import kit as K, geometry as G, contract as D, robot_geometry as M, head_helmet as H
@@ -107,7 +107,7 @@ def eyes():
         M.emit(m,'head.eye.%s.solid.orbital.housing'%s,'head')
         M.panel('head.eye.%s.deep.black.socket'%s,'head',p,surface,.019,'dark',spacing=.004)
         lens=[(cx+(x-cx)*.73,cz+(z-cz)*.65) for x,z in p]
-        M.panel('head.eye.%s.blue.optic'%s,'head',lens,
+        M.panel('head.eye.%s.red.optic'%s,'head',lens,
                 lambda x,z:(x,surface(x,z)[1]-.003,z),.003,'head_eye',spacing=.003)
         core=[(cx+(x-cx)*.53,cz+(z-cz)*.38) for x,z in p]
         M.panel('head.eye.%s.luminous.center'%s,'head',core,

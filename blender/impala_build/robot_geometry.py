@@ -9,9 +9,9 @@ def materials():
     K.material('head_brow_alloy',(.18,.16,.12),.94,.31)
     K.material('robot_graphite',(.017,.021,.030),.77,.27,.28)
     K.material('machined',(.28,.33,.37),.94,.21)
-    K.material('eye_core',(.045,.29,.90),.10,.18,emission=3.2)
-    K.material('head_eye',(.008,.035,.65),0,.20,emission=3)
-    K.material('head_iris',(.035,.28,1),0,.18,emission=5)
+    K.material('eye_core',(.90,.045,.029),.10,.18,emission=3.2)
+    K.material('head_eye',(.65,.008,.008),0,.20,emission=3)
+    K.material('head_iris',(1,.035,.028),0,.18,emission=5)
 
 
 def emit(mesh,name,bone,fillet=0):
