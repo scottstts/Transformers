@@ -27,6 +27,12 @@ export interface SpectralGrid {
   seconds: number
   q: number
   fadeOut?: number
+  /**
+   * A ring's lines as close pairs this share of their frequency apart
+   * (beating) rather than single sines: a struck blade's modes split and
+   * shimmer; a lone steady sine over the noise reads as a cartoon "ding".
+   */
+  shimmer?: number
 }
 
 /** How far a take varies from the model: time stretch (share), a smooth band tilt (dB) and partial detune (share). */
@@ -118,12 +124,22 @@ export function synthesise(model: SpectralModel, grid: SpectralGrid, seed: numbe
   for (const p of model.partials) {
     if (p.f >= rate * 0.45) continue
     const w = (2 * Math.PI * p.f * (1 + (vary ? (r() * 2 - 1) * vary.detune : 0))) / rate
-    let phase = r() * Math.PI * 2
+    const split = grid.shimmer ?? 0
+    let phase = r() * Math.PI * 2, phase2 = r() * Math.PI * 2
+    // the pair's spacing varies line to line, so the lines beat at their own rates
+    const w1 = w * (1 - split * (0.3 + 0.4 * r())), w2 = w * (1 + split * (0.3 + 0.4 * r()))
     for (let i = 0; i < n; i++) {
-      phase += w
-      band[i] = Math.sin(phase)
+      if (split > 0) {
+        phase += w1
+        phase2 += w2
+        band[i] = Math.sin(phase) + Math.sin(phase2)
+      } else {
+        phase += w
+        band[i] = Math.sin(phase)
+      }
     }
-    shape(band, rate, p.env, grid.times, stretch, 0, Math.SQRT2)
+    // unit RMS: a sine's is 1/sqrt 2, a pair's (incoherent) 1
+    shape(band, rate, p.env, grid.times, stretch, 0, split > 0 ? 1 : Math.SQRT2)
     for (let i = 0; i < n; i++) out[i] += band[i]
   }
   // a millisecond's fade in (the model starts at the onset), the grid's fade out, normalised

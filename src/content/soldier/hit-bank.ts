@@ -21,10 +21,11 @@ import { synthesise as synthesiseModel, type SpectralGrid, type SpectralVariatio
  *   heavy  (the stomp) blasts and blows that throw: a scuff, then the boom
  *   slash  cuts; the recording's whoosh is left out (the robot's own swing
  *          voice is that half), the model starts at the blade's impact
- *   cutlass the Impala's cutlass biting: a bright slice of noise as the
- *          blade goes through, then the heavier blade's lower metal ring
- *          (around 1.3-4.7 kHz) dying away over most of a second; the rush
- *          before the bite is the robot's swing voice
+ *   cutlass the Impala's cutlass biting: a heavy cinematic bite, taken
+ *          whole from its onset: a deep thump (150-250 Hz) as the blade
+ *          lands, then a dense ragged tearing through the whole spectrum
+ *          over a heavy low body for half a second, then the blade's faint
+ *          high lines ringing out over another second
  *
  * Each kind has HIT_VARIANTS takes: their own noise, a smooth tilt of a dB
  * or two across the bands, time stretched a few per cent, the partials
@@ -36,14 +37,16 @@ export const BLOW_KINDS: readonly BlowKind[] = ['punch', 'heavy', 'slash', 'cutl
 export const HIT_VARIANTS = 4
 /** Take length (s), the band-pass Q (third octaves, as fitted) and how far a take's timing and bands vary. */
 const GRID: SpectralGrid = { bands: HIT_BANDS, times: HIT_TIMES, seconds: 0.95, q: 4.32 }
+/** The cutlass: its long tail (the recording rings on past a second) and its ring's lines as beating pairs, half a percent apart. */
+const CUTLASS_GRID: SpectralGrid = { ...GRID, seconds: 1.3, shimmer: 0.005 }
 const VARIATION: SpectralVariation = { stretch: 0.05, tilt: 1.5, detune: 0.003 }
 
 /** One take of a blow of `kind` at `rate` Hz, peak-normalised to 0.9. */
 export function blowTake(kind: BlowKind, variant: number, rate: number): Float32Array<ArrayBuffer> {
-  return synthesise(HIT_MODELS[kind], 0xb10e + BLOW_KINDS.indexOf(kind) * 7919 + variant * 104729, rate, true)
+  return synthesise(HIT_MODELS[kind], 0xb10e + BLOW_KINDS.indexOf(kind) * 7919 + variant * 104729, rate, true, kind)
 }
 
 /** A take of `model` from noise seeded `seed`; `vary` its timing, band tilt and detuning (off when the model is fitted). */
-export function synthesise(model: HitModel, seed: number, rate: number, vary: boolean): Float32Array<ArrayBuffer> {
-  return synthesiseModel(model, GRID, seed, rate, vary ? VARIATION : null)
+export function synthesise(model: HitModel, seed: number, rate: number, vary: boolean, kind?: BlowKind): Float32Array<ArrayBuffer> {
+  return synthesiseModel(model, kind === 'cutlass' ? CUTLASS_GRID : GRID, seed, rate, vary ? VARIATION : null)
 }

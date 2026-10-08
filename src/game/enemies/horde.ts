@@ -409,6 +409,7 @@ export class Horde {
     const hit = _impact
     hit.dirX = dirX / l; hit.dirZ = dirZ / l; hit.knock = knock; hit.lift = lift; hit.damage = damage; hit.kind = e.kind; hit.special = e.special
     hit.reaction = e.reaction
+    hit.shock = e.shock ?? 0
     this.impact(s, hit, hold)
     return true
   }

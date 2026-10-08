@@ -68,6 +68,8 @@ export interface SoldierImpact {
   kind: HitKind
   reaction?: HitReaction
   special: boolean
+  /** a discharge holding a body in the air where it reaches it, seizing, this long (s; 0 none) */
+  shock?: number
 }
 
 /** A vacuum: the speed it draws at per metre from its centre (1/s, so a body arrives rather than overshoots), and how fast it takes hold (1/s) on the ground and in the air. */
@@ -84,6 +86,18 @@ const PULL_GRIP_AIR = 2.5
 const SEIZE_BEAT = 0.1
 const SEIZE_JOLT = 0.19
 const SEIZE_HOLD = 0.25
+/**
+ * Held in the air by a discharge (a strike's `shock`): it stops where the
+ * current reaches it (its fall and drift taken out at this rate, 1/s),
+ * sinking only this slowly (m/s), convulsing (its tumble jerked up to this
+ * much each frame, rad, between its hit poses SHOCK_FLIP times a second);
+ * let go, it is thrown down at this speed (m/s).
+ */
+const SHOCK_GRIP = 9
+const SHOCK_SINK = 0.5
+const SHOCK_JERK = 0.05
+const SHOCK_FLIP = 15
+const SHOCK_DROP = 6
 
 const TMP_TILT = new Quaternion()
 const X = new Vector3(1, 0, 0)
@@ -174,6 +188,8 @@ export class Soldier implements HordeInstance {
   protected seizeAge = 99
   protected seizeX = 0
   protected seizeZ = 0
+  /** held in the air by a discharge: how much longer (s) */
+  protected shocked = 0
   /** behaviour's bookkeeping (horde.ts): its post, where it is on the post's beat, when it may swing next,
    * whether it is still rolling out of its spawn door, and the district it stands in */
   post = 0
@@ -244,6 +260,7 @@ export class Soldier implements HordeInstance {
     this.seize = 0
     this.seizeNext = 0
     this.seizeAge = 99
+    this.shocked = 0
     this.post = 0
     this.beat.k = -1
     this.nextSwing = 0
@@ -332,7 +349,10 @@ export class Soldier implements HordeInstance {
       }
       return false
     }
-    if (this.launches(hit)) {
+    if (hit.shock && this.mode === 'air') {
+      // caught by the discharge in the air: held there, seizing, while it lasts
+      this.shocked = Math.max(this.shocked, hit.shock)
+    } else if (this.launches(hit)) {
       this.mode = 'air'
       this.t = 0
       this.vy = Math.max(this.vy, hit.lift + 1.2)
@@ -371,6 +391,7 @@ export class Soldier implements HordeInstance {
     const w = this.weighed
     w.dirX = hit.dirX; w.dirZ = hit.dirZ; w.damage = hit.damage; w.kind = hit.kind; w.special = hit.special
     w.reaction = hit.reaction
+    w.shock = hit.shock
     w.knock = hit.knock * share
     w.lift = hit.special ? hit.lift : hit.lift * share
     return w
@@ -543,6 +564,23 @@ export class Soldier implements HordeInstance {
       if (!steering) side = towardZero(side, (this.mode === 'down' ? 6 : this.tune.skidFriction) * dt)
       this.vx = fx * fwd + fz * side
       this.vz = fz * fwd - fx * side
+    } else if (this.shocked > 0) {
+      // held in the discharge: the fall and drift taken out, sinking only a little, jerking about as the current goes through it
+      this.shocked -= dt
+      const k = 1 - Math.exp(-dt * SHOCK_GRIP)
+      this.vy += (-SHOCK_SINK - this.vy) * k
+      this.vx -= this.vx * k
+      this.vz -= this.vz * k
+      this.tumbleX -= this.tumbleX * k
+      this.tumbleY -= this.tumbleY * k
+      this.y += this.vy * dt
+      TMP_TILT.setFromAxisAngle(X, (Math.random() - 0.5) * 2 * SHOCK_JERK)
+      this.tilt.multiply(TMP_TILT)
+      TMP_TILT.setFromAxisAngle(Y, (Math.random() - 0.5) * 2 * SHOCK_JERK)
+      this.tilt.multiply(TMP_TILT)
+      // let go: thrown down out of it
+      if (this.shocked <= 0) this.vy = Math.min(this.vy, -SHOCK_DROP)
+      if (this.y <= 0 && this.vy < 0) this.land()
     } else {
       this.vy -= this.tune.gravity * dt
       this.y += this.vy * dt
@@ -572,6 +610,7 @@ export class Soldier implements HordeInstance {
   protected land(): void {
     this.y = 0
     this.vy = 0
+    this.shocked = 0
     this.tumbleX = this.tumbleY = 0
     const up = _v.set(0, 0, 1).applyQuaternion(this.tilt)
     if (up.z > 0.72) {
@@ -677,8 +716,16 @@ export class Soldier implements HordeInstance {
         }
         break
       case 'air':
-        T.set(this.poses.flung)
-        rate = 6
+        if (this.shocked > 0) {
+          // electrocuted: thrown between its hit poses many times a second, shaking
+          T.set(Math.floor(this.t * SHOCK_FLIP) & 1 ? this.poses.hitLow : this.poses.hitHigh)
+          T[SC.lean] += Math.sin(this.t * 53) * 6
+          T[SC.headPitch] += Math.sin(this.t * 41 + 1) * 9
+          rate = this.tune.flinchSnap
+        } else {
+          T.set(this.poses.flung)
+          rate = 6
+        }
         break
       case 'toss':
         this.toss.pose(T, this.poses.ready, this.poses.flung, this.rig.dims.height)

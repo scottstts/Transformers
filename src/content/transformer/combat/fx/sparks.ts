@@ -93,7 +93,8 @@ export class Sparks {
     const moving = select(onGround, vec3(vel.x, 0, vel.z).mul(0.25), vel)
     const speed = moving.length()
     const axis = normalize(moving.add(vec3(0, 1e-4, 0)))
-    const side = normalize(cross(axis, center.sub(cameraPosition)).add(vec3(1e-5, 0, 0)))
+    // across the streak, wound so the quad faces the camera (the material draws front faces only)
+    const side = normalize(cross(center.sub(cameraPosition), axis).add(vec3(1e-5, 0, 0)))
     const size = k.x
     const length = speed.mul(EXPOSURE).add(size)
     const q = positionLocal

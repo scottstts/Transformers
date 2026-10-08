@@ -16,10 +16,10 @@ const compare = args[0] === '--compare'
 const given = new Map((compare ? args.slice(1) : args).map((a) => { const [kind, file] = a.split('='); return [kind, file] }))
 /**
  * Each kind, what it was fitted from, and where the modelled window starts after the recording's onset (ms): the
- * slash's whoosh is the robot's own swing voice; the cutlass's starts as its blade bites (the rush before it is its
- * swing), so the take's loudest moment comes within a few milliseconds of the blow.
+ * slash's whoosh is the robot's own swing voice; the cutlass's recording is all bite (its thump, the tearing and the
+ * ring), taken whole.
  */
-const SOUNDS = [['punch', 0, 'a punch'], ['heavy', 0, 'a stomp'], ['slash', 95, 'a sword slash'], ['cutlass', 65, 'a cutlass biting']]
+const SOUNDS = [['punch', 0, 'a punch'], ['heavy', 0, 'a stomp'], ['slash', 95, 'a sword slash'], ['cutlass', 0, 'a cutlass biting']]
 for (const kind of given.keys()) if (!SOUNDS.some(([name]) => name === kind)) throw new Error(`unknown kind ${kind}`)
 /** band centres: third octaves 31.5 Hz .. 16 kHz */
 export const BANDS = Array.from({ length: 28 }, (_, k) => 31.5 * 2 ** (k / 3))
@@ -61,9 +61,24 @@ function onsetOf(x) {
   return i
 }
 
+/**
+ * A partial's own level over time: its narrow band's power less the noise floor beside it (the mean of narrow
+ * bands 7% either side), so while the impact's broadband noise fills the band the partial measures only what
+ * rings over it. Measured raw, the noise in its band during the impact was read as the partial at full level,
+ * and the take opened on a pure tone: a cartoon "ding" over the slice.
+ */
+function tonal(x, f, start) {
+  const peak = envelope(bandpass(x, f, 60), start, 400)
+  const lo = envelope(bandpass(x, f * 0.93, 60), start, 400), hi = envelope(bandpass(x, f * 1.07, 60), start, 400)
+  return peak.map((v, k) => {
+    const p = 10 ** (v / 10), floor = (10 ** (lo[k] / 10) + 10 ** (hi[k] / 10)) / 2
+    return 10 * Math.log10(Math.max(p - floor, p * 1e-4))
+  })
+}
+
 /** The ringing partials: spectral peaks 12 dB over their neighbourhood late in the window, up to `max` (or at `freqs`). */
 function partials(x, start, max, freqs) {
-  if (freqs) return freqs.map((f) => ({ f, env: envelope(bandpass(x, f, 60), start, 400) }))
+  if (freqs) return freqs.map((f) => ({ f, env: tonal(x, f, start) }))
   const N = 16384, a = start + Math.round(0.2 * SR)
   const re = new Float64Array(N), im = new Float64Array(N)
   for (let i = 0; i < N; i++) re[i] = (x[a + i] ?? 0) * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N))
@@ -80,10 +95,7 @@ function partials(x, start, max, freqs) {
   found.sort((p, q) => q.level - p.level)
   const kept = []
   for (const p of found) if (kept.length < max && kept.every((k) => Math.abs(k.f / p.f - 1) > 0.02)) kept.push(p)
-  return kept.map((p) => {
-    const y = bandpass(x, p.f, 60)
-    return { f: Math.round(p.f), env: envelope(y, start, 400) }
-  })
+  return kept.map((p) => ({ f: Math.round(p.f), env: tonal(x, p.f, start) }))
 }
 
 function model(x, offsetMs, freqs) {
@@ -166,7 +178,7 @@ if (!compare) {
     }
     console.log(name)
     const ref = model(decode(file), offset)
-    out.push({ name, ...(await refine(ref, synthesise)) })
+    out.push({ name, ...(await refine(ref, (m, seed, rate, vary) => synthesise(m, seed, rate, vary, name))) })
   }
   await server.close()
   const body = out.map((m) => `  ${m.name}: {\n    bands: [\n${m.bands.map((e) => `      [${e.join(', ')}],`).join('\n')}\n    ],\n    partials: [\n${m.partials.map((p) => `      { f: ${p.f}, env: [${p.env.join(', ')}] },`).join('\n')}\n    ],\n  },`).join('\n')

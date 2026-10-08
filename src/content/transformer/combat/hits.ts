@@ -45,6 +45,8 @@ export interface StrikeHit {
   outward?: boolean
   /** false: a landed blow does not bite with a moment of hit-stop (one of a rapid flurry, which the stops would slow to a crawl) */
   bite?: boolean
+  /** a discharge: a body it catches in the air is held there, seizing, this long (s), thrown down when it lets go */
+  shock?: number
 }
 
 export interface SweepHit {
@@ -130,6 +132,8 @@ export interface HitEvent {
   final: boolean
   /** a landed strike bites with a moment of hit-stop */
   bite: boolean
+  /** a strike's discharge hold on bodies in the air (s; 0 none) */
+  shock?: number
 }
 
 /** A vacuum at work this frame (world): draws whatever stands within `radius` m of (x, z) toward it at up to `speed` m/s over `dt`. */

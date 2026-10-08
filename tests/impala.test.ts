@@ -4,9 +4,11 @@ import { RobotRig } from '../src/content/transformer/model/rig.ts'
 import { buildCues } from '../src/content/transformer/cues.ts'
 import { IMPALA_PROFILE, createImpala } from '../src/content/impala/index.ts'
 import { createCutlassMaterials, createImpalaMaterials } from '../src/content/impala/materials.ts'
-import { Hydramatic } from '../src/content/impala/audio/big-block.ts'
+import { Hydramatic, firingChew } from '../src/content/impala/audio/big-block.ts'
 import { ENGINE_BANDS, ENGINE_TIMBRE } from '../src/content/impala/audio/engine-model.ts'
 import { Lightning } from '../src/content/impala/combat/fx/lightning.ts'
+import { BladeArcs } from '../src/content/impala/combat/fx/blade-arcs.ts'
+import { THROWS, THUNDER } from '../src/content/impala/combat/special.ts'
 import { shapedNoise } from '../src/audio/spectral.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { createMotionState } from '../src/game/types.ts'
@@ -295,6 +297,25 @@ describe('impala car', () => {
     for (let i = 1; i < n; i++) step += Math.abs(loop[i] - loop[i - 1])
     expect(Math.abs(loop[0] - loop[n - 1])).toBeLessThan(4 * step / (n - 1))
   })
+
+  it('chews: a seamless, mean-free firing-by-firing gain wander that never drives the engine below silence', () => {
+    const rate = 48000
+    const chew = firingChew(rate, 0x427)
+    // 64 cycles of 8 firings at 20 Hz
+    expect(chew.length).toBe(Math.round(64 * 8 * rate / 20 / 8))
+    let mean = 0, lo = Infinity, step = 0
+    for (let i = 0; i < chew.length; i++) {
+      mean += chew[i] / chew.length
+      lo = Math.min(lo, chew[i])
+      if (i) step = Math.max(step, Math.abs(chew[i] - chew[i - 1]))
+    }
+    expect(Math.abs(mean)).toBeLessThan(1e-3)
+    // the widest depth (0.3) keeps the gain positive
+    expect(1 + 0.3 * lo).toBeGreaterThan(0)
+    // eased, never stepped, and the loop's seam is no bigger a step than inside it
+    expect(step).toBeLessThan(0.1)
+    expect(Math.abs(chew[0] - chew[chew.length - 1])).toBeLessThanOrEqual(step)
+  })
 })
 
 describe('impala lightning', () => {
@@ -311,6 +332,30 @@ describe('impala lightning', () => {
     expect(bolts.mesh.visible).toBe(true)
     bolts.update(1)
     expect(bolts.mesh.visible).toBe(false)
+  })
+})
+
+describe('impala blade arcs', () => {
+  it('rebuilds a fast cut along the blade\'s turn, not the frame\'s chord, and uploads each arc once a frame', () => {
+    const arcs = new BladeArcs()
+    const position = (arcs as unknown as { position: { array: Float32Array; updateRanges: unknown[]; clearUpdateRanges(): void } }).position
+    const base = new Vector3(0, 2, 0), length = 4
+    const at = (angle: number): Vector3 => new Vector3(Math.cos(angle), 0, Math.sin(angle)).multiplyScalar(length).add(base)
+    arcs.begin(1)
+    arcs.update(1 / 60)
+    arcs.add(base, at(0))
+    // half a turn in one frame: the tip travels 8 m across its chord
+    position.clearUpdateRanges()
+    arcs.update(1 / 60)
+    arcs.add(base, at(Math.PI))
+    expect(position.updateRanges.length).toBe(1)
+    const count = (arcs as unknown as { count: number }).count
+    expect(count).toBeGreaterThan(12)
+    // every sample's outer end on the circle the point swept (out past it by the band's reach), none cut across the chord
+    for (let k = 0; k < count; k++) {
+      const tip = new Vector3().fromArray(position.array, (k * 2 + 1) * 3)
+      expect(tip.distanceTo(base)).toBeCloseTo(length * 1.05, 3)
+    }
   })
 })
 
@@ -363,5 +408,130 @@ describe('impala fighting', () => {
 
   it('keeps the cutlass and the forearms out of its body through the special', () => {
     expect(check([], [0], 13)).toEqual([])
+  })
+
+  /**
+   * The cutlass hand's turn on its forearm from the stand's (deg, about the
+   * hand's own axis) and the elbow's ride up off the shoulder-hand line while
+   * the hand is low (deg): the arm held as a person holds a blade.
+   */
+  const arm = (clicks: number[], specials: number[], until: number): { twist: number; wing: number } => {
+    const c = createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix())
+    const node = (n: string) => c.model.node(n)
+    const qf = new Quaternion(), qh = new Quaternion(), rel = new Quaternion()
+    let rest: Quaternion | null = null
+    const axis = new Vector3()
+    const S = new Vector3(), E = new Vector3(), W = new Vector3(), M = new Vector3()
+    let twist = 0, wing = 0
+    runFight(c, clicks, until, (t) => {
+      node('bone:forearm.L').getWorldQuaternion(qf)
+      node('bone:hand.L').getWorldQuaternion(qh)
+      rel.copy(qf).invert().multiply(qh)
+      W.setFromMatrixPosition(node('bone:hand.L').matrixWorld)
+      if (!rest) {
+        rest = rel.clone()
+        axis.copy(M.setFromMatrixPosition(node('bone:middle1.L').matrixWorld)).sub(W).applyQuaternion(qh.clone().invert()).normalize()
+      }
+      if (t < 0 || !c.combat.effects.weapon?.presence) return
+      const q = rel.clone().premultiply(rest.clone().invert())
+      let a = 2 * Math.atan2(q.x * axis.x + q.y * axis.y + q.z * axis.z, q.w) * 180 / Math.PI
+      a = ((a + 540) % 360) - 180
+      twist = Math.max(twist, Math.abs(a))
+      S.setFromMatrixPosition(node('bone:upperarm.L').matrixWorld)
+      E.setFromMatrixPosition(node('bone:forearm.L').matrixWorld)
+      // the model's world is y up
+      if (W.y < S.y - 0.3) {
+        const line = W.clone().sub(S).normalize()
+        const off = E.clone().sub(S)
+        off.addScaledVector(line, -off.dot(line))
+        if (off.lengthSq() > 1e-6) wing = Math.max(wing, Math.asin(Math.min(1, off.normalize().y)) * 180 / Math.PI)
+      }
+    }, 1 / 60, specials)
+    return { twist, wing }
+  }
+
+  it('holds the cutlass with a natural arm through the combo: the hand never wrung, the elbow never winged', () => {
+    const { twist, wing } = arm([0, 0.38, 0.84, 1.45], [], 4.5)
+    expect(twist).toBeLessThan(100)
+    expect(wing).toBeLessThan(35)
+  })
+
+  it('keeps the cutlass arm still through the slow-motion held moment: the natural hold never snaps the elbow', () => {
+    const c = createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix())
+    const elbow = c.model.node('bone:forearm.L'), pelvis = c.model.node('bone:pelvis')
+    const a = new Vector3(), b = new Vector3(), at = new Vector3(), prev = new Vector3()
+    let worst = 0, frames = 0
+    runFight(c, [], 10, (t, combat) => {
+      const time = (combat as unknown as { player: { time: number } }).player.time
+      at.setFromMatrixPosition(elbow.matrixWorld).sub(b.setFromMatrixPosition(pelvis.matrixWorld))
+      // the elbow's change of velocity from frame to frame, over the held moment (tempo 0.22: anything here is plain)
+      if (combat.special && time > THUNDER.hold[0] + 0.02 && time < THUNDER.hold[1] - 0.02) {
+        worst = Math.max(worst, at.clone().sub(a).sub(a.clone().sub(prev)).length())
+        frames++
+      }
+      prev.copy(a)
+      a.copy(at)
+    }, 1 / 120, [0])
+    expect(frames).toBeGreaterThan(100)
+    // rolls snapping between grid steps or between near-equal holds jerked it by 56 mm; held, it moves well under a millimetre
+    expect(worst).toBeLessThan(0.002)
+  })
+
+  it('moves the cutlass arm and the blade through the special without a snap: no frame turns them far past the frames about it', () => {
+    const c = createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix())
+    const bones = ['upperarm', 'forearm', 'hand'].map((b) => c.model.node(`bone:${b}.L`))
+    const weapon = c.model.node('bone:hand.L').children.find((o) => o.name.startsWith('weapon:'))!
+    const steps: number[][] = [[], [], [], []], times: number[] = []
+    const last = [0, 1, 2, 3].map(() => new Quaternion()), q = new Quaternion()
+    let started = false
+    runFight(c, [], 14, (_t, combat) => {
+      if (!combat.special) return
+      const objects = [...bones, weapon]
+      objects.forEach((o, k) => {
+        o.getWorldQuaternion(q)
+        steps[k].push(started ? 2 * Math.acos(Math.min(1, Math.abs(q.dot(last[k])))) * 180 / Math.PI : 0)
+        last[k].copy(q)
+      })
+      times.push((combat as unknown as { player: { time: number } }).player.time)
+      started = true
+    }, 1 / 60, [0])
+    const snaps: string[] = []
+    steps.forEach((list, k) => {
+      for (let i = 2; i < list.length - 2; i++) {
+        // a snap stands far out of the motion about it (the swing's own peak, slowed into the blow's slow motion, stays within 3 times)
+        if (list[i] > 20 && list[i] > 3 * Math.max(list[i - 2], list[i + 2], 0.5)) snaps.push(`${['upper arm', 'forearm', 'hand', 'blade'][k]} ${list[i].toFixed(0)} deg at ${times[i].toFixed(2)}`)
+      }
+    })
+    expect(snaps).toEqual([])
+  })
+
+  it('throws the cutlass from where the hand holds it to where the hand takes it again', () => {
+    const c = createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix())
+    const overlay = c.combat.overlay
+    const marks = THROWS.flatMap((w) => [[w.release, w.from], [w.catch, w.to]] as const)
+    const seen: string[] = marks.map(() => 'never reached'), nearest = marks.map(() => Infinity)
+    const p = new Vector3()
+    runFight(c, [], 14, (_t, combat) => {
+      const time = (combat as unknown as { player: { time: number } }).player.time
+      for (const [k, [at, place]] of marks.entries()) {
+        if (!combat.special || Math.abs(time - at) >= nearest[k]) continue
+        nearest[k] = Math.abs(time - at)
+        // the hand's hold there (the throw hands over from it and back to it), against the placement the flight is authored between
+        const e = overlay.weapon.elements
+        p.setFromMatrixPosition(overlay.weapon).sub(overlay.restPelvis)
+        const grip = Math.hypot(p.x - place.grip[0], -p.y - place.grip[1], p.z - place.grip[2])
+        const blade = Math.acos(Math.min(1, e[8] * place.blade[0] - e[9] * place.blade[1] + e[10] * place.blade[2])) * 180 / Math.PI
+        const edge = Math.acos(Math.min(1, e[0] * place.edge[0] - e[1] * place.edge[1] + e[2] * place.edge[2])) * 180 / Math.PI
+        // (the edge's turn about the blade settles a few degrees differently with the frame rate; the hand-over ramp takes it up)
+        seen[k] = grip > 0.03 || blade > 3 || edge > 10 ? `at ${at}: grip off ${grip.toFixed(3)} m, blade ${blade.toFixed(1)} deg, edge ${edge.toFixed(1)} deg` : `at ${at}: held`
+      }
+    }, 1 / 120, [0])
+    expect(seen).toEqual(marks.map(([at]) => `at ${at}: held`))
+  })
+
+  it('holds the cutlass with a natural arm through the special', () => {
+    const { twist, wing } = arm([], [0], 14)
+    expect(twist).toBeLessThan(100)
+    expect(wing).toBeLessThan(48)
   })
 })

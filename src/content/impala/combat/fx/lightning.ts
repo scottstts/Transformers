@@ -1,11 +1,18 @@
 import { AdditiveBlending, DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicNodeMaterial, PlaneGeometry, Vector3 } from 'three/webgpu'
 import { cameraPosition, clamp, cross, exp, float, floor, fract, instancedBufferAttribute, mix, normalize, positionLocal, select, sin, uniform, uv, vec3 } from 'three/tsl'
 
-/** Segments in the pool: new bolts overwrite the oldest. */
-const MAX = 2400
-/** Points a bolt is subdivided into at most (2^DEPTH + 1). */
+/**
+ * Segments in the pool: new bolts overwrite the oldest. A strike writes at
+ * most SEGMENTS + FORKS * SEGMENTS / 2 (96); the discharge keeps some 5000
+ * alive at its height, so the pool holds every live bolt with room over and
+ * none is overwritten before it has burnt out.
+ */
+const MAX = 8192
+/** Points a bolt's channel is subdivided into (2^DEPTH + 1); its forks take half as many. */
 const DEPTH = 5
 const POINTS = (1 << DEPTH) + 1
+/** Forks a channel throws at most (forks do not fork again). */
+const FORKS = 4
 /** The return stroke's flash: the first moments of a segment's life burn this much brighter. */
 const FLASH = 2.4
 const FLASH_TIME = 0.018
@@ -36,7 +43,9 @@ export interface BoltGround {
  * level), with forks thrown off along it. Each segment is a camera-facing
  * quad in one instanced additive draw: a white-hot core in a crimson sheath,
  * a return-stroke flash in its first milliseconds, the current surging in a
- * stepped flicker, gone within its short life. A strike that holds (a
+ * stepped flicker, gone within its short life. A channel throws a few
+ * forks, which do not fork again: a strike's segments stay bounded, so the
+ * pool always outlives its bolts. A strike that holds (a
  * channel feeding a falling body) is re-struck with a fresh shape every few
  * hundredths of a second by its caller, so it spikes and wanders as real
  * discharges do. A crawling bolt keeps to the ground, hugging the relief a
@@ -59,8 +68,8 @@ export class Lightning {
   private readonly px = new Float32Array(POINTS)
   private readonly py = new Float32Array(POINTS)
   private readonly pz = new Float32Array(POINTS)
-  /** fork starts and directions per recursion depth (the recursion reuses the point scratch) */
-  private readonly forkStarts = [new Float32Array(POINTS * 6), new Float32Array(POINTS * 6)]
+  /** fork starts and directions (the forks' subdivision reuses the point scratch) */
+  private readonly forkStarts = new Float32Array(FORKS * 6)
   /** segments written by the strike in progress */
   private written = 0
   /** the last bolt's channel, for whoever wants to follow it (a mark on the ground, a light) */
@@ -100,7 +109,8 @@ export class Lightning {
     const from = p0.xyz.sub(dir.mul(width.mul(0.5)))
     const span = axis.add(dir.mul(width))
     const mid = vec3(from.add(span.mul(0.5)))
-    const side = normalize(cross(dir, mid.sub(cameraPosition)).add(vec3(1e-5, 0, 0)))
+    // across the channel, wound so the quad faces the camera (the material draws front faces only)
+    const side = normalize(cross(mid.sub(cameraPosition), dir).add(vec3(1e-5, 0, 0)))
     const q = positionLocal
     m.positionNode = select(alive, from.add(span.mul(q.y)).add(side.mul(q.x.mul(width))), vec3(0, -1000, 0))
     const across = uv().x.sub(0.5).mul(2)
@@ -110,9 +120,10 @@ export class Lightning {
     const step = floor(this.time.mul(FLICKER)).add(s.z.mul(97.3))
     const surge = fract(sin(step.mul(12.9898)).mul(43758.5453)).mul(0.75).add(0.45)
     const fade = clamp(float(1).sub(u), 0, 1).pow(1.5)
-    const core = exp(across.div(0.16).pow(2).negate())
-    const sheath = exp(across.div(0.55).pow(2).negate())
-    const color = vec3(1.0, 0.72, 0.78).mul(core.mul(9)).add(vec3(1.0, 0.04, 0.09).mul(sheath.mul(2.2)))
+    // a narrow white-hot core in a broad crimson-pink glow (the quad is the glow's width)
+    const core = exp(across.div(0.14).pow(2).negate())
+    const sheath = exp(across.div(0.5).pow(2).negate())
+    const color = vec3(1.0, 0.8, 0.86).mul(core.mul(12)).add(vec3(1.0, 0.1, 0.2).mul(sheath.mul(3.2)))
     m.colorNode = select(alive, color.mul(s.y).mul(flash).mul(surge).mul(fade), vec3(0))
     this.mesh = new Mesh(geometry, m)
     this.mesh.frustumCulled = false
@@ -151,9 +162,9 @@ export class Lightning {
     this.mesh.visible = on || this.clock < this.liveUntil
   }
 
-  /** One channel and its forks (to `depth` 2), subdivided from the scratch points. */
+  /** One channel (`depth` 0) and its forks (`depth` 1, half as finely subdivided), from the scratch points. */
   private channel(ax: number, ay: number, az: number, bx: number, by: number, bz: number, style: BoltStyle, crawl: boolean, depth: number): void {
-    const n = POINTS - 1
+    const n = depth === 0 ? POINTS - 1 : (POINTS - 1) >> 1
     const px = this.px, py = this.py, pz = this.pz
     px[0] = ax; py[0] = ay; pz[0] = az
     px[n] = bx; py[n] = by; pz[n] = bz
@@ -177,20 +188,20 @@ export class Lightning {
       }
     }
     if (crawl && this.ground) {
-      for (let i = 1; i < n; i++) py[i] = this.ground.height(px[i], pz[i]) + 0.04 + Math.random() * 0.22
+      for (let i = 1; i < n; i++) py[i] = this.ground.height(px[i], pz[i]) + 0.12 + Math.random() * 0.35
     }
-    const width = style.width * (depth === 0 ? 1 : 0.55 / depth)
-    const brightness = style.brightness * (depth === 0 ? 1 : 0.6 / depth)
+    const width = style.width * (depth === 0 ? 1 : 0.6)
+    const brightness = style.brightness * (depth === 0 ? 1 : 0.7)
     for (let i = 0; i < n; i++) this.segment(px[i], py[i], pz[i], px[i + 1], py[i + 1], pz[i + 1], width * (1 - 0.35 * i / n), style.life, brightness)
     if (depth === 0) {
       this.lastEnd.set(bx, by, bz)
       this.lastMid.set(px[n >> 1], py[n >> 1], pz[n >> 1])
     }
-    if (depth >= 2 || style.forks <= 0) return
+    if (depth >= 1 || style.forks <= 0) return
     // forks off the channel, angled away from it; their subdivision overwrites the point scratch, so take the starts first
-    const forks = this.forkStarts[depth]
+    const forks = this.forkStarts
     let count = 0
-    for (let i = 2; i < n - 2; i += 2) {
+    for (let i = 2; i < n - 2 && count < FORKS; i += 2) {
       if (Math.random() >= style.forks) continue
       const o = count++ * 6
       forks[o] = px[i]; forks[o + 1] = py[i]; forks[o + 2] = pz[i]

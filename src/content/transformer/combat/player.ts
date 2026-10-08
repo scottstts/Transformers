@@ -4,6 +4,13 @@ import { MAX_KEYS, UNKEYED_SETTLE, type CombatMove, type MoveCue } from './moves
 
 /** Root motion channels settle quickly when unkeyed: the re-aim turn at a move's start. */
 const ROOT_SETTLE = 0.2
+/** The weapon's yaw (deg): an angle, picked up on the turn nearest where it is going. */
+const YAW = CH['w.yaw']
+
+/** `value` shifted by whole turns to lie within half a turn of `toward` (deg). */
+function nearestTurn(value: number, toward: number): number {
+  return value + 360 * Math.round((toward - value) / 360)
+}
 
 /**
  * Plays one move at a time on the pose channels. `start` captures the current
@@ -29,6 +36,9 @@ export class MovePlayer {
     this.time = 0
     this.cues = move.cues ?? []
     this.nextCue = 0
+    // each move unwinds its own yaw keys; the last move may have ended a whole turn away on the same direction
+    const yaw = move.keys['w.yaw']
+    if (yaw?.length) this.values[YAW] = nearestTurn(this.values[YAW], yaw[0][1])
     for (let i = 0; i < CHANNELS; i++) this.curves[i].settle(this.values[i], neutral[i], ROOT_CHANNELS.has(i) ? ROOT_SETTLE : UNKEYED_SETTLE, this.velocities[i])
     for (const [name, keys] of Object.entries(move.keys)) {
       const i = CH[name as keyof typeof CH]
@@ -43,6 +53,7 @@ export class MovePlayer {
     this.time = 0
     this.cues = cues
     this.nextCue = 0
+    this.values[YAW] = nearestTurn(this.values[YAW], recovery?.['w.yaw']?.[0]?.[1] ?? neutral[YAW])
     for (let i = 0; i < CHANNELS; i++) this.curves[i].settle(this.values[i], neutral[i], seconds)
     // Release the supporting hand before the main hand lowers/dissolves the
     // weapon; following its off grip upright would sweep across the face.

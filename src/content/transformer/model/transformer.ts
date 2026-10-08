@@ -4,6 +4,7 @@ import type { TransformerAsset } from '../asset/loader'
 import { supportPoints } from '../asset/loader'
 import type { NodeKind, RigDims } from '../asset/format'
 import { RobotRig, type GaitPose, type RigOverlay } from './rig'
+import { Braces } from './braces'
 
 const FEET = ['L', 'R'] as const
 
@@ -23,9 +24,12 @@ const FEET = ['L', 'R'] as const
  * model into three.js's y-up, +z-forward space.
  *
  * Optional parts of the container (the semi uses them):
- *  - a world-hosted node (parent -1, not a bone) can be `carried` by a bone
- *    once it has docked on it: while the skeleton is live it keeps its baked
- *    place relative to that bone, so it follows the gait;
+ *  - a node can be `carried` by a bone other than the one the bake hangs it
+ *    from (or, world-hosted, by any bone once it has docked on it): while the
+ *    skeleton is live it keeps its baked place relative to that bone, so it
+ *    follows the bone it rests on through the gait and the fight;
+ *  - telescopic `braces` are laid again between their two carriers while the
+ *    skeleton is live (braces.ts);
  *  - a `trailer` node swings with its subtree about its hitch by
  *    `articulation` in car form;
  *  - meshes with a second shape (`morphPosition` / `morphNormal`) blend into
@@ -68,8 +72,15 @@ export interface TransformerOptions {
   rollSupport?: boolean
   /** T at which the skeleton starts blending into the live gait */
   gaitBlendFrom?: number
-  /** world-hosted nodes and the bone node that carries each once the skeleton is live (`asm:van0` -> `bone:chest`) */
+  /**
+   * Nodes and the bone node that carries each once the skeleton is live
+   * (`asm:van0` -> `bone:chest`): world-hosted nodes docked on a bone, and
+   * nodes the bake hangs from one bone that rest on another's parts (which the
+   * live skeleton would otherwise carry off with the wrong limb).
+   */
   carried?: Record<string, string>
+  /** telescopic braces (`link.<name>.*` nodes) and the nodes carrying their pin A and pin B (braces.ts) */
+  braces?: Record<string, readonly [string, string]>
   /** the node that swings about its hitch (authoring frame, m) by `articulation` in car form */
   trailer?: { node: string; hitch: [number, number, number] }
   /** the front tyres' radius where it differs from the rear's (`dims.wheelRadius`, m): they touch down on it and spin faster to roll at the same speed */
@@ -118,6 +129,8 @@ export class TransformerModel {
   private readonly carrier: Int32Array
   private readonly bakedChain: Uint8Array
   private readonly bakedWorld: Matrix4[]
+  /** the live telescopic braces (braces.ts) */
+  readonly braces: Braces | null = null
   private readonly trailerNode: number
   private readonly hitch = new Vector3()
   private readonly morphTrack?: Float32Array
@@ -189,9 +202,10 @@ export class TransformerModel {
     for (const [name, bone] of Object.entries(options.carried ?? {})) {
       const i = this.index(name)
       const b = this.index(bone)
-      if (this.parent[i] >= 0 || this.kind[i] === 'bone' || this.kind[b] !== 'bone') throw new Error(`${this.label}: ${name} cannot be carried by ${bone}`)
+      if (this.kind[i] === 'bone' || this.kind[b] !== 'bone') throw new Error(`${this.label}: ${name} cannot be carried by ${bone}`)
       this.carrier[i] = b
       for (let p = b; p >= 0; p = this.parent[p]) this.bakedChain[p] = 1
+      for (let p = i; p >= 0; p = this.parent[p]) this.bakedChain[p] = 1
     }
     this.trailerNode = options.trailer ? this.index(options.trailer.node) : -1
     if (options.trailer) this.hitch.set(...options.trailer.hitch)
@@ -208,6 +222,7 @@ export class TransformerModel {
     })
     if (options.rollSupport) this.rollSupport(asset)
     this.pose(1, null)
+    if (options.braces) this.braces = new Braces(options.braces, (name) => this.index(name), this.world)
     const bounds = new Box3()
     this.root.traverse((object) => {
       const mesh = object as Mesh
@@ -276,9 +291,20 @@ export class TransformerModel {
       _q.set(tr[o0 + 3], tr[o0 + 4], tr[o0 + 5], tr[o0 + 6])
       _q1.set(tr[o1 + 3], tr[o1 + 4], tr[o1 + 5], tr[o1 + 6])
       _q.slerp(_q1, a)
+      _s.copy(ONE)
+      if (this.scaleTracks) {
+        const scales = this.scaleTracks
+        const s0 = (f0 * count + i) * 3
+        const s1 = s0 + count * 3
+        _s.set(
+          scales[s0] + (scales[s1] - scales[s0]) * a,
+          scales[s0 + 1] + (scales[s1 + 1] - scales[s0 + 1]) * a,
+          scales[s0 + 2] + (scales[s1 + 2] - scales[s0 + 2]) * a,
+        )
+      }
       if (this.bakedChain[i]) {
-        // the baked pose of a carrying bone's chain, before the live skeleton takes it
-        const baked = _m.compose(_t, _q, ONE)
+        // the baked pose of a carrying bone's chain, or of a carried node's, before the live skeleton takes it
+        const baked = _m.compose(_t, _q, _s)
         const p = this.parent[i]
         if (p < 0) this.bakedWorld[i].copy(baked)
         else this.bakedWorld[i].multiplyMatrices(this.bakedWorld[p], baked)
@@ -295,33 +321,21 @@ export class TransformerModel {
         _t.lerp(_t1, gw)
         _q.slerp(_q1, gw)
       }
-      _s.copy(ONE)
-      if (this.scaleTracks) {
-        const scales = this.scaleTracks
-        const s0 = (f0 * count + i) * 3
-        const s1 = s0 + count * 3
-        _s.set(
-          scales[s0] + (scales[s1] - scales[s0]) * a,
-          scales[s0 + 1] + (scales[s1 + 1] - scales[s0 + 1]) * a,
-          scales[s0 + 2] + (scales[s1 + 2] - scales[s0 + 2]) * a,
-        )
-      }
       const local = _m.compose(_t, _q, _s)
       if (this.kind[i] === 'wheel') {
         if (this.frontWheel[i] && carW > 0) local.multiply(_m1.makeRotationZ(this.steer * carW))
         local.multiply(_m1.makeRotationX(this.frontWheel[i] ? this.spin * this.frontSpin : this.spin))
       }
       const p = this.parent[i]
-      if (p >= 0) this.world[i].multiplyMatrices(this.world[p], local)
-      else {
-        const carrier = this.carrier[i]
-        if (gw > 0 && carrier >= 0) {
-          // keeps its baked place on the carrying bone, which the gait now moves
-          this.world[i].copy(this.world[carrier]).multiply(_m1.copy(this.bakedWorld[carrier]).invert()).multiply(local)
-        } else this.world[i].copy(local)
-        if (swing !== 0 && i === this.trailerNode) this.world[i].premultiply(_hitch)
-      }
+      const carrier = this.carrier[i]
+      if (gw > 0 && carrier >= 0) {
+        // keeps its baked place on the carrying bone, which the gait now moves
+        this.world[i].copy(this.world[carrier]).multiply(_m1.copy(this.bakedWorld[carrier]).invert()).multiply(this.bakedWorld[i])
+      } else if (p >= 0) this.world[i].multiplyMatrices(this.world[p], local)
+      else this.world[i].copy(local)
+      if (p < 0 && swing !== 0 && i === this.trailerNode) this.world[i].premultiply(_hitch)
     }
+    if (gw > 0 && this.braces) this.braces.solve(this.world, gw)
 
     // ground: baked contact through the transformation, live foot contact at the stand
     const baked = this.liftTrack[f0] + (this.liftTrack[f0 + 1] - this.liftTrack[f0]) * a

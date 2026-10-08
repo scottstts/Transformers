@@ -576,7 +576,7 @@ export class RobotCombat {
     e.reach = this.model.robotHeight * FLASH_HALF_WIDTH; e.arc = Math.PI * 2
     e.damage = 0; e.knock = FLASH_KNOCK; e.lift = FLASH_LIFT; e.motion = 0
     e.sweep = this.sweepBase; e.radial = false; e.toward = undefined
-    e.special = false; e.final = false; e.bite = false
+    e.special = false; e.final = false; e.bite = false; e.shock = 0
     this.onHit?.(e)
     this.flashFrom.copy(this.desired)
   }
@@ -603,9 +603,11 @@ export class RobotCombat {
       e.reach = s.reach; e.arc = (s.arc * Math.PI) / 180
       e.damage = s.damage; e.knock = s.knock; e.lift = s.lift; e.motion = 0; e.sweep = -1; e.radial = s.outward ?? false
       e.bite = s.bite ?? true
+      e.shock = s.shock ?? 0
       e.final = e.special && s.t === this.finalAt
       sink(e)
     }
+    e.shock = 0
     const blasts = hits.blasts
     const h = this.heading
     while (blasts && this.nextBlast < blasts.length && blasts[this.nextBlast].t <= t) {

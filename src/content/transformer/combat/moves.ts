@@ -74,5 +74,5 @@ export interface Moveset {
 /** Ease-to-neutral time of channels a move leaves unkeyed (s). */
 export const UNKEYED_SETTLE = 0.35
 
-/** Largest number of keys a channel may carry (plus the captured start). */
-export const MAX_KEYS = 48
+/** Largest number of keys a channel may carry (plus the captured start): a special's cuts are keyed densely along their arcs. */
+export const MAX_KEYS = 96

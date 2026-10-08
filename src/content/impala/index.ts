@@ -107,6 +107,40 @@ export const IMPALA_GAIT: GaitStyle = {
   runCycle: { recoveryPeak: 0.38 },
 }
 
+/**
+ * Parts the bake hangs from one bone that rest on another's (measured at the
+ * stand by `tools/pose-audit.mjs`: each touches nothing on its own bone): the
+ * exhaust tails hang from the upper arms against the back of the chest, the
+ * rear quarters from the upper arms over the shoulders' fenders and wheels,
+ * the rear axle stubs from the upper arms in the shoulder wheels, the cowl
+ * vents from the collarbones on the upper arms' doors and plates. Carried by
+ * the bone they rest on, so a raised arm does not swing them off into the air.
+ */
+const CARRIED: Record<string, string> = Object.fromEntries((['L', 'R'] as const).flatMap((s) => [
+  [`asm:fold.exhaust.tail.${s}`, 'bone:chest'],
+  [`asm:fold.quarter.tail.${s}`, `bone:shoulder.${s}`],
+  [`asm:axle.rear.${s}`, `bone:clav.${s}`],
+  [`asm:fold.vent.${s}`, `bone:upperarm.${s}`],
+]))
+
+/**
+ * The telescopic braces whose two pins ride bones the live skeleton turns
+ * against each other (linkage.py's anchors): the doors' from the shoulders to
+ * the doors on the upper arms, the spine's from the spine to the trunk on the
+ * chest, the roof's from the chest to the roof on the spine, the neck's and
+ * the head's booms. The fender's, the gauntlets' and the hood's pins share a
+ * bone (or bones the skeleton never turns apart) and stay as baked.
+ */
+const BRACES: Record<string, readonly [string, string]> = {
+  ...Object.fromEntries((['L', 'R'] as const).flatMap((s) => [
+    [`door.${s}`, [`bone:shoulder.${s}`, `asm:front_door.${s}`]],
+    [`spine.${s}`, ['bone:spine', 'asm:trunk']],
+    [`roof.${s}`, ['bone:chest', 'bone:spine']],
+  ])),
+  'neck.boom': ['bone:chest', 'bone:neck'],
+  'head.boom': ['bone:neck', 'bone:head'],
+}
+
 export async function loadImpalaAsset(): Promise<PlayableTransformerAsset> {
   const [asset, weapon] = await Promise.all([loadTransformerAsset('impala', IMPALA_LABEL), loadWeaponAsset(IMPALA_WEAPON, IMPALA_LABEL)])
   return { ...asset, weapon }
@@ -119,6 +153,8 @@ export function createImpala(asset: TransformerAsset, contactEffects: ContactEff
     // the feet's castings ride their joints as parts (the bones carry no geometry)
     footNodes: ['part:foot.L', 'part:foot.R', 'part:toe.L', 'part:toe.R'],
     rollSupport: true,
+    carried: CARRIED,
+    braces: BRACES,
   })
   const effects = new ImpalaEffects(model, contactEffects, asset.manifest.events, model.duration, mix)
   const sole = { heel: IMPALA_GAIT.heel, toe: IMPALA_GAIT.toe, ankle: IMPALA_GAIT.ankle, soleRadius: IMPALA_GAIT.soleRadius }

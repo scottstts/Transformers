@@ -8,17 +8,18 @@ import type { MoveCue } from '../../transformer/combat/moves'
 import { CombatOverlay } from '../../transformer/combat/overlay'
 import { Fighter, type FighterStyle } from '../../transformer/combat/fighter'
 import { Weapon } from '../../transformer/combat/weapon'
-import { slam } from '../../transformer/combat/audio/shots'
-import { passBy } from '../../transformer/combat/audio/blast'
+import { SWORD_SWING } from '../../transformer/combat/audio/swing'
 import { createCutlassMaterials } from '../materials'
 import type { ImpalaEffects } from '../effects'
 import { IMPALA_GUARD, IMPALA_MOVES } from './moves'
+import { NATURAL_HOLD } from './pose'
 import { IMPALA_HITS } from './hits'
 import { IMPALA_SPECIAL } from './special'
 import { ThunderFx } from './special-fx'
 import { BladeArcs } from './fx/blade-arcs'
 import { Lightning } from './fx/lightning'
 import { ShockRing } from './fx/shock-ring'
+import { SweepRing } from './fx/sweep-ring'
 
 /**
  * The Impala fights with its cutlass from the first blow, forged in the left
@@ -27,7 +28,8 @@ import { ShockRing } from './fx/shock-ring'
  */
 const STYLE: FighterStyle = {
   trail: { color: [0.36, 0.28, 0.28], life: 0.09, speed: 16, tip: 0.6 },
-  swing: { bodyHz: 340, edgeHz: 1500, speed: 22, edge: 0.5, level: 0.27 },
+  // the racer's sword swing; the cutlass's edge runs about a fifth faster through the same swing
+  swing: { ...SWORD_SWING, speed: 29 },
   forge: { from: 360, to: 1900, crackleHz: 2600, level: 0.27 },
   palette: 0,
   light: 0xff3a48,
@@ -45,6 +47,8 @@ const STYLE: FighterStyle = {
  *   leap     (strength) the cyclone's spring off the sand
  *   whirl    (strength) the turn's rush, and sand whipped round with it
  *   touchdown (strength) a landing on both feet: the sand driven out round them
+ *   stomp.L / stomp.R (strength) a foot stamped down to drive a blow: a thud through the sand, dust out round it
+ *   bite     (strength) the point biting into the sand at a cut's end
  *   eyes     (0..1) the eyes flare
  * and the special's (special-fx.ts).
  */
@@ -53,6 +57,7 @@ class ImpalaFighter extends Fighter {
   private readonly arcs = new BladeArcs()
   private readonly lightning = new Lightning()
   private readonly rings = new ShockRing()
+  private readonly sweep = new SweepRing()
   /** the discharge's light: the character's third light slot (the weapon's and the blast's are the fighter's) */
   private readonly thunderLight = new PointLight(0xff5a6a, 0, 34, 2)
   private readonly thunder: ThunderFx
@@ -62,10 +67,12 @@ class ImpalaFighter extends Fighter {
     super(model, impala, contact, mix, weapon, STYLE)
     this.impala = impala
     this.lightning.ground = contact
-    this.object.add(this.arcs.mesh, this.lightning.mesh, this.rings.mesh, this.thunderLight)
+    this.object.add(this.arcs.mesh, this.lightning.mesh, this.rings.mesh, this.sweep.mesh, this.thunderLight)
     this.thunder = new ThunderFx({
       weapon, contact, mix, sparks: this.sparks, billows: this.billows, blast: this.blast, haze: this.haze,
-      lightning: this.lightning, rings: this.rings, light: this.thunderLight, robotOffset: model.dims.robotF,
+      lightning: this.lightning, rings: this.rings, sweep: this.sweep, light: this.thunderLight, robotOffset: model.dims.robotF,
+      foot: (side, out) => out.copy(model.contacts().feet[side]),
+      thud: (strength) => impala.audio.footstep(1 + 0.25 * Math.min(1, strength)),
     })
   }
 
@@ -94,6 +101,9 @@ class ImpalaFighter extends Fighter {
       case 'whirl': this.whirl(frame, v); return
       case 'touchdown': this.touchdown(frame, v); return
       case 'eyes': this.eyesTarget = v; return
+      case 'stomp.L': this.stomp('L', frame, v); return
+      case 'stomp.R': this.stomp('R', frame, v); return
+      case 'bite': this.bite(frame, v); return
     }
     if (!this.thunder.cue(cue, frame)) super.cue(cue, frame)
   }
@@ -120,6 +130,7 @@ class ImpalaFighter extends Fighter {
     this.arcs.reset()
     this.lightning.reset()
     this.rings.reset()
+    this.sweep.reset()
     this.thunder.reset()
     this.eyesTarget = 0
     this.impala.eyeBoost = 0
@@ -130,6 +141,7 @@ class ImpalaFighter extends Fighter {
     this.arcs.warm(on)
     this.lightning.warm(on)
     this.rings.warm(on)
+    this.sweep.warm(on)
   }
 
   dispose(): void {
@@ -141,6 +153,7 @@ class ImpalaFighter extends Fighter {
     this.arcs.update(dt)
     this.lightning.update(dt)
     this.rings.update(dt)
+    this.sweep.update(dt)
     this.impala.eyeBoost += (this.eyesTarget - this.impala.eyeBoost) * (1 - Math.exp(-dt * 6))
   }
 
@@ -188,7 +201,6 @@ class ImpalaFighter extends Fighter {
     this.haze.emit({ at: _a, jitter: 1.2, size: [2.4, 3.6], rise: 2, life: [0.3, 0.5], strength: 0.9 * strength })
     this.sparks.emit({ count: Math.round(30 * strength), at: this.edgeTip, dir: _up, spread: 0.45, speed: [3, 12], life: [0.25, 0.7], size: 0.016, drag: 1.5, gravity: 0.9, palette: 0, jitter: 0.6 })
     frame.camera.shockwave(_a.set(cx, s.pos.y + 2, cz), 0.3 * strength)
-    passBy(this.mix, 34 * strength, 0.45)
   }
 
   /** The cyclone's spring off the sand. */
@@ -199,11 +211,11 @@ class ImpalaFighter extends Fighter {
     _a.y = this.contact.height(_a.x, _a.z)
     this.contact.surge(_a, 1.4, 0.35 * strength)
     this.contact.burst(_a, 1.2 * strength, 30)
-    slam(this.mix, 0.55 * strength, 50)
+    this.thud(_a, strength)
     frame.camera.kick(0.35 * strength)
   }
 
-  /** The turn's rush through the air, and sand whipped round with it. */
+  /** The turn's sand whipped round with it (its rush is the swing voice). */
   private whirl(frame: CombatFrame, strength: number): void {
     const s = frame.state
     const ahead = this.model.dims.robotF
@@ -212,11 +224,54 @@ class ImpalaFighter extends Fighter {
       const a = (k / 16) * Math.PI * 2
       _a.set(cx + Math.cos(a) * 4.2, 0, cz + Math.sin(a) * 4.2)
       _a.y = this.contact.height(_a.x, _a.z)
-      // round with the turn, clockwise seen from above, and out
-      _b.set(Math.sin(a) * 0.9 + Math.cos(a) * 0.4, 0.25, -Math.cos(a) * 0.9 + Math.sin(a) * 0.4).normalize()
+      // round with the turn, anticlockwise seen from above (toward the blade's side), and out
+      _b.set(-Math.sin(a) * 0.9 + Math.cos(a) * 0.4, 0.25, Math.cos(a) * 0.9 + Math.sin(a) * 0.4).normalize()
       this.billows.emit({ count: 1, at: _a, jitter: 0.8, dir: _b, spread: 0.15, speed: [6, 12], life: [1.2, 2.2], size: [0.9, 3.4], heat: 0, drag: 2, buoyancy: 0.3, tone: 1, opacity: 0.28 * strength })
     }
-    passBy(this.mix, 46 * strength, 0.6)
+  }
+
+  /**
+   * The robot's weight driven into the sand (a stamp, a push-off, a landing):
+   * its own footfall, heavy. The shared `slam` (the truck's axe into the
+   * ground, its sand hissing as it rains back for over a second) read as a
+   * steam leak under every blow.
+   */
+  private thud(at: Vector3, strength: number): void {
+    this.impala.audio.footstep(1 + 0.25 * Math.min(1, strength), this.contact.surface(at.x, at.z))
+  }
+
+  /** The point biting into the sand at the end of a cut: sand and sparks thrown up round it, the blow's hit-stop; a heavy thud. */
+  private bite(frame: CombatFrame, strength: number): void {
+    const w = this.weapon
+    if (!w || w.presence < 0.5) return
+    const at = _a.copy(this.edgeBase.y < this.edgeTip.y ? this.edgeBase : this.edgeTip)
+    at.y = this.contact.height(at.x, at.z)
+    for (let k = 0; k < 10; k++) {
+      const a = (k / 10) * Math.PI * 2
+      _b.set(at.x + Math.cos(a) * 0.9 * strength, 0, at.z + Math.sin(a) * 0.9 * strength)
+      _b.y = this.contact.height(_b.x, _b.z)
+      this.contact.burst(_b, 1.2 * strength, 10)
+    }
+    this.contact.burst(at, 1.6 * strength, 40)
+    this.sparks.emit({ count: Math.round(40 * strength), at, dir: _up, spread: 0.75, speed: [3, 11], life: [0.25, 0.8], size: 0.018, drag: 1.2, gravity: 1, palette: 0, jitter: 0.3 })
+    this.thud(at, strength)
+    frame.camera.kick(Math.min(1, strength))
+    frame.camera.shake(Math.min(1, 0.7 * strength))
+    frame.camera.hitStop(0.075, 0.1)
+  }
+
+  /** A foot stamped down under a blow: the weight driven through it into the sand. */
+  private stomp(side: 'L' | 'R', frame: CombatFrame, strength: number): void {
+    _a.copy(this.model.contacts().feet[side])
+    _a.y = this.contact.height(_a.x, _a.z)
+    this.contact.surge(_a, 1.5, 0.22 * strength)
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2
+      _b.set(_a.x + Math.cos(a) * 0.9, _a.y, _a.z + Math.sin(a) * 0.9)
+      this.contact.burst(_b, 0.8 * strength, 6)
+    }
+    this.thud(_a, strength)
+    frame.camera.kick(0.22 * strength)
   }
 
   /** A hard landing on both feet: the sand driven out round them. */
@@ -231,7 +286,7 @@ class ImpalaFighter extends Fighter {
       _b.set(_a.x + Math.cos(a) * 1.6, _a.y, _a.z + Math.sin(a) * 1.6)
       this.contact.burst(_b, 1.1 * strength, 10)
     }
-    slam(this.mix, 0.85 * strength, 44)
+    this.thud(_a, strength)
     frame.camera.kick(0.5 * strength)
     frame.camera.shake(0.35 * strength)
   }
@@ -250,6 +305,8 @@ export function createImpalaCombat(model: TransformerModel, weaponAsset: WeaponA
     offGrip: weaponAsset ? weaponAsset.manifest.grips.off : [0, 0, -0.2],
     // the grip runs across the fist: the wrist turns with the forearm, so the edge faces along it, away from the elbow
     wristFollows: true,
+    // held as a person holds a one-handed blade: the elbow places it, the wrist only finishes it (pose.ts)
+    natural: NATURAL_HOLD,
     sole,
   })
   const weapon = weaponAsset

@@ -37,7 +37,23 @@ import type { GaitLeg } from '../model/rig'
  *    to a target carried with the body, `lx` (m, + outward of its stance
  *    station), `ly` (m, + forward), `lz` (m, up from the ground under the
  *    lowest foot) and `lp` (deg, + toe down). A leap or a dash too fast to step
- *    carries its feet this way; the planner re-plants them where they land.
+ *    carries its feet this way; the planner re-plants them where they land;
+ *  - `w.bend` (deg): under a natural hold (overlay.ts), how much further than
+ *    the wrist the blade may bend toward the forearm's line, taken by the grip
+ *    pivoting diagonally in the fist (a blade held in line with the arm);
+ *  - `w.reverse` (0 / 1, read past 0.5): the main hand holds the weapon
+ *    reversed, the blade out of the little finger's side of the fist (a dagger's
+ *    stabbing grip), the edge still toward the knuckles: the weapon channels
+ *    still name the blade of the ordinary grip (so the hand moves alike either
+ *    way) and the weapon's blade is its opposite; changed only while the weapon
+ *    flies free (a regrip in the air);
+ *  - `w.free` (0..1): the weapon flies free of the hand, placed by `w.fx / fy /
+ *    fz` (its grip point, m: + left, forward, up from where the pelvis stands at
+ *    rest, in the model's frame; the pelvis's own drop and shift do not carry
+ *    it) and `w.qx / qy / qz / qw` (its rotation in the model's authoring
+ *    frame, a quaternion, keyed densely and on one sign); the hand meanwhile
+ *    goes on by the weapon channels as a hold of the weapon it does not hold
+ *    (open by its `grip`), to the catch.
  */
 export const CHANNEL_NAMES = [
   'hipX', 'hipDrop', 'hipPitch', 'hipRoll', 'hipYaw',
@@ -47,6 +63,7 @@ export const CHANNEL_NAMES = [
   'w.x', 'w.y', 'w.z', 'w.yaw', 'w.pitch', 'w.roll', 'w.wield', 'w.two', 'w.slide',
   'R.heel', 'L.heel', 'advance', 'strafe', 'turn', 'air',
   'R.free', 'R.lx', 'R.ly', 'R.lz', 'R.lp', 'L.free', 'L.lx', 'L.ly', 'L.lz', 'L.lp',
+  'w.bend', 'w.reverse', 'w.free', 'w.fx', 'w.fy', 'w.fz', 'w.qx', 'w.qy', 'w.qz', 'w.qw',
 ] as const
 
 export type Channel = typeof CHANNEL_NAMES[number]

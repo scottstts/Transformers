@@ -60,9 +60,10 @@ const FIGHTERS: Fighter[] = [
     name: 'impala',
     make: () => createImpala({ ...readAsset('impala'), weapon: readWeapon('impala-cutlass') }, NO_CONTACT, new AudioMix()),
     midCombo: [0, 0.38],
-    apex: 2.5,
-    // the leap onto the centre
-    travel: 8,
+    // the charge runs on a level line 0.35 m over the sand
+    apex: 0.3,
+    // the charge and its slide onto the centre
+    travel: 15,
   },
 ]
 

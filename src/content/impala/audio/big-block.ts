@@ -21,6 +21,17 @@ import { ENGINE_BANDS, ENGINE_TIMBRE, type EngineTimbre } from './engine-model'
  *   load    under load the pull's timbre; off the throttle (the overrun and
  *           the idle) the top closes and the noise falls back, leaving the
  *           low burble
+ *   chew    no two firings alike: every cylinder's pulse lands a little
+ *           stronger or weaker than the last (cycle-to-cycle combustion
+ *           variation, largest with a big cam at low revs and light load),
+ *           over the cross-plane crank's uneven bank-to-bank rhythm
+ *           (1-8-4-3-6-5-7-2: L R R L R L L R). A gain signal of one
+ *           level per firing, eased between them, looped and played in step
+ *           with the revs, works on everything the engine sounds; a strictly
+ *           periodic wave reads as smooth and synthetic
+ *   rumble  the half orders under the firing order (the burble) and the
+ *           exhaust's low resonance voiced up over the measurement: the
+ *           pipes' boom heard close, not the recording's distant pass
  *
  * A Turbo Hydra-Matic three-speed: ratios 2.48 / 1.48 / 1.00 (the
  * recording's shift drops the revs by about 1.45, its 2-3), shift points
@@ -56,6 +67,55 @@ const BANK_SHARE = 0.4
 const LOOP = 1 << 16
 /** Noise playback rate limits (its ratio to a timbre's firing frequency). */
 const RATE: readonly [number, number] = [0.25, 2.2]
+/** The orders under the firing order (the cross-plane burble), raised over their measured amplitude. */
+const RUMBLE = 1.9
+/** The exhaust's low resonance: a shelf under this (Hz), raised (dB). */
+const BOOM: readonly [number, number] = [150, 5]
+/**
+ * The chew: its loop's engine cycles and the cycle rate it is written at
+ * (Hz; played at the revs' ratio to it), the spread of a firing's strength
+ * (share, at low revs and at high) and each bank's lean (share).
+ */
+const CHEW = { cycles: 64, cycleHz: 20, low: 0.3, high: 0.13, bank: 0.16 }
+/** The firing order's banks: + left, - right (1-8-4-3-6-5-7-2). */
+const BANKS = [1, -1, -1, 1, -1, 1, 1, -1]
+
+/**
+ * The chew's gain deviation, `CHEW.cycles` engine cycles at `CHEW.cycleHz`
+ * (a seamless loop at `rate`): one level per firing, its bank's lean plus a
+ * fresh random spread (unit standard deviation, scaled by the voice), eased
+ * between firings with a raised cosine so the gain never steps. Mean zero.
+ */
+export function firingChew(rate: number, seed: number): Float32Array<ArrayBuffer> {
+  const firings = CHEW.cycles * 8
+  const slot = rate / CHEW.cycleHz / 8
+  const n = Math.round(firings * slot)
+  let s = seed >>> 0
+  const random = (): number => {
+    // xorshift, then a sum of uniforms: near-normal, unit variance
+    let sum = 0
+    for (let k = 0; k < 4; k++) {
+      s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0
+      sum += s / 4294967296
+    }
+    return (sum - 2) * Math.sqrt(3)
+  }
+  const level = new Float32Array(firings)
+  // held within 2.4 deviations, so even the widest chew never drives the gain below zero
+  for (let k = 0; k < firings; k++) level[k] = Math.max(-2.4, Math.min(2.4, random())) + BANKS[k % 8] * (CHEW.bank / CHEW.low)
+  let mean = 0
+  for (const v of level) mean += v / firings
+  const out = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    const x = i / slot
+    const k = Math.floor(x) % firings
+    const u = x - Math.floor(x)
+    // the next firing's level eased in over the second half of the slot
+    const e = u < 0.5 ? 0 : 0.5 - 0.5 * Math.cos((u - 0.5) * 2 * Math.PI)
+    out[i] = level[k] + (level[(k + 1) % firings] - level[k]) * e - mean
+  }
+  return out
+}
 
 /** The automatic's gear and the revs it gives: pure state, one update per frame. */
 export class Hydramatic {
@@ -102,6 +162,9 @@ interface Graph {
   noiseLevel: [GainNode, GainNode]
   /** the top closes off the throttle */
   top: BiquadFilterNode
+  /** the chew's loop and how deep it works */
+  chew: AudioBufferSourceNode
+  chewDepth: GainNode
   level: GainNode
   sources: AudioScheduledSourceNode[]
 }
@@ -121,6 +184,20 @@ function noiseLoops(ctx: BaseAudioContext): AudioBuffer[] {
     loops.set(ctx, out)
   }
   return out
+}
+
+/** The chew's loop, rendered once per context. */
+const chews = new WeakMap<BaseAudioContext, AudioBuffer>()
+
+function chewLoop(ctx: BaseAudioContext): AudioBuffer {
+  let buffer = chews.get(ctx)
+  if (!buffer) {
+    const samples = firingChew(ctx.sampleRate, 0x427)
+    buffer = ctx.createBuffer(1, samples.length, ctx.sampleRate)
+    buffer.copyToChannel(samples, 0)
+    chews.set(ctx, buffer)
+  }
+  return buffer
 }
 
 /** RMS of a timbre's orders as its periodic wave plays them (unit firing order). */
@@ -172,6 +249,8 @@ export class BigBlock {
     g.blend[0].gain.setTargetAtTime(Math.cos(u * Math.PI / 2), t, 0.06)
     g.blend[1].gain.setTargetAtTime(Math.sin(u * Math.PI / 2), t, 0.06)
     g.top.frequency.setTargetAtTime(1400 + 9000 * load * load + 1600 * u, t, 0.07)
+    // the chew: widest at low revs off the throttle, tightening as the engine pulls and spins up
+    g.chewDepth.gain.setTargetAtTime((CHEW.low + (CHEW.high - CHEW.low) * u) * (1 - 0.25 * load), t, 0.1)
     for (let i = 0; i < 2; i++) g.noiseLevel[i].gain.setTargetAtTime(this.noiseGain(i) * (0.45 + 0.55 * load), t, 0.07)
     const level = idling ? IDLE_LEVEL : OVERRUN + (1 - OVERRUN) * load
     const target = LEVEL * level
@@ -204,6 +283,7 @@ export class BigBlock {
     g.tones[2].frequency.setTargetAtTime(cycle, t, response)
     g.tones[3].frequency.setTargetAtTime(cycle * BANK, t, response)
     g.pulse.frequency.setTargetAtTime(cycle * 8, t, response)
+    g.chew.playbackRate.setTargetAtTime(cycle / CHEW.cycleHz, t, response)
     const timbres = [ENGINE_TIMBRE.low, ENGINE_TIMBRE.high]
     for (let i = 0; i < 2; i++) {
       const rate = Math.min(RATE[1], Math.max(RATE[0], cycle * 8 / timbres[i].firing))
@@ -234,13 +314,18 @@ export class BigBlock {
       if (kind === 'set') g.pulse.frequency.setValueAtTime(cycle * 8, at)
       else if (kind === 'lin') g.pulse.frequency.linearRampToValueAtTime(cycle * 8, at)
       else g.pulse.frequency.exponentialRampToValueAtTime(cycle * 8, at)
+      if (kind === 'set') g.chew.playbackRate.setValueAtTime(cycle / CHEW.cycleHz, at)
+      else if (kind === 'lin') g.chew.playbackRate.linearRampToValueAtTime(cycle / CHEW.cycleHz, at)
+      else g.chew.playbackRate.exponentialRampToValueAtTime(cycle / CHEW.cycleHz, at)
     }
     for (const o of [...g.tones, g.pulse]) o.frequency.cancelScheduledValues(t)
+    g.chew.playbackRate.cancelScheduledValues(t)
     set(200, t, 'set')
     set(280, t + 0.5, 'lin')
     set(1900, t + 0.85, 'exp')
     for (const [i, o] of g.tones.entries()) o.frequency.setTargetAtTime(IDLE / 120 * (i % 2 ? BANK : 1), t + 0.9, 0.3)
     g.pulse.frequency.setTargetAtTime(IDLE / 15, t + 0.9, 0.3)
+    g.chew.playbackRate.setTargetAtTime(IDLE / 120 / CHEW.cycleHz, t + 0.9, 0.3)
     g.level.gain.cancelScheduledValues(t)
     g.level.gain.setValueAtTime(0, t)
     g.level.gain.linearRampToValueAtTime(LEVEL * 0.22, t + 0.5)
@@ -274,11 +359,28 @@ export class BigBlock {
     const send = ctx.createGain()
     send.gain.value = 0.3
     air.connect(send).connect(out.send)
+    // the exhaust's low resonance
+    const boom = ctx.createBiquadFilter()
+    boom.type = 'lowshelf'
+    boom.frequency.value = BOOM[0]
+    boom.gain.value = BOOM[1]
+    boom.connect(level)
+    // the chew works on everything the engine sounds: its gain is 1 plus the loop's deviation times the depth
+    const chewGain = ctx.createGain()
+    chewGain.gain.value = 1
+    chewGain.connect(boom)
+    const chew = ctx.createBufferSource()
+    chew.buffer = chewLoop(ctx)
+    chew.loop = true
+    chew.playbackRate.value = IDLE / 120 / CHEW.cycleHz
+    const chewDepth = ctx.createGain()
+    chewDepth.gain.value = CHEW.low
+    chew.connect(chewDepth).connect(chewGain.gain)
     const top = ctx.createBiquadFilter()
     top.type = 'lowpass'
     top.frequency.value = 1500
     top.Q.value = 0.55
-    top.connect(level)
+    top.connect(chewGain)
 
     const sources: AudioScheduledSourceNode[] = []
     const tones: OscillatorNode[] = []
@@ -288,7 +390,7 @@ export class BigBlock {
     const noiseLevel: GainNode[] = []
     const pulse = ctx.createOscillator()
     pulse.frequency.value = IDLE / 15
-    sources.push(pulse)
+    sources.push(pulse, chew)
     const buffers = noiseLoops(ctx)
     ;(['low', 'high'] as const).forEach((name, i) => {
       const timbre = ENGINE_TIMBRE[name]
@@ -299,8 +401,9 @@ export class BigBlock {
       // the orders at their measured amplitudes, fixed pseudo-random phases (a pulse train, not a buzz)
       const n = timbre.orders.length
       const real = new Float32Array(n + 1), imag = new Float32Array(n + 1)
-      timbre.orders.forEach((a, j) => {
+      timbre.orders.forEach((measured, j) => {
         const phase = (j + 1) * 2.399
+        const a = measured * (j + 1 < 8 ? RUMBLE : 1)
         real[j + 1] = a * Math.cos(phase)
         imag[j + 1] = a * Math.sin(phase)
       })
@@ -339,7 +442,7 @@ export class BigBlock {
     return {
       tones, blend: blend as [GainNode, GainNode], noises, pulse,
       pulseDepth: pulseDepth as [GainNode, GainNode], noiseLevel: noiseLevel as [GainNode, GainNode],
-      top, level, sources,
+      top, chew, chewDepth, level, sources,
     }
   }
 }

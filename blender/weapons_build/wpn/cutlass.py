@@ -2,8 +2,8 @@
 fuller and a ground edge, a grooved oval grip, a spring-steel D knuckle bow that
 returns into a turned pommel, and a short swept quillon.
 
-Sized for the 5.4 m robot at 3.4 m overall (blade 2.87 m), long as a
-cutlass of a giant: the left hand's grip centre is the origin, +Z runs to the
+Sized for the 5.4 m robot at 4.6 m overall (blade 4.06 m), the blade nearly
+the robot's height so it can be planted point down beside it standing tall: the left hand's grip centre is the origin, +Z runs to the
 tip, the edge faces +X and the blade curves back toward -X at the tip (a
 sabre curves away from its edge), the knuckle bow rises on the cutting-edge side as in
 the reference photo.
@@ -21,6 +21,10 @@ from .kit import Part
 NAME = 'cutlass'
 SCALE = 1.5
 GRIP_MID = -0.175          # reference-frame z of the grip centre (becomes the origin)
+# the blade beyond its root drawn out to this share of the reference's length, a little broader as it goes
+BLADE_ROOT = .26
+BLADE_STRETCH = 1.45
+BLADE_BROADEN = .1
 
 # reference-scale blade stations: (z, width)  and (z, centreline offset toward the spine)
 WIDTH = [(.010, .037), (.032, .086), (.133, .087), (.260, .083), (.750, .078), (1.18, .073),
@@ -65,6 +69,17 @@ def _lin(a, b, n):
     return [a + (b - a) * i / (n - 1) for i in range(n)]
 
 
+def L(z):
+    """Reference blade station z to its drawn-out place (the root and hilt unchanged)."""
+    return z if z <= BLADE_ROOT else BLADE_ROOT + (z - BLADE_ROOT) * BLADE_STRETCH
+
+
+def B(z):
+    """The blade's width factor at reference station z: broadening smoothly past the root."""
+    t = min(1, max(0, (z - BLADE_ROOT) / .5))
+    return 1 + BLADE_BROADEN * t * t * (3 - 2 * t)
+
+
 def P(x, y, z):
     """Reference-frame point to weapon frame: edge toward +X, grip centre at the origin, metres."""
     return Vector((-x * SCALE, y * SCALE, (z - GRIP_MID) * SCALE))
@@ -89,15 +104,15 @@ def _blade():
     # fuller rows carry v = +-(1 - fuller)
     rings = []
     for z in _lin(.010, 1.926, 193):
-        w = max(_smooth(WIDTH, z), 3e-4)
-        cx = _smooth(CENTRE, z)
+        w = max(_smooth(WIDTH, z) * B(z), 3e-4)
+        cx = _smooth(CENTRE, z) * BLADE_STRETCH  # the curve drawn out with the blade (nil at the root)
         depth = .011 * min(1, w / .060)
         f = fz(z)
         ring = []
         for i, (u, v) in enumerate(SECTION):
             if v is None:
                 v = (1 - f) * (1 if i < 7 else -1)
-            ring.append(P(cx + u * w, v * depth, z))
+            ring.append(P(cx + u * w, v * depth, L(z)))
         rings.append(ring)
     mesh = K.loft(rings, True, True)
 
@@ -196,8 +211,8 @@ def build(coll):
     K.finish(_guard().build(coll), width=0.0015, seg=1, angle=35)
     # the honed edge from just past the heel to the point; the second grip is the pommel end (one-handed weapon)
     z0 = .30
-    heel = P(_smooth(CENTRE, z0) - .58 * _smooth(WIDTH, z0), 0, z0)
-    tip = P(CENTRE[-1][1], 0, 1.926)
+    heel = P(_smooth(CENTRE, z0) * BLADE_STRETCH - .58 * _smooth(WIDTH, z0) * B(z0), 0, L(z0))
+    tip = P(CENTRE[-1][1] * BLADE_STRETCH, 0, L(1.926))
     return {
         'grips': {'main': [0.0, 0.0, 0.0], 'off': [0.0, 0.0, -0.20]},
         'edge': [[heel.x, 0.0, heel.z], [tip.x, 0.0, tip.z]],

@@ -1,5 +1,5 @@
 import { mirrorCitadel, readMirror } from '../mirror.ts'
-import { PerspectiveCamera, Scene, Vector3, type Object3D } from 'three/webgpu'
+import { PerspectiveCamera, Quaternion, Scene, Vector3, type Object3D } from 'three/webgpu'
 import { createDesertWorld } from '../../src/worlds/desert'
 import { rosterEntry } from '../../src/content/roster'
 import { decodeTransformerAsset } from '../../src/content/transformer/asset/loader'
@@ -18,10 +18,18 @@ import { crossings, surfaces, type Surface } from '../../tests/support/clash'
  * shrunken core boxes of the combat tests. Spans of consecutive frames are
  * merged: `t 0.30-0.46 haft -1.4..-0.9 x bone:thigh.R` is the haft between
  * 1.4 and 0.9 m behind the grip crossing the right thigh's surface. The weapon
- * wrist is reported where it bends more than WRIST_BEND off its forearm.
+ * wrist is reported where it bends more than WRIST_BEND off its forearm, and
+ * either hand where it turns more than WRIST_TWIST about its forearm from the
+ * stand's (`twist.L`: the arm reads wrung), and either elbow where it rides
+ * more than ELBOW_WING up off the shoulder-hand line while the hand is below
+ * the shoulder (`wing.L`: a chicken wing; a raised elbow belongs to a raised hand).
  */
 /** A wrist bent further than this off its forearm's line reads as broken (deg). */
 const WRIST_BEND = 70
+/** A hand turned further than this about the forearm from the stand's (deg): the arm reads twisted. */
+const WRIST_TWIST = Number(process.env.CLASH_TWIST ?? 75)
+/** An elbow raised past this above the shoulder-hand line while the hand is low (deg): a chicken wing. */
+const ELBOW_WING = Number(process.env.CLASH_WING ?? 35)
 /** CLASH_FRAMES=1 prints every frame on its own instead of merged spans. */
 const FRAMES = process.env.CLASH_FRAMES === '1'
 
@@ -83,6 +91,25 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   const hits: number[] = []
   const pos = (name: string, v: Vector3): Vector3 => v.setFromMatrixPosition(node(name).matrixWorld)
   const e0 = new Vector3(), e1 = new Vector3(), e2 = new Vector3(), e3 = new Vector3()
+  // each hand's turn about its forearm, against the stand's (measured on the first frame, before any fight)
+  const qFore = new Quaternion(), qHand = new Quaternion(), qRel = new Quaternion()
+  const rest: Record<'R' | 'L', Quaternion | null> = { R: null, L: null }
+  // each hand's own long axis (wrist to knuckles, in its frame), taken with the rest
+  const handAxis = { R: new Vector3(), L: new Vector3() }
+  const relative = (side: 'R' | 'L', out: Quaternion): Quaternion => {
+    node(`bone:forearm.${side}`).getWorldQuaternion(qFore)
+    node(`bone:hand.${side}`).getWorldQuaternion(qHand)
+    return out.copy(qFore).invert().multiply(qHand)
+  }
+  const twist = (side: 'R' | 'L'): number => {
+    const q = relative(side, qRel).premultiply(_inv.copy(rest[side]!).invert())
+    const ax = handAxis[side]
+    const along = q.x * ax.x + q.y * ax.y + q.z * ax.z
+    let angle = 2 * Math.atan2(along, q.w) * 180 / Math.PI
+    if (angle > 180) angle -= 360
+    if (angle < -180) angle += 360
+    return angle
+  }
 
   fight.setGuard(guard)
   const q = [...clicks]
@@ -104,6 +131,11 @@ export async function probeClash(car: string, tokens: string[], until: number): 
     model.pose(1, pose)
     player.combat.effects.afterPose()
     player.effects.update(step, state)
+    if (!rest.R) for (const side of ['R', 'L'] as const) {
+      rest[side] = relative(side, new Quaternion())
+      node(`bone:hand.${side}`).getWorldQuaternion(qHand)
+      handAxis[side].subVectors(pos(`bone:middle1.${side}`, e2), pos(`bone:hand.${side}`, e3)).applyQuaternion(qHand.invert()).normalize()
+    }
     if (t < 0) continue
 
     // the haft, as far as it has formed, in 0.1 m pieces so each crossing is placed along it
@@ -129,6 +161,23 @@ export async function probeClash(car: string, tokens: string[], until: number): 
       pos(`bone:middle1.${main}`, e2)
       const bend = e2.sub(e1).angleTo(e1.clone().sub(e0)) * 180 / Math.PI
       if (bend > WRIST_BEND) report(`wrist.${main} bend|deg`, t, bend)
+    }
+    // each hand wrung about its forearm, each elbow winged up while its hand is low
+    for (const side of ['R', 'L'] as const) {
+      const turn = twist(side)
+      if (Math.abs(turn) > WRIST_TWIST) report(`twist.${side}|deg`, t, turn)
+      pos(`bone:upperarm.${side}`, e0)
+      pos(`bone:forearm.${side}`, e1)
+      pos(`bone:hand.${side}`, e2)
+      if (e2.y < e0.y - 0.3) {
+        const line = e3.subVectors(e2, e0).normalize()
+        const off = e1.sub(e0)
+        off.addScaledVector(line, -off.dot(line))
+        if (off.lengthSq() > 1e-4) {
+          const up = Math.asin(Math.min(1, off.normalize().y)) * 180 / Math.PI
+          if (up > ELBOW_WING) report(`wing.${side}|deg`, t, up)
+        }
+      }
     }
     // each leg's bones (thigh, shin, foot) against the other leg's parts
     for (const side of ['R', 'L'] as const) {
@@ -166,3 +215,5 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   }
   for (const [key, s] of spans) print(key, s)
 }
+
+const _inv = new Quaternion()

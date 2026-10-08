@@ -23,6 +23,13 @@ A moving panel must stay connected to its limb (support gate, 30 mm): by its hos
 - Rear pods ride a 3-stage carriage out of the upper arm and turn 90° on its hub.
 - Rear bumper seats on the chest collar, slides over the back edge on a post, then down the back module.
 
+## On the live skeleton
+
+The bake hangs every piece off one bone, which holds only while the skeleton keeps the transformation's last pose. Once the gait or a fight turns joints the transformation never turned, a piece resting on another bone's parts floats off, and a brace pinned to two bones comes apart.
+
+- A piece that touches nothing on its own bone at the stand but rests on another's is `carried` by the bone it rests on (TransformerOptions): the Impala's exhaust tails and rear quarters hung from the upper arms while resting on the chest and the shoulders' fenders, and swung off into the air with a raised arm. Find them with `AUDIT_HOSTS=1 node tools/pose-audit.mjs <car>`.
+- Telescopic braces (`link.<name>`) are laid again every frame between their two carriers' pins (`braces`, braces.ts), the stages spread evenly as the build lays them, turned by the least rotation from the baked line. A brace held short of its carriers' span reports `strain`; raise a pose that pulls one past its stroke.
+
 ## Datums worth keeping
 
 - Front flare band width keeps a 5 mm reveal to the door (`FLARE_W` derived); the door leaves in an outer lane 0.20 out and 0.10 down (clears the flare and passes under the fists).

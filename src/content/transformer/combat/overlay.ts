@@ -37,6 +37,25 @@ export interface CombatBuild {
    * whose butt must pass the forearm on the fist's far side at any angle.
    */
   wristFollows?: boolean
+  /**
+   * The main arm holds its weapon as a person holds a one-handed blade
+   * (with `wristFollows`): the elbow and the forearm place the blade, the
+   * wrist only finishes it. Every frame the elbow takes the roll that leaves
+   * the hand least turned on its forearm (from the stand's hand: a forearm
+   * turns about `twist` either way, palm down to palm up; past it the arm
+   * reads wrung) without riding up into a chicken wing while the hand is
+   * low (`wing`, deg off the shoulder-hand line) or tucking in across the
+   * chest (a car's front end stands out there: an elbow more than `tuck` m
+   * inside the shoulder runs into it), near the last frame's roll
+   * so it never swaps sides, and moving from it no faster than the authored
+   * arm and blade move (a better hold reached by a turn of the elbow is
+   * reached over frames, never in one); the blade is then kept within `bend`
+   * of square to the forearm (and `w.bend` further, which the grip takes by
+   * pivoting diagonally in the fist: the hand stays at `bend`) and `twist`
+   * of the stand's turn about it. The weapon channels' direction is the wish
+   * the arm finishes, and the elbow channel goes unused while the weapon is held.
+   */
+  natural?: { twist: number; bend: number; wing: number; tuck: number }
 }
 
 /**
@@ -55,6 +74,8 @@ function gripRotation(thumb: Vector3, pistol: boolean): Quaternion {
   const z = pistol ? knuckles : thumb.clone()
   return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, new Vector3().crossVectors(z, x), z))
 }
+/** Half a turn about X: the reversed grip. */
+const HALF_X = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI)
 /** The weapon's rest in the chest frame: upright, the edge facing forward. */
 const WEAPON_REST = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(
   new Vector3(0, -1, 0), new Vector3(1, 0, 0), new Vector3(0, 0, 1)))
@@ -110,6 +131,39 @@ export class CombatOverlay implements RigOverlay {
   private readonly wristWeight: Record<Side, number> = { R: 0, L: 0 }
   private readonly wristAxis: Record<Side, Vector3> = { R: new Vector3(1, 0, 0), L: new Vector3(1, 0, 0) }
   private readonly legs: Record<Side, GaitLeg> = { R: { step: 0, up: 0, pitch: 0, x: 0, yaw: 0 }, L: { step: 0, up: 0, pitch: 0, x: 0, yaw: 0 } }
+  /**
+   * The blade's direction with the hand unturned on its forearm (the stand's
+   * hand, the wrist straight), in the flexed forearm's frame (X the elbow's
+   * hinge, the bone along -Z): the knuckle row toward the thumb, with the
+   * forearm's own turn. The natural hold's turn is measured from it.
+   */
+  private readonly unturned: Record<Side, Vector3>
+  /** the natural hold's elbow roll (deg), and whether it carries over from the last frame */
+  private readonly naturalRoll: Record<Side, number> = { R: 0, L: 0 }
+  private readonly naturalLive: Record<Side, boolean> = { R: false, L: false }
+  /** the blade's direction as the natural hold last held it (world) */
+  private readonly lastBlade: Record<Side, Vector3> = { R: new Vector3(0, 0, 1), L: new Vector3(0, 0, 1) }
+  /** this frame's wish, the blade held at the end of the last frame, and how far the wish and the arm have turned since (rad) */
+  private readonly frameWish: Record<Side, Vector3> = { R: new Vector3(0, 0, 1), L: new Vector3(0, 0, 1) }
+  private readonly frameBlade: Record<Side, Vector3> = { R: new Vector3(0, 0, 1), L: new Vector3(0, 0, 1) }
+  private readonly bladeStep: Record<Side, number> = { R: Math.PI, L: Math.PI }
+  /** the shoulder-to-fist line at the last frame (world) */
+  private readonly frameReach: Record<Side, Vector3> = { R: new Vector3(0, 0, -1), L: new Vector3(0, 0, -1) }
+  /** the natural hold's roll at the end of the last frame (deg): this frame's may move only so far from it */
+  private readonly frameRoll: Record<Side, number> = { R: 0, L: 0 }
+  /** the grip's pivot in the fist (w.bend): the turn (world) from the blade the hand holds to the blade held */
+  private readonly pivot = new Quaternion()
+  /** the side of the forearm the hand last held the blade on (world, square to the forearm) */
+  private readonly pivotSide: Record<Side, Vector3> = { R: new Vector3(1, 0, 0), L: new Vector3(1, 0, 0) }
+  /** the main hand's weapon rotation as the last solve placed it (world) */
+  private readonly weaponQ = new Quaternion()
+  /** the main hand's reversed grip (w.reverse): the weapon turned half round its edge's axis in the fist */
+  private reversed = false
+  private readonly gripRevInv: Quaternion
+  private readonly gripBaseRev = new Matrix4()
+  private readonly unturnedRev: Record<Side, Vector3>
+  /** where the pelvis stands at rest (model frame): the free weapon's origin (w.free) */
+  readonly restPelvis = new Vector3()
 
   constructor(rig: RobotRig, build: CombatBuild) {
     this.build = build
@@ -146,6 +200,12 @@ export class CombatOverlay implements RigOverlay {
     this.gripRot = { R: gripRotation(hand.thumb.R, build.pistol ?? false), L: gripRotation(hand.thumb.L, build.pistol ?? false) }
     this.gripRotInv = { R: this.gripRot.R.clone().invert(), L: this.gripRot.L.clone().invert() }
     this.gripBase.compose(this.gripOffset[build.main], this.gripRot[build.main], _one)
+    const half = new Quaternion().setFromAxisAngle(_x, Math.PI)
+    this.gripRevInv = half.clone().multiply(this.gripRotInv[build.main])
+    this.gripBaseRev.compose(this.gripOffset[build.main], this.gripRot[build.main].clone().multiply(half), _one)
+    const unturned = (side: Side): Vector3 => hand.thumb[side].clone().applyQuaternion(rig.stand[this.idx.arm[side].hand].q).applyQuaternion(hand.turn[side])
+    this.unturned = { R: unturned('R'), L: unturned('L') }
+    this.unturnedRev = { R: this.unturned.R.clone().negate(), L: this.unturned.L.clone().negate() }
     this.grip.copy(this.gripBase)
     this.measureNeutral(rig)
   }
@@ -153,6 +213,7 @@ export class CombatOverlay implements RigOverlay {
   /** The stand's channels: arms measured from the rig at rest, everything else zero. */
   private measureNeutral(rig: RobotRig): void {
     rig.poseLive(REST_GAIT)
+    this.restPelvis.setFromMatrixPosition(rig.world[this.idx.pelvis])
     const n = this.neutral
     n.fill(0)
     const chest = _q0.setFromRotationMatrix(rig.world[this.idx.chest]).invert()
@@ -203,10 +264,29 @@ export class CombatOverlay implements RigOverlay {
 
     // the weapon hand first: the other hand may hold the weapon where it ends up
     const main = this.build.main
+    const reverse = v[CH['w.reverse']] > 0.5
+    if (reverse !== this.reversed) {
+      // the hand's wish turns with the grip (a regrip in the air): the hold's memory of the blade turns with it
+      this.reversed = reverse
+      this.lastBlade[main].negate()
+      this.frameBlade[main].negate()
+      this.frameWish[main].negate()
+    }
     this.solveArm(rig, main, w, v[WEAPON + 6])
     rig.forward(root)
-    this.grip.multiplyMatrices(this.gripBase, _m1.makeTranslation(0, 0, -v[CH['w.slide']]))
-    this.weapon.multiplyMatrices(rig.world[this.idx.arm[main].hand], this.grip)
+    // the grip's pivot in the fist, in the weapon's frame (the weapon turned back by it, then on by it in the world)
+    _qg.copy(this.weaponQ).invert().multiply(this.pivot).multiply(this.weaponQ)
+    this.grip.multiplyMatrices(this.reversed ? this.gripBaseRev : this.gripBase, _m1.makeRotationFromQuaternion(_qg)).multiply(_m2.makeTranslation(0, 0, -v[CH['w.slide']]))
+    const hand = rig.world[this.idx.arm[main].hand]
+    const free = MathUtils.clamp(v[CH['w.free']], 0, 1)
+    if (free > 0) {
+      // flying free: placed by its own channels, handed over from (and back to) the hand's hold over the channel's ramp
+      this.weapon.multiplyMatrices(hand, this.grip).decompose(_t0, _q0, _s)
+      _t1.set(v[CH['w.fx']], -v[CH['w.fy']], v[CH['w.fz']]).add(this.restPelvis)
+      _q1.set(v[CH['w.qx']], v[CH['w.qy']], v[CH['w.qz']], v[CH['w.qw']]).normalize()
+      this.grip.copy(hand).invert().multiply(_m1.compose(_t0.lerp(_t1, free), _q0.slerp(_q1, free), _one))
+    }
+    this.weapon.multiplyMatrices(hand, this.grip)
     const off: Side = main === 'R' ? 'L' : 'R'
     this.solveArm(rig, off, w, v[WEAPON + 7])
     rig.forward(root)
@@ -254,23 +334,43 @@ export class CombatOverlay implements RigOverlay {
           .multiply(_q3.setFromAxisAngle(_x, deg(v[WEAPON + 4])))
           .multiply(_q2.setFromAxisAngle(_z, sgn * deg(follows ? 0 : v[WEAPON + 5])))
           .multiply(WEAPON_REST)
-        handQ.copy(weaponQ).multiply(this.gripRotInv[side])
+        // reversed, the weapon turns half round its edge's axis in the fist: the channels name the blade of the hammer grip (so the
+        // hand never sees the regrip), the weapon's blade is its opposite
+        if (this.reversed) weaponQ.multiply(HALF_X)
+        this.pivot.identity()
+        handQ.copy(weaponQ).multiply(this.mainGripInv(side))
         _grip.copy(at)
         at.sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
-        if (follows) {
-          // the forearm the arm will take to this wrist, and the roll that runs the knuckles (weapon +x) on along it
-          // (the pole as the solve below builds it, the elbow channel's roll included)
-          const toWrist = _vd.copy(at).sub(S).normalize().applyQuaternion(_q0.copy(chestQ).invert())
-          const pole = basePole(toWrist, sgn, v[o + 8], _vp).applyAxisAngle(toWrist, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
-          const forearm = forearmTo(S, at, L1, L2, pole, _v3)
-          const haft = _v4.set(0, 0, 1).applyQuaternion(weaponQ)
-          forearm.addScaledVector(haft, -forearm.dot(haft))
-          if (forearm.lengthSq() > 1e-8) {
-            const knuckles = _v1.set(1, 0, 0).applyQuaternion(weaponQ)
-            const turn = Math.atan2(_v0.crossVectors(knuckles, forearm).dot(haft), knuckles.dot(forearm)) + sgn * deg(v[WEAPON + 5])
-            weaponQ.multiply(_q2.setFromAxisAngle(_z, turn))
-            handQ.copy(weaponQ).multiply(this.gripRotInv[side])
-            at.copy(_grip).sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
+        if (this.build.natural) softReach(S, at, L1 + L2)
+        let roll = v[o + 3]
+        // the natural hold turns the hand, which moves the wrist the arm reaches for: a second pass settles it
+        for (let pass = 0; pass < (follows && this.build.natural ? 2 : 1); pass++) {
+          if (follows && this.build.natural) {
+            roll = this.naturalHold(S, at, chestQ, side, weaponQ, v[o + 8], v[o + 3], pass, v[CH['w.bend']])
+            this.handFrom(weaponQ, side, handQ)
+            softReach(S, at.copy(_grip).sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ)), L1 + L2)
+            // the final solve below rolls the elbow as far over as the hold has taken the weapon
+            this.naturalRoll[side] = roll
+          }
+          if (follows) {
+            // the forearm the arm will take to this wrist, and the roll that runs the knuckles (weapon +x) on along it
+            // (the pole as the solve below builds it, the elbow channel's roll included)
+            const toWrist = _vd.copy(at).sub(S).normalize().applyQuaternion(_q0.copy(chestQ).invert())
+            const pole = basePole(toWrist, sgn, v[o + 8], _vp).applyAxisAngle(toWrist, sgn * deg(roll)).applyQuaternion(chestQ)
+            const forearm = forearmTo(S, at, L1, L2, pole, _v3)
+            // the knuckles run on along the forearm round the blade the hand holds (the grip's pivot taken out: the blade itself, pivoted
+            // nearly onto the forearm's line, leaves the knuckles' turn round it undefined, and the hand flipped about it)
+            _qi.copy(this.pivot).invert()
+            const haft = _v4.set(0, 0, 1).applyQuaternion(weaponQ).applyQuaternion(_qi)
+            forearm.addScaledVector(haft, -forearm.dot(haft))
+            if (forearm.lengthSq() > 1e-8) {
+              const knuckles = _v1.set(1, 0, 0).applyQuaternion(weaponQ).applyQuaternion(_qi)
+              const turn = Math.atan2(_v0.crossVectors(knuckles, forearm).dot(haft), knuckles.dot(forearm)) + sgn * deg(v[WEAPON + 5])
+              weaponQ.multiply(_q2.setFromAxisAngle(_z, turn))
+              this.handFrom(weaponQ, side, handQ)
+              at.copy(_grip).sub(_v0.copy(this.gripOffset[side]).applyQuaternion(handQ))
+              if (this.build.natural) softReach(S, at, L1 + L2)
+            }
           }
         }
         // A two-handed weapon must fit both arms. Project its wrist target
@@ -293,6 +393,7 @@ export class CombatOverlay implements RigOverlay {
           at.lerp(_shared, two)
         }
         target.lerp(at, hold)
+        this.weaponQ.copy(weaponQ)
       } else {
         this.weapon.decompose(_vw, _qw, _s)
         handQ.copy(_qw).multiply(this.gripRotInv[side])
@@ -305,7 +406,10 @@ export class CombatOverlay implements RigOverlay {
     // from the unused fist target can become parallel to a weapon arm and
     // flip the elbow when its projection crosses zero during release.
     dir.copy(target).sub(S).normalize().applyQuaternion(_q0.copy(chestQ).invert())
-    const pole = basePole(dir, sgn, v[o + 8], _vp).applyAxisAngle(dir, sgn * deg(v[o + 3])).applyQuaternion(chestQ)
+    const natural = this.build.natural !== undefined && side === this.build.main && hold > 0
+    if (!natural) this.naturalLive[side] = false
+    const elbowRoll = natural ? v[o + 3] + (this.naturalRoll[side] - v[o + 3]) * hold : v[o + 3]
+    const pole = basePole(dir, sgn, v[o + 8], _vp).applyAxisAngle(dir, sgn * deg(elbowRoll)).applyQuaternion(chestQ)
 
     // two-bone IK (+Y of the upper arm faces the elbow)
     const parentQ = _qp.setFromRotationMatrix(rig.world[a.parent])
@@ -338,6 +442,134 @@ export class CombatOverlay implements RigOverlay {
       fist.multiply(_q7.setFromAxisAngle(axis, 2 * angle * hold))
     } else this.wristWeight[side] = 0
     local[a.hand].q.copy(this.gaitQ[a.hand]).slerp(fist, w)
+  }
+
+  /** The main hand's rotation holding the weapon at `weaponQ`: turned back by the grip's pivot in the fist. */
+  private handFrom(weaponQ: Quaternion, side: Side, out: Quaternion): Quaternion {
+    return out.copy(weaponQ).premultiply(_qi.copy(this.pivot).invert()).multiply(this.mainGripInv(side))
+  }
+
+  /** The main hand's grip, weapon to hand (reversed with w.reverse). */
+  private mainGripInv(side: Side): Quaternion {
+    return this.reversed ? this.gripRevInv : this.gripRotInv[side]
+  }
+
+  /** The blade's direction with the hand unturned on its forearm, as the grip holds it (reversed: out of the little finger's side). */
+  private handBlade(side: Side): Vector3 {
+    return this.reversed ? this.unturnedRev[side] : this.unturned[side]
+  }
+
+  /**
+   * The natural hold (CombatBuild.natural) of the weapon at `weaponQ` with
+   * its wrist at `at`: the elbow roll (deg, ROLLS) the arm takes there, and
+   * `weaponQ` turned so its blade is the one the arm can hold. The roll is
+   * scored for the hand's turn on its forearm, the elbow's wing while the
+   * hand is low, how far the blade has to give from the wish and how far the
+   * roll moves from the last frame's; allocation-free.
+   */
+  private naturalHold(S: Vector3, at: Vector3, chestQ: Quaternion, side: Side, weaponQ: Quaternion, out: number, authored: number, pass: number, extra: number): number {
+    const toWrist = _nd.copy(at).sub(S).normalize().applyQuaternion(_nq.copy(chestQ).invert())
+    const wish = _nw.set(0, 0, 1).applyQuaternion(weaponQ)
+    const live = this.naturalLive[side]
+    if (pass === 0) {
+      // how far the wish has turned since the last frame, and where the blade and the forearm were then
+      this.bladeStep[side] = live ? this.frameWish[side].angleTo(wish) : Math.PI
+      this.frameWish[side].copy(wish)
+      this.frameBlade[side].copy(this.lastBlade[side])
+      // and how far the shoulder-to-fist line has turned: the authored arm's own motion (not the solved forearm's, which a change of hold throws)
+      _bl.copy(at).sub(S).normalize()
+      this.bladeStep[side] += live ? this.frameReach[side].angleTo(_bl) : 0
+      this.frameReach[side].copy(_bl)
+      this.frameRoll[side] = live ? this.naturalRoll[side] : authored
+    }
+    const last = live ? this.naturalRoll[side] : authored
+    const bend = this.build.natural!.bend + Math.max(0, extra)
+    // the grid finds the basin; a golden-section search inside it finds the roll itself, so it moves smoothly
+    // with the pose (snapping from grid roll to grid roll jerked the elbow, plain in slow motion)
+    let best = last, bestCost = Infinity
+    for (let k = 0; k < ROLLS; k++) {
+      const roll = ROLL_FROM + k * ROLL_STEP
+      const cost = this.holdCost(S, at, chestQ, side, toWrist, wish, out, roll, last, live, bend)
+      if (cost < bestCost) { bestCost = cost; best = roll }
+    }
+    let lo = best - ROLL_STEP, hi = best + ROLL_STEP
+    for (let k = 0; k < ROLL_REFINE; k++) {
+      const m1 = hi - (hi - lo) * GOLDEN, m2 = lo + (hi - lo) * GOLDEN
+      if (this.holdCost(S, at, chestQ, side, toWrist, wish, out, m1, last, live, bend) <= this.holdCost(S, at, chestQ, side, toWrist, wish, out, m2, last, live, bend)) hi = m2
+      else lo = m1
+    }
+    best = (lo + hi) / 2
+    // a better hold a turn of the elbow away is reached over frames: the roll moves no faster than the authored arm and blade
+    // drive it (a wish turning through where the hand would wring flipped the elbow to its other side in a frame)
+    if (live) {
+      const reach = ROLL_RATE * MathUtils.radToDeg(this.bladeStep[side]) + ROLL_SLACK
+      best = rollApart(this.frameRoll[side] + MathUtils.clamp(rollApart(best, this.frameRoll[side]), -reach, reach), 0)
+    }
+    // the blade the arm holds at that roll: within the wrist's bend, turned round the forearm no further than the limit
+    const limits = this.build.natural!
+    const sgn = side === 'L' ? 1 : -1
+    const [L1, L2] = this.armLength[side]
+    basePole(toWrist, sgn, out, _np).applyAxisAngle(toWrist, sgn * deg(best)).applyQuaternion(chestQ)
+    armTo(S, at, L1, L2, _np, _nf, _nh, _ne)
+    bladeWithin(wish, _nf, bend, this.lastBlade[side], _nb)
+    const turn = handTurn(_nb, _nf, _nh, this.handBlade(side))
+    if (Math.abs(turn) > limits.twist) {
+      // turned back to the limit on the side nearer where the blade last was: a wish half a turn off the hand's
+      // own side flips the turn's sign from frame to frame, and the nearer limit by sign threw the blade across
+      const a = _nc.copy(_nb).applyAxisAngle(_nf, deg(limits.twist - turn))
+      const b = _nb.applyAxisAngle(_nf, deg(-limits.twist - turn))
+      const last = this.lastBlade[side]
+      const pick = this.naturalLive[side] && Math.abs(Math.abs(turn) - 180) < 60 ? a.dot(last) > b.dot(last) : turn > 0
+      if (pick) b.copy(a)
+    }
+    // where the holdable blade changes regime (the wrist's clamp, the hand's turn at its limit, one hold to another) it can
+    // jump in a frame; held, it turns no faster than the wish and the forearm carrying it drive it (half again, and a
+    // little over), so it catches up rather than pops, and still keeps up with a fast arm
+    const step = 1.5 * this.bladeStep[side] + BLADE_SLACK
+    const jump = this.frameBlade[side].angleTo(_nb)
+    if (live && jump > step) {
+      _bl.crossVectors(this.frameBlade[side], _nb)
+      if (_bl.lengthSq() > 1e-12) _nb.copy(this.frameBlade[side]).applyAxisAngle(_bl.normalize(), step)
+    }
+    this.lastBlade[side].copy(_nb)
+    weaponQ.premultiply(_nq.setFromUnitVectors(wish, _nb))
+    // past the wrist's bend the grip pivots in the fist: the hand holds the blade turned back to the wrist's limit
+    // (the side of the forearm the hand holds it on: a blade pivoted near the forearm's line leaves it undefined, so there it keeps to the
+    // side it was last held on, handing over as the blade leans off the line, as the wrist's clamp does)
+    const along = _nb.dot(_nf)
+    const limit = Math.sin(MathUtils.degToRad(limits.bend))
+    _nc.copy(_nb).addScaledVector(_nf, -along)
+    const off = _nc.length()
+    const keep = Math.max(0, 1 - off / WISH_SIDE)
+    if (keep > 0 && live) {
+      const was = _bl.copy(this.pivotSide[side]).addScaledVector(_nf, -this.pivotSide[side].dot(_nf))
+      if (was.lengthSq() > 1e-8) _nc.addScaledVector(was.normalize(), WISH_SIDE * keep)
+    }
+    if (_nc.lengthSq() > 1e-8) this.pivotSide[side].copy(_nc.normalize())
+    if (Math.abs(along) > limit && _nc.lengthSq() > 1e-8) {
+      _nc.multiplyScalar(Math.cos(MathUtils.degToRad(limits.bend))).addScaledVector(_nf, Math.sign(along) * limit)
+      this.pivot.setFromUnitVectors(_nc, _nb)
+    } else this.pivot.identity()
+    this.naturalLive[side] = true
+    return best
+  }
+
+  /** The natural hold's score for an elbow roll (deg): the hand's turn, the elbow's wing and tuck, the blade's give and the roll's move from the last frame's. */
+  private holdCost(S: Vector3, at: Vector3, chestQ: Quaternion, side: Side, toWrist: Vector3, wish: Vector3, out: number, roll: number, last: number, live: boolean, bend: number): number {
+    const limits = this.build.natural!
+    const sgn = side === 'L' ? 1 : -1
+    const [L1, L2] = this.armLength[side]
+    basePole(toWrist, sgn, out, _np).applyAxisAngle(toWrist, sgn * deg(roll)).applyQuaternion(chestQ)
+    armTo(S, at, L1, L2, _np, _nf, _nh, _ne)
+    bladeWithin(wish, _nf, bend, this.lastBlade[side], _nb)
+    const turn = Math.abs(handTurn(_nb, _nf, _nh, this.handBlade(side)))
+    const wing = at.z < S.z - 0.3 ? elbowWing(S, at, _ne) : 0
+    const give = MathUtils.radToDeg(Math.acos(MathUtils.clamp(_nb.dot(wish), -1, 1)))
+    // how far the elbow sits inside the shoulder, across the chest (chest frame: +x the robot's left)
+    const inside = -sgn * _ni.subVectors(_ne, S).applyQuaternion(_nqi.copy(chestQ).invert()).x - limits.tuck
+    return Math.max(0, turn - limits.twist * 0.53) ** 2 + 2 * Math.max(0, turn - limits.twist) ** 2
+      + 0.6 * Math.max(0, wing - limits.wing) ** 2 + 0.5 * give * give + (live ? ROLL_STAY : 0.04) * rollApart(roll, last) ** 2
+      + (inside > 0 ? 9000 * inside * inside : 0)
   }
 
   /** Fingers close from the gait's curl toward the channel's grip. */
@@ -444,6 +676,110 @@ function forearmTo(S: Vector3, W: Vector3, L1: number, L2: number, pole: Vector3
   return out.copy(S).addScaledVector(dir, D).sub(elbow).normalize()
 }
 
+/** The natural hold's elbow rolls (deg): the whole circle from ROLL_FROM in ROLL_STEP steps. */
+const ROLL_FROM = -180
+const ROLL_STEP = 10
+const ROLLS = 36
+/**
+ * What moving the roll from the last frame's costs (per degree squared): an
+ * arm with several holds of near equal score swapped between them frame to
+ * frame (the elbow thrown round the arm); it moves on only for a clearly
+ * better hold.
+ */
+const ROLL_STAY = 0.6
+/** How far the natural hold's roll may move in a frame (deg): per degree the wish and the arm turn in it, and over that. */
+const ROLL_RATE = 2
+const ROLL_SLACK = 3
+
+/** The roll `a` minus `b` round the circle (deg, -180..180). */
+const rollApart = (a: number, b: number): number => ((a - b) % 360 + 540) % 360 - 180
+/** Golden-section steps refining the best grid roll (to about a tenth of a degree), and the section's ratio. */
+const ROLL_REFINE = 12
+const GOLDEN = 0.618034
+
+/** A two-bone arm from shoulder `S` to wrist `W`, its elbow toward `pole`, as solveArm places it: the forearm's direction, the elbow's hinge axis (the upper arm's +X) and the elbow. */
+function armTo(S: Vector3, W: Vector3, L1: number, L2: number, pole: Vector3, forearm: Vector3, hinge: Vector3, elbow: Vector3): void {
+  const toW = _a.subVectors(W, S)
+  const D = MathUtils.clamp(toW.length(), Math.abs(L1 - L2) + 1e-4, (L1 + L2) * 0.9995)
+  const dir = toW.normalize()
+  const a = Math.acos(MathUtils.clamp((L1 * L1 + D * D - L2 * L2) / (2 * L1 * D), -1, 1))
+  const p = _b.copy(pole).addScaledVector(dir, -pole.dot(dir))
+  if (p.lengthSq() < 1e-8) p.set(0, 0, -1).addScaledVector(dir, -dir.z)
+  p.normalize()
+  const upper = _c.copy(dir).multiplyScalar(Math.cos(a)).addScaledVector(p, Math.sin(a))
+  elbow.copy(S).addScaledVector(upper, L1)
+  forearm.copy(S).addScaledVector(dir, D).sub(elbow).normalize()
+  // the upper arm's frame: +Y toward the elbow's side, the bone along -Z; the hinge is its X
+  const y = _d.copy(p).multiplyScalar(Math.cos(a)).addScaledVector(dir, -Math.sin(a))
+  hinge.crossVectors(y, upper.negate()).normalize()
+}
+
+/**
+ * `wish` bent back to within `bend` (deg) of square to the forearm `f`,
+ * keeping where it points round it. A wish nearly along the forearm says
+ * almost nothing about that: its little sideways part swings wildly as the
+ * arm moves and flipped the blade from side to side, so there the blade
+ * keeps to where it last pointed round the forearm (`last`), handing over
+ * as the wish leans off the line (WISH_SIDE).
+ */
+function bladeWithin(wish: Vector3, f: Vector3, bend: number, last: Vector3, out: Vector3): Vector3 {
+  out.copy(wish)
+  const along = out.dot(f)
+  const limit = Math.sin(MathUtils.degToRad(bend))
+  if (Math.abs(along) <= limit) return out
+  out.addScaledVector(f, -along)
+  const side = out.length()
+  const hold = Math.max(0, 1 - side / WISH_SIDE)
+  if (hold > 0) {
+    const was = _bl.copy(last).addScaledVector(f, -last.dot(f))
+    if (was.lengthSq() > 1e-8) out.addScaledVector(was.normalize(), WISH_SIDE * hold)
+  }
+  if (out.lengthSq() < 1e-8) out.crossVectors(f, _z)
+  out.normalize().multiplyScalar(Math.cos(MathUtils.degToRad(bend))).addScaledVector(f, Math.sign(along) * limit)
+  return out
+}
+
+/** Below this sideways share (sine of the wish's angle off the forearm's line) the clamp keeps to the blade's last side. */
+const WISH_SIDE = 0.35
+/** What the held blade may turn in a frame over what its wish turns (rad): enough to settle, too little to pop. */
+const BLADE_SLACK = MathUtils.degToRad(2)
+
+/** How far (deg, signed about the forearm) the hand turns on its forearm `f` (hinge `X`) to point the blade along `b`, from the unturned hand's (`unturned`, flexed forearm frame). */
+function handTurn(b: Vector3, f: Vector3, X: Vector3, unturned: Vector3): number {
+  // the flexed forearm's axes: X the hinge, the bone along -Z (so Z = -f), Y = Z x X
+  const Y = _e.crossVectors(X, f)
+  const rest = _f.copy(X).multiplyScalar(unturned.x).addScaledVector(Y, unturned.y).addScaledVector(f, -unturned.z)
+  const r = _g.copy(b).addScaledVector(f, -b.dot(f))
+  if (r.lengthSq() < 1e-10) return 0
+  r.normalize()
+  return MathUtils.radToDeg(Math.atan2(_h.crossVectors(rest, r).dot(f), rest.dot(r)))
+}
+
+/** How far (deg) the elbow `E` rides up off the line from the shoulder `S` to the wrist `W` (up is +Z). */
+function elbowWing(S: Vector3, W: Vector3, E: Vector3): number {
+  const line = _e.subVectors(W, S).normalize()
+  const off = _f.subVectors(E, S)
+  off.addScaledVector(line, -off.dot(line))
+  const n = off.length()
+  return n < 1e-4 ? 0 : MathUtils.radToDeg(Math.asin(MathUtils.clamp(off.z / n, -1, 1)))
+}
+
+/**
+ * A wrist target drawn in as it nears the arm's full reach `L` (from
+ * SOFT_REACH of it): the arm straightens toward it without reaching it. A
+ * two-bone arm's elbow turns ever faster as the wrist nears full reach, so a
+ * wrist moving a centimetre about it flicked the elbow between straight and
+ * bent from frame to frame; drawn in, the elbow bends smoothly with distance.
+ */
+function softReach(S: Vector3, at: Vector3, L: number): void {
+  const d = _reach.subVectors(at, S).length()
+  const from = L * SOFT_REACH
+  if (d <= from) return
+  const span = L * 0.998 - from
+  at.copy(S).addScaledVector(_reach, (from + span * (1 - Math.exp(-(d - from) / span))) / d)
+}
+const SOFT_REACH = 0.94
+
 /** Keep a wrist inside an arm's reach, preserving a little elbow flexion. */
 function projectReach(target: Vector3, shoulder: Vector3, radius: number): void {
   _reach.subVectors(target, shoulder)
@@ -509,6 +845,21 @@ const _b = new Vector3()
 const _c = new Vector3()
 const _d = new Vector3()
 const _e = new Vector3()
+const _f = new Vector3()
+const _g = new Vector3()
+const _h = new Vector3()
+const _nd = new Vector3()
+const _nw = new Vector3()
+const _np = new Vector3()
+const _nf = new Vector3()
+const _nh = new Vector3()
+const _ne = new Vector3()
+const _nb = new Vector3()
+const _nq = new Quaternion()
+const _ni = new Vector3()
+const _nqi = new Quaternion()
+const _bl = new Vector3()
+const _nc = new Vector3()
 const _q0 = new Quaternion()
 const _q1 = new Quaternion()
 const _q2 = new Quaternion()
@@ -518,6 +869,8 @@ const _q5 = new Quaternion()
 const _q6 = new Quaternion()
 const _q7 = new Quaternion()
 const _qc = new Quaternion()
+const _qg = new Quaternion()
+const _qi = new Quaternion()
 const _qh = new Quaternion()
 const _qp = new Quaternion()
 const _qw = new Quaternion()

@@ -9,6 +9,7 @@ import type { MoveCue } from '../../transformer/combat/moves'
 import { CombatOverlay } from '../../transformer/combat/overlay'
 import { Fighter, type FighterStyle } from '../../transformer/combat/fighter'
 import { Weapon } from '../../transformer/combat/weapon'
+import { SWORD_SWING } from '../../transformer/combat/audio/swing'
 import { N } from '../../../rendering/noise.ts'
 import { createF1Materials } from '../materials'
 import type { F1Effects } from '../effects'
@@ -33,7 +34,7 @@ const WHEEL_RADIUS = 0.36
  */
 const STYLE: FighterStyle = {
   trail: { color: [0.42, 0.3, 0.2], life: 0.09, speed: 18, tip: 0.65 },
-  swing: { bodyHz: 420, edgeHz: 1700, speed: 24, edge: 0.55, level: 0.26 },
+  swing: SWORD_SWING,
   forge: { from: 420, to: 2100, crackleHz: 1500, level: 0.26 },
   palette: 0,
   light: 0xffb070,

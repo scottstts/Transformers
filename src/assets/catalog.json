@@ -67,11 +67,11 @@
     },
     "impala-cutlass.bin": {
       "bytes": 331592,
-      "sha256": "35e9fbe9b7922c6c3ca597ae154fa08f27a72c1605a80f40a14647f0eb2abf24"
+      "sha256": "145b7ebcc97b0a368a07be44c4ee30700ac5ffa174f7cc7f59a22398cb6ea31c"
     },
     "impala-cutlass.json": {
-      "bytes": 1296,
-      "sha256": "93a3ba44c945646ac5c1a3a485a0ddcf366827a517fe61e05ce6c54b164043e3"
+      "bytes": 1291,
+      "sha256": "5f4985c261173db48e4f20d16ff359d4db852ba3ab1caa149e5b1b8dfafe7407"
     },
     "impala.bin": {
       "bytes": 69361152,

@@ -13,6 +13,13 @@ export interface SwingTuning {
   level: number
 }
 
+/**
+ * A sword's swing (the racer's longsword, the Impala's cutlass): a light,
+ * bright body and a keen edge hiss. `speed` is the racer's; a longer blade
+ * scales it by its edge's speed in the same swing.
+ */
+export const SWORD_SWING: SwingTuning = { bodyHz: 420, edgeHz: 1700, speed: 24, edge: 0.55, level: 0.26 }
+
 /** Response of the voice to the swing (s). */
 const RESPONSE = 0.025
 

@@ -37,13 +37,17 @@ describe('hit bank', () => {
     expect(band(slash, 0.25, 0.5, 3800, 13000)).toBeGreaterThan(band(slash, 0.25, 0.5, 60, 400))
   })
 
-  it('gives the cutlass a bright bite and a heavier blade\'s lower ring that dies away over most of a second', () => {
-    const cutlass = blowTake('cutlass', 0, RATE)
-    // the bite: bright at once
-    expect(band(cutlass, 0, 0.06, 5000, 12000)).toBeGreaterThan(band(cutlass, 0, 0.06, 60, 400))
-    // the ring: the metal's partials (1.3-4.7 kHz) carry on over the low body, and fade
-    expect(band(cutlass, 0.2, 0.45, 1200, 5000)).toBeGreaterThan(band(cutlass, 0.2, 0.45, 60, 400))
-    expect(band(cutlass, 0.5, 0.75, 1200, 5000)).toBeLessThan(band(cutlass, 0.2, 0.45, 1200, 5000))
-    expect(band(cutlass, 0.5, 0.75, 1200, 5000)).toBeGreaterThan(0)
+  it('gives the cutlass its thump, then the tearing through the whole spectrum, ringing on past a second', () => {
+    for (let v = 0; v < HIT_VARIANTS; v++) {
+      const cutlass = blowTake('cutlass', v, RATE)
+      // the blade lands: a deep thump, the highs not yet in
+      expect(band(cutlass, 0, 0.06, 120, 300)).toBeGreaterThan(100 * band(cutlass, 0, 0.06, 2000, 8000))
+      // then it tears through: the highs come up over the low body
+      expect(band(cutlass, 0.15, 0.45, 2000, 8000)).toBeGreaterThan(5 * band(cutlass, 0, 0.06, 2000, 8000))
+      // and it rings on past a second, well down
+      const tail = band(cutlass, 0.9, 1.2, 40, 8000)
+      expect(tail).toBeGreaterThan(0)
+      expect(tail).toBeLessThan(band(cutlass, 0.15, 0.45, 40, 8000) / 20)
+    }
   })
 })
