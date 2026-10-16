@@ -56,3 +56,21 @@ def shell_stage():
     B.canopy_mesh().build('car.canopy', '01_CAR', bevel=0, smooth_angle=20)
     wheels.build()
     return {'parts': len(K.PARTS)}
+
+
+def robot_stage(bake=True):
+    """Robot, docks and the transformation on top of the built car (car_stage)."""
+    from . import dock, robot, bake as B
+    _check()
+    bpy.context.scene.frame_set(0)
+    K.materials()
+    dock.capture()
+    dock.split()
+    out = robot.build()
+    if bake:
+        from . import linkage
+        S = B.Scene()
+        linkage.bind(S)
+        out['braces'] = linkage.build(S)
+        out.update(B.bake())
+    return out

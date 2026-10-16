@@ -1,9 +1,10 @@
 # Roadster model authoring
 
-The Blender build lives in `blender/roadster_build/rdb` (`run.py` entry,
-`rdb_build.car_stage()`), saved to `blender/roadster.blend`. Step 1 is in
-progress: the car is built and awaiting approval; the robot and the
-transformation come next.
+The Blender build lives in `blender/roadster_build/rdb` (`run.py` entry), saved to
+`blender/roadster.blend`. `rdb_build.car_stage()` builds the car (approved and locked);
+`rdb_build.robot_stage()` then builds the robot on top of it, docks the car parts and
+bakes the transformation. Step 1: the robot and transformation are in their first
+rough pass, awaiting inspection.
 
 ## Reference registration
 
@@ -167,7 +168,7 @@ tail deck 0.903.
 - `interior.py` / `doors.py` the cabin from the interior photo (white bucket seats
   with alcantara bases, square white yoke, floating landscape screen, header beam,
   diagonal bars to the dash, roof spine, red ambient strips, door cards).
-- `aero.py` road / high-downforce poses and a preview loop on the timeline (f0-90).
+- `aero.py` road / high-downforce poses; the transformation uses them for its launch configuration.
 
 ## Car features from the video
 
@@ -192,3 +193,133 @@ tail deck 0.903.
   from the belt to the underside of the white roof rail and are cut from a
   POST_D (25 mm) deep version of the glazing loft, so their faces sit flush with
   the glass and the pane sits between them with the 3 mm panel gap.
+
+## Robot
+
+- 6.0 m to the head top (the Cybertruck's class). Datums are read off the concept
+  sheet's front and side views at 0.00725 m per pixel (rig.py). At that scale the
+  car's light bar matches the concept's chest light bar and the rear wheels match
+  the concept's calf wheels; the nose clip is a little wider and deeper than the
+  concept's chest.
+- Car parts on the robot (dock.py, one rigid car-to-robot map per assembly):
+  - Chest: the nose clip (nose forward, pitched 12 deg nose-down), so its fenders
+    are the chest's flanks and its black front is the lower band. A gloss-black
+    plate fills the cowl between the fenders as the concept's black chest top;
+    white covers close the front wheel arches.
+  - Back: the floor tub and the tail fold up the back as a hinge chain. The tail stands
+    rear end down as the flight pack, rear glass facing back and the fans and nozzles
+    thrusting down. The roof strip folds into its open top as a black glass lid. The tub,
+    holding the folded cabin and the windscreen, stands between the pack and the back.
+  - Forearms: the gullwing doors are the shields, with the door glass folded down
+    inside the skin.
+  - Shoulders: the front wheels sit outboard of the shoulder joints, inside
+    arched pauldrons.
+  - Calves: the rear wheels sit on the outer calves, under white arches.
+- Robot armour is faceted convex plates (hs.py: gem plates, sector wraps round a
+  limb, arch fenders round a wheel) over graphite mechanics with bronze rams and
+  hoses. The head is a sphere with the helmet, faceplate, V visor, cheek guards
+  and horn blades layered on it (r_head.py).
+
+## Transformation (flight.py, choreo.py, linkage.py, bake.py)
+
+9 s, 270 frames at 30 fps. Frame 0 is the car and frame 270 is the stand the live gait
+takes over from: the export reads the rig's stand from the last frame. The hero landing
+(7.3 s) comes before that last frame. Played backward, the same track runs crouch, jump,
+flip at the apex, then a thrust-braked landing as the car.
+
+### Flight
+
+- The scene has no altitude. The game adds A(t), keyed on `flight.altitude` (z) and
+  recorded in the scene's `roadster_flight`, so the export can add it to the lift track.
+  A(t) = W(t) - c(t), where c is the baked height of the chest-pelvis midpoint. The
+  midpoint's world path is therefore exactly W, whatever the poses do.
+- W segments: on the ground to lift-off (0.8 s), constant-acceleration boost to 1.6 s,
+  then one ballistic parabola peaking at the apex (4.0 s) to touch-down (6.6 s).
+  W is solved so it starts at c(lift-off) and lands on c(touch-down); currently about
+  18 m apex altitude and 5.6 m/s^2 effective gravity.
+- The backflip turns the whole assembly about that midpoint (2.8 to 5.2 s, rate peaking
+  at the apex). There is also a 4 deg launch pitch.
+- Before lift-off the body squats on its suspension; after lift-off the wheels droop.
+- Every part turns one way only, with the backflip. The chest and nose make one full
+  turn; the pelvis also unwinds from its folded car pose in the same direction. The
+  fold's root rotation is stored as a single x pitch, wrapped so it unwinds backward.
+  An Euler decomposition came out as the equivalent (x + 180, 180, 180) set, and
+  interpolating that spun the body forward against the flip at 3.3 to 4.3 s.
+- In the air, the Blender view lifts the assembly only to keep its lowest point on the
+  ground; A cancels that lift in the game. Contact is exact on the ground phases.
+
+### Car mode
+
+- The miniature robot is folded under the dash and in the nose, with each chain scaled
+  in choreo.MINI. The fold pose is fitted so every casting's support points lie in the
+  car's hidden volumes.
+- The chest stands in the nose clip, the head lies in the nose, and the legs and arms
+  are curled in the footwell. Nothing is stowed in the floor tub, so it swings clear
+  without crossing anything.
+- Each chain grows about its joints (castings and bone offsets together) while it unfolds.
+  The head and neck never scale.
+
+### Sequence
+
+- **Opening (2.0 to 2.7 s):**
+  - The gullwing doors rise 45 deg on their roof hinges.
+  - The cabin folds into the floor tub.
+  - The windscreen slides back flat into the tub's slab.
+- **Clip drop (2.4 to 2.95 s):** the nose clip runs 0.6 m down its rails off the chest
+  core, so the head, chest and arms rise clear of it rather than through its skin.
+  - The head is the one part still crossing: its stowed place is inside the nose solid.
+  - The clip rises back onto the chest at 3.4 to 3.9 s, before the knees come up in the
+    tuck.
+- **Arms and doors:** the arms rise straight up out of the footwell, then reach over the
+  sills. The forearm braces take the doors at 3.1 s, and only then does the roof fold
+  into the tail. The door's hinge stays on the roof until the grab.
+- **Back pack:**
+  - The floor tub swings 78 deg up about its front edge (3.1 to 3.85 s), then slides down
+    the back's rails.
+  - The tail turns 180 deg over the tub's rear edge (3.1 to 4.2 s), rear end down.
+  - Hinges are explicit keys (`('hinge', pivot, axis, deg)`). Interpolating a 180 deg
+    turn between poses is ambiguous and flipped the tail forward through the robot.
+- **Front wheels:** after the clip has dropped, they telescope 0.32 m straight out of
+  their arches. The shoulder braces take them at 3.25 s, and they slide onto the pauldron
+  hubs along the axle from 0.35 m outboard.
+- **Rear wheels:** past the apex, the knees swing wide so the calves reach the pack's
+  lower corners. The calf braces take the wheels at 4.5 s.
+- **Shoulder shrug:** a clavicle rises with arm abduction beyond 20 deg (choreo.shrug),
+  so the pauldron rides over the chest's fender. Arms that need to go wide go out and
+  forward, abduction at most about 60 deg: a pauldron swung further strikes the fender.
+- **Pose fixing:** key poses are fitted with posed-overlap tests (audit.posed / overlap)
+  against the nose, pack, tub and other limbs.
+
+### Carriers and braces
+
+- Carrier keys are (t, host, pose). Pose is one of:
+  - 'car': where it sat relative to that host at t = 0;
+  - 'hold': keeps the world pose at a hand-over;
+  - 'dock';
+  - ('carpose', M);
+  - ('hinge', ...);
+  - ('approach', offset): the dock offset in the host bone's frame.
+- Braced parts glide straight to their dock, turning about their own centre. Other
+  turns of more than 15 deg follow the motion's screw axis.
+- Each brace (linkage.py, the game's `link.<name>.pin.A/B/stage.n` convention)
+  works like this:
+  - It lies closed along its docked line inside the limb.
+  - It reaches out from deploy to grab.
+  - It carries the part in and closes at the dock.
+  - Its closed length is its docked span, so the final frame is the brace's rest. That
+    is what braces.ts lays live.
+  - Current maximum stages: door 3, rear wheel 3, front wheel 7.
+
+### Interface with the robot modelling
+
+- rig.py datums and dock.py maps are the contract; castings only hang off bones.
+- SHOULDER_X is 1.28 (the sheet's 1.04, moved out) so the pauldrons clear the fenders.
+- The pauldron arch is built about dock.PAULDRON_HUB, as the calf arch is about
+  dock.CALF_HUB.
+- After a model change, rerun `rdb_build.robot_stage()` and `audit.car_mode_exposed()`. The
+  fold fit and pose checks measure the castings; anything the check reports (other than
+  rays through the slot behind each front tyre into its wheel well, which nothing reads
+  through) shows through the car at frame 0.
+- Known static overlaps when docked, for the modelling pass:
+  - the tyres against the pauldron and calf arch walls;
+  - the clavicle bridges inside the fenders (hidden).
