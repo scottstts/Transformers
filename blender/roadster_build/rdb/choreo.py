@@ -1,6 +1,6 @@
 """Transformation choreography, timed in seconds to the flight (flight.py).
 
-  0.0 - 0.8   on the ground: lift jets out, wing up, flaps open, a squat
+  0.0 - 0.8   on the ground: lift jets out, wing up, flaps open
   0.8 - 2.0   lift-off and boost; the car stays whole and level
   2.0 - 3.0   opening: gullwing doors up, windscreen slides under the hood,
               the cabin retracts into the floor tub, the roof folds into the
@@ -415,12 +415,6 @@ def bones(track, t):
 
 
 # ---------------------------------------------------------------- ground and launch
-
-def squat(t):
-    """The body's drop on its suspension before lift-off (m, negative = down),
-    and its spring back up as the thrust takes it."""
-    return -0.05 * smooth(t, 0.25, 0.65) * (1 - smooth(t, 0.65, 0.95))
-
 
 def droop(t):
     """Wheels hanging on their suspension once airborne (m, relative to the body)."""

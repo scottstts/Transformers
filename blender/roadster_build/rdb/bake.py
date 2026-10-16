@@ -138,8 +138,8 @@ class Scene:
             return H @ C.cabin_stow(t) @ rel
         M = H @ rel
         if name.startswith('wheel') and host not in rig.HEADS:
-            # on the car: the wheels stay on the ground through the squat, then hang
-            M = Matrix.Translation((0, 0, -C.squat(t) + C.droop(t))) @ M
+            # on the car: the wheels hang on their suspension once airborne
+            M = Matrix.Translation((0, 0, C.droop(t))) @ M
         return M
 
     def carriers(self, t, W, upto=None):
@@ -210,11 +210,11 @@ def centre(W):
 
 
 def F_matrix(t, W, lift):
-    """Launch pitch and the backflip about the centre, then the squat and the
+    """Launch pitch and the backflip about the centre, then the
     ground lift."""
     c = centre(W)
     ang = FL.flip_angle(t) + C.launch_pitch(t)
-    return Matrix.Translation((0, 0, lift + C.squat(t))) @ Matrix.Translation(c) @ \
+    return Matrix.Translation((0, 0, lift)) @ Matrix.Translation(c) @ \
         Matrix.Rotation(ang, 4, 'X') @ Matrix.Translation(-c)
 
 

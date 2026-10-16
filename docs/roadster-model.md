@@ -280,7 +280,10 @@ flip at the apex, then a thrust-braked landing as the car.
   18 m apex altitude and 5.6 m/s^2 effective gravity.
 - The backflip turns the whole assembly about that midpoint (2.8 to 5.2 s, rate peaking
   at the apex). There is also a 4 deg launch pitch.
-- Before lift-off the body squats on its suspension; after lift-off the wheels droop.
+- The body does not squat before lift-off. With the tyres held on the ground, a squat
+  lifts them toward the arches, and the front tyres have almost no headroom (0 to 4 cm
+  above the tread). After lift-off the wheels droop 35 mm on their suspension, away
+  from the arches.
 - Every part turns one way only, with the backflip. The chest and nose make one full
   turn; the pelvis also unwinds from its folded car pose in the same direction. The
   fold's root rotation is stored as a single x pitch, wrapped so it unwinds backward.
@@ -360,11 +363,23 @@ flip at the apex, then a thrust-braked landing as the car.
 - Each brace (linkage.py, the game's `link.<name>.pin.A/B/stage.n` convention)
   works like this:
   - It lies closed along its docked line inside the limb.
-  - It reaches out from deploy to grab.
+  - From deploy to grab it swings out about pin A, turning at a steady rate, while
+    it extends. It aims at the meeting point: where the grab point will sit in the
+    bone at the hand-over, fixed in the bone. The part arrives there at the grab.
+    - Aimed at the moving grab point instead, it chased it: the limbs swing past the
+      parts just before each grab (the front grab point turns about 90 deg around the
+      shoulder in 4 frames).
+    - A straight run of pin B from its closed place passed through pin A where the grab
+      point lies behind the closed line. The brace then reversed in one frame (156 deg).
   - It carries the part in and closes at the dock.
   - Its closed length is its docked span, so the final frame is the brace's rest. That
     is what braces.ts lays live.
-  - Current maximum stages: door 3, rear wheel 3, front wheel 7.
+  - Every piece's z runs along the brace. Its x is the brace bone's own axis most
+    square to the docked line, so the pins turn with the limb rather than flipping.
+  - Current maximum stages: door 2 (it swings without extending past its closed
+    length), rear wheel 3, front wheel 7.
+  - `linkage.rekey()` rebuilds and keys only the braces on the baked timeline, taking each frame's flight transform from the baked pelvis (F = pelvis_baked @
+    W_pelvis^-1), so every other track stays as it is.
 
 ### Interface with the robot modelling
 
@@ -379,3 +394,29 @@ flip at the apex, then a thrust-braked landing as the car.
 - Known static overlaps when docked, for the modelling pass:
   - the tyres against the pauldron and calf arch walls;
   - the clavicle bridges inside the fenders (hidden).
+
+## Export (rdb/export.py, export_game.py)
+
+- Writes `assets/roadster.{json,bin}` in the shared transformer container. It reads
+  the baked timeline of the open .blend: 271 frames, frame f is playback time. Run
+  `export_game.py` in the connected Blender, or headless on a saved roadster.blend.
+- Geometry is exported at authoring density with modifiers applied (no reduction):
+  about 0.9 M triangles.
+- Nodes:
+  - `bone:` joints.
+  - `part:` castings on their nests. The nests' growth is the scale track.
+  - `asm:` car assemblies, the lid's leaves and the braces
+    (`asm:link.<name>.pin.A/B/stage.n`, as braces.ts reads them).
+  - `wheel:` hub-centred under their `asm:wheelF/R.*` carrier.
+- Every world-keyed node is hosted where the build docks it: `dock.groups_all`, a
+  follower on its lead (`choreo.FOLLOW`), the cabin on the tub, a brace piece on its
+  brace's bone. Its track is the exact transform relative to that host, so replay
+  reproduces the authored world matrices. The export checks this (`_check_replay`).
+- Hosts are the final docks. Before a part is handed over, its host-relative track
+  moves fast while that limb swings. Between frames, the game's interpolation stays
+  within about 1 cm of Blender's for 99% of samples, 8.5 cm at worst: the door glass
+  around 2.9 s.
+- Lift track: the flight altitude (`roadster_flight`) in the air. On the ground it is
+  the offset that keeps the lowest support point at z = 0, which the bake already
+  makes exact (within 4 mm).
+- `asm:cabin` keeps its folded scale at the stand, hidden inside the tub.

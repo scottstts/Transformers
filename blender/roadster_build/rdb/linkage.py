@@ -38,8 +38,11 @@ def definitions():
              C.WHEEL_R_GRAB - 0.35, C.WHEEL_R_GRAB, 0.034),
         ]
         for name, bone, a, b, carrier, t_d, t_g, r in rows:
+            line = (Vector(b) - Vector(a)).normalized()
+            # the pieces' x: the bone's own axis most square to the docked line
+            ref = min((Vector(v) for v in ((1, 0, 0), (0, 1, 0), (0, 0, 1))), key=lambda v: abs(v.dot(line)))
             SPECS[name] = {'bone': bone, 'a': Vector(a), 'b_dock': Vector(b), 'carrier': carrier,
-                           'deploy': t_d, 'grab': t_g, 'radius': r}
+                           'deploy': t_d, 'grab': t_g, 'radius': r, 'ref': ref}
     return SPECS
 
 
@@ -51,6 +54,14 @@ def bind(S):
         D = S.groups[spec['carrier']][1]
         spec['b_car'] = D.inverted() @ rig.rest(spec['bone']) @ spec['b_dock']
         spec['length'] = (spec['b_dock'] - spec['a']).length
+        # the meeting point: where the grab point sits in the bone at the hand-over (full
+        # size), what the brace reaches for while it deploys
+        bone, t = spec['bone'], spec['grab']
+        W = S.bones(t)
+        target = _points(spec, t, W, S.carriers(t, W))[2]
+        k = C.growth(bone, t)
+        P = C.PIVOT.get(bone, Vector())
+        spec['meet'] = P + (W[bone].inverted() @ target - P) / k
 
 
 def _grown(bone, p, t):
@@ -59,14 +70,31 @@ def _grown(bone, p, t):
     return P + (p - P) * k
 
 
-def ends(spec, t, W, cw):
+def _points(spec, t, W, cw):
     bone = spec['bone']
     a = W[bone] @ _grown(bone, spec['a'], t)
     closed = W[bone] @ _grown(bone, spec['b_dock'], t)
     c = spec['carrier']
-    target = cw[c] @ _CAR[c].inverted() @ spec['b_car']
+    return a, closed, cw[c] @ _CAR[c].inverted() @ spec['b_car']
+
+
+def ends(spec, t, W, cw):
+    a, closed, target = _points(spec, t, W, cw)
     u = C.smooth(t, spec['deploy'], spec['grab'])
-    return a, closed.lerp(target, u) if u < 1.0 else target
+    if u >= 1.0:
+        return a, target
+    if u <= 0.0:
+        return a, closed
+    # the brace swings out about pin A from its closed line to the meeting point (fixed
+    # in the bone) while it extends, and the part arrives there at the grab. Aimed at
+    # the grab point itself it would chase it as the limb swings past the part (and a
+    # straight run through pin A reverses it in a frame)
+    meet = W[spec['bone']] @ _grown(spec['bone'], spec['meet'], t)
+    dc, dm = closed - a, meet - a
+    lc, lm = dc.length, dm.length
+    axis = dc.cross(dm)
+    rot = Matrix.Rotation(dc.angle(dm) * u, 3, axis.normalized()) if axis.length > 1e-9 else Matrix.Identity(3)
+    return a, a + (rot @ dc.normalized()) * (lc + (lm - lc) * u)
 
 
 def spans(S):
@@ -129,6 +157,14 @@ def build(S):
     return report
 
 
+def frame(axis, ref):
+    """The pieces' rotation: z along the brace, x the bone's reference axis made square
+    to it. Tied to the limb, it turns continuously with the brace (a shortest arc from
+    a fixed axis flips as the brace swings past that axis's opposite)."""
+    x = (ref - axis * ref.dot(axis)).normalized()
+    return Matrix((x, axis.cross(x), axis)).transposed()
+
+
 def worlds(t, W, cw):
     """Every brace node's body-frame world at time t: the stages spread evenly
     between the pins (all coincide when closed), each grown with its chain."""
@@ -140,9 +176,8 @@ def worlds(t, W, cw):
         d = b - a
         span = d.length
         axis = d / max(span, 1e-6)
-        q = Vector((0, 0, 1)).rotation_difference(axis)
         k = C.growth(spec['bone'], t)
-        R = q.to_matrix().to_4x4() @ Matrix.Diagonal((k, k, k, 1.0))
+        R = frame(axis, W[spec['bone']].to_3x3() @ spec['ref']).to_4x4() @ Matrix.Diagonal((k, k, k, 1.0))
         n = spec['stages']
         Lk = spec['length'] * k
         step = min(Lk, max(0.0, (span - Lk) / (n - 1)))
@@ -151,3 +186,30 @@ def worlds(t, W, cw):
         out['link.%s.pin.A' % name] = Matrix.Translation(a) @ R
         out['link.%s.pin.B' % name] = Matrix.Translation(b) @ R
     return out
+
+
+def rekey():
+    """Rebuild and key only the braces on the baked timeline: the flight transform of
+    each frame is taken from the baked pelvis (F = pelvis_baked @ W_pelvis^-1), so
+    every other track stays as it is."""
+    from . import bake as B
+    sc = bpy.context.scene
+    f_user = sc.frame_current
+    pelvis = []
+    for f in range(FL.FRAMES + 1):
+        sc.frame_set(f)
+        pelvis.append(bpy.data.objects['bone.robot.pelvis'].matrix_world.copy())
+    S = B.Scene()
+    report = build(S)
+    frames = list(range(FL.FRAMES + 1))
+    mats = {}
+    for f in frames:
+        t = f / FL.FPS
+        W = S.bones(t)
+        F = pelvis[f] @ W['pelvis'].inverted()
+        for key, M in worlds(t, W, S.carriers(t, W)).items():
+            mats.setdefault(key, []).append(F @ M)
+    for key, ms in mats.items():
+        B._keys(bpy.data.objects['bone.' + key], frames, ms)
+    sc.frame_set(f_user)
+    return report

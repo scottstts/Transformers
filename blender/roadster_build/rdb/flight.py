@@ -4,7 +4,7 @@ The Blender scene carries no altitude. The game adds this module's altitude
 A(t) through the asset's lift track, so that the assembly's centre (the
 chest-pelvis midpoint, CENTRE) follows W(t):
 
-  0.0 - LIFTOFF   on the ground: lift jets out, wing up, a squat on the suspension
+  0.0 - LIFTOFF   on the ground: lift jets out, wing up
   LIFTOFF - BOOST thrust: constant acceleration up from rest
   BOOST - TOUCH   ballistic: one parabola under G_EFF, apex at APEX
   TOUCH - 9.0     on the ground: impact, hero landing, rise to the stand
