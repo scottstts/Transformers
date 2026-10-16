@@ -25,7 +25,10 @@ import { Vapor, type VaporBurst } from './vapor'
  * short attitude puffs steady the backflip; the pack lights as the robot
  * comes out of the flip and burns to the touchdown (6.6 s). The schedule is
  * a function of the transformation's time only, so it plays the same
- * backward. A fight drives the pack through `boost`.
+ * backward. A fight drives the pack through `boost`; the car fires it through
+ * `drive` (Shift's full power: the drive profile's air thrust), its outlets
+ * pointing back and 12 degrees down, so the columns strike the sand about
+ * 2.7 m behind the tail and blow it back along the ground.
  */
 
 type Kind = 'lift' | 'nozzle' | 'fan'
@@ -95,6 +98,8 @@ export class AirJets {
   impingement = 0
   /** a fight's pack throttle (0 hands it back to the schedule) and how much of its air it sends straight down */
   private boostPower = 0
+  /** the car's air thrust (0..1): the pack driving the car */
+  private drivePower = 0
   private clock = 0
   /** reused descriptions of what is emitted (a frame allocates nothing) */
   private readonly puff: VaporBurst = { count: 1, at: new Vector3(), jitter: 0, dir: new Vector3(), spread: 0, speed: [0, 0], life: [0, 0], size: [0, 0], drag: 0, buoyancy: 0, opacity: 0, carry: new Vector3() }
@@ -132,6 +137,11 @@ export class AirJets {
     this.boostPower = Math.max(0, power)
   }
 
+  /** The car fires the pack: its thrust spool 0..1 (the motion state's `thrust`). */
+  drive(power: number): void {
+    this.drivePower = Math.max(0, power)
+  }
+
   /**
    * Per frame, after the model is posed: `seconds` the transformation's time
    * (0 car .. its duration), `dt` the world's step.
@@ -141,7 +151,7 @@ export class AirJets {
     // the flow's roughness: a few per cent of fast, uncorrelated flutter
     const flutter = 1 + 0.03 * Math.sin(this.clock * 61) + 0.02 * Math.sin(this.clock * 97.3 + 1.1)
     this.lift = transforming ? AirJets.liftThrottle(seconds) * flutter : 0
-    this.pack = Math.max(transforming ? AirJets.packThrottle(seconds) * flutter : 0, this.boostPower)
+    this.pack = Math.max(transforming ? AirJets.packThrottle(seconds) * flutter : 0, this.boostPower, this.drivePower * flutter)
     this.impingement = 0
     for (let k = 0; k < this.outlets.length; k++) {
       const o = this.outlets[k]
@@ -213,28 +223,33 @@ export class AirJets {
       this.haze.emit(this.patch)
     }
 
-    // striking the ground: the cloud rolls out along it, the sand blown with it
+    // striking the ground: the cloud rolls out along it, the sand blown with it. A jet
+    // standing on the ground spreads a tall ring; a grazing one (the car's) skims a low,
+    // short-lived wash back along its own line
     if (reach === Infinity) return
     const strike = power * smooth(full * 1.15, full * 0.3, reach)
     if (strike < 0.01) return
     this.impingement += strike * (o.kind === 'fan' ? 0.4 : 1)
+    const graze = 1 - smooth(0.3, 0.8, down)
     _hit.copy(o.exit).addScaledVector(o.dir, reach)
     carry.set(0, 0, 0)
     b.jitter = 0.3
     b.spread = 0.12
     b.speed[0] = 6 * (0.5 + 0.5 * strike); b.speed[1] = 13 * (0.5 + 0.5 * strike)
-    b.life[0] = 2; b.life[1] = 3.8
-    b.size[0] = 0.6; b.size[1] = 3.6 + 1.6 * strike
+    b.life[0] = 2 - 1.4 * graze; b.life[1] = 3.8 - 2.6 * graze
+    b.size[0] = 0.6 - 0.2 * graze; b.size[1] = (3.6 + 1.6 * strike) * (1 - 0.6 * graze)
     b.drag = 1.35
     b.buoyancy = 0.18
     b.opacity = 0.34
-    let m = CLOUD_RATE * strike * spec.density * dt
+    const radial = 1 - 0.7 * graze
+    const lean = 0.6 + 0.6 * graze
+    let m = CLOUD_RATE * strike * spec.density * (1 - 0.5 * graze) * dt
     while (m > 0) {
       if (m < 1 && Math.random() > m) break
       m -= 1
       const a = Math.random() * Math.PI * 2
       // out along the ground, a little up, the jet's own lean carried into it
-      b.dir.set(Math.cos(a) + o.dir.x * 0.6, 0.12 + Math.random() * 0.22, Math.sin(a) + o.dir.z * 0.6).normalize()
+      b.dir.set(Math.cos(a) * radial + o.dir.x * lean, 0.12 + Math.random() * 0.22, Math.sin(a) * radial + o.dir.z * lean).normalize()
       b.at.set(_hit.x + Math.cos(a) * 0.3, _hit.y + 0.25, _hit.z + Math.sin(a) * 0.3)
       this.vapor.emit(b)
     }
@@ -244,6 +259,7 @@ export class AirJets {
   /** Everything off at once (the character leaves the scene). */
   reset(): void {
     this.boostPower = 0
+    this.drivePower = 0
     for (let k = 0; k < this.outlets.length; k++) {
       this.columns.clear(k)
       this.outlets[k].primed = false

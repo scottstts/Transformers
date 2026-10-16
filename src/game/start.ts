@@ -131,7 +131,7 @@ export function attachControls(session: GameSession): GameControls {
     speedo.tint(color)
     hits.tint(color)
     const drive = session.character.profile.drive
-    speedo.range(drive.maxSpeed, drive.boostSpeed)
+    speedo.range(drive.maxSpeed, drive.airThrust?.topSpeed ?? drive.boostSpeed)
     showEnergy(false)
   }
   const showEnergy = (gained: boolean): void => {

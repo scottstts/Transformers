@@ -58,6 +58,7 @@ export function updateRobot(state: MotionState, input: Pick<GameInput, 'movement
   state.slip = 0
   state.drift = 0
   state.release = 0
+  state.thrust = 0
   state.slideFront = state.slideRear = state.spinFront = state.spinRear = 0
   state.longAccel = state.latAccel = 0
 }

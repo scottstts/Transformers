@@ -1,5 +1,5 @@
 import { CustomBlending, DynamicDrawUsage, InstancedBufferAttribute, OneFactor, OneMinusSrcAlphaFactor, Sprite, SpriteNodeMaterial, Vector3 } from 'three/webgpu'
-import { clamp, exp, float, instancedBufferAttribute, max, mix, pow, select, smoothstep, uniform, uv, vec2, vec3 } from 'three/tsl'
+import { cameraPosition, clamp, exp, float, instancedBufferAttribute, max, mix, pow, select, smoothstep, uniform, uv, varying, vec2, vec3 } from 'three/tsl'
 import { N } from '../../../rendering/noise.ts'
 import { FLAT_GROUND, type Ground } from '../../../game/ground'
 
@@ -43,7 +43,9 @@ export interface VaporBurst {
  * slots it writes. Premultiplied (one-minus-source-alpha), no sorting. The
  * fragment work is two fetches of the baked noise texture and no fog: the
  * puffs are large and overlap, and the overdraw budget is the game's
- * (CLAUDE.md, dust-bench).
+ * (CLAUDE.md, dust-bench). A puff the camera is about to pass through fades
+ * out (taken once per vertex): the chase camera drives through the wash the
+ * car's thrust leaves behind it.
  */
 export class Vapor {
   readonly mesh: Sprite
@@ -90,7 +92,10 @@ export class Vapor {
     // a puff swells fast as it leaves the jet, then slowly as it mixes
     const size = k.x.add(k.y.sub(k.x).mul(float(1).sub(pow(float(1).sub(u), 2.6))))
     const pos = p0.xyz.add(v0.xyz.mul(reach)).add(lift)
-    m.positionNode = select(alive, vec3(pos.x, max(pos.y, floor.add(size.mul(0.28))), pos.z), vec3(0, -1000, 0))
+    const centre = vec3(pos.x, max(pos.y, floor.add(size.mul(0.28))), pos.z)
+    m.positionNode = select(alive, centre, vec3(0, -1000, 0))
+    // clear of the camera by its own radius and a little more, or fading out
+    const near = varying(smoothstep(0.55, 1.3, cameraPosition.distance(centre).div(size.mul(0.5).add(0.3))))
     m.scaleNode = size
     m.rotationNode = s.x.mul(6.283).add(t.mul(s.x.sub(0.5).mul(0.5)))
 
@@ -105,7 +110,7 @@ export class Vapor {
     const shape = float(1).sub(smoothstep(edge, 1, r.add(billow.sub(0.5).mul(mix(0.55, 0.95, u)))))
     const density = clamp(shape.mul(billow.mul(1.2).add(0.25)), 0, 1)
     const fade = smoothstep(0, 0.06, u).mul(pow(float(1).sub(u), 1.4))
-    const alpha = density.mul(s.y).mul(fade)
+    const alpha = density.mul(s.y).mul(fade).mul(near)
     // lit like a cloud: the sky-facing top white, the self-shaded underside a cool grey
     const sky = smoothstep(0, 1, uv().y.add(billow.sub(0.5).mul(0.6)))
     const lit = mix(vec3(0.5, 0.55, 0.62), vec3(1.05, 1.04, 1.03), sky).mul(mix(float(0.9), float(1.04), density))

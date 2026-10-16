@@ -11,6 +11,8 @@ A frame with `dt <= 0` is a true simulation freeze (used while a character switc
 
 Shift used to be boost only. Keeping the boost power inside the drift key means a player holding Shift on a straight still gets it; turning with it held breaks the rear loose.
 
+- **Air thrust (`DriveProfile.airThrust`, the Roadster):** Shift with throttle also spools an air pack (`MotionState.thrust`, 0..1, at the profile's spool rates). Its push is a body force along the car's axis, outside the tyre model, so it works with the rear sliding or the car in the air, and a drift gains speed under it. It fades out toward its own `topSpeed`. Above `boostSpeed` the throttle's drive demand becomes coasting drag scaled by `1 - thrust`, so the car keeps the pack's top speed while it fires and drifts back down to the drive's speed once Shift is let go. Without that, the drive's demand was zero above its top speed and the car held any excess forever. The effects read the same `thrust`, so the jets and the push never disagree.
+
 ## The drift driver's hands
 
 Keyboard steering is on/off, so raw countersteer is unplayable. Once the rear slides, the front wheels are steered as a drift driver's hands would: along the front axle's travel (caster self-alignment), plus a PD correction holding a body slip angle. The player's steering picks the angle, as a fraction of the car's steering lock (the hands need about that much countersteer, and the F1's small lock is why its drifts are shallower):

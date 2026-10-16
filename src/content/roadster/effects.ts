@@ -41,7 +41,8 @@ const LANDING = { shake: 0.75, surge: 3.2, crater: 1.6, debris: 22, speed: 7 }
 
 /**
  * Effects of the Roadster: the compressed-air lift jets and back pack
- * (fx/air-jets.ts) through the flying transformation, their roar, the hero
+ * (fx/air-jets.ts) through the flying transformation and the pack driving
+ * the car (Shift's air thrust), their roar, the hero
  * landing's blow to the ground, dust wherever a tyre leaves or meets the
  * sand and wherever a foot comes down, tyre dust and tracks, the lamps (the
  * markers blinking while it transforms) and the visor.
@@ -155,8 +156,11 @@ export class RoadsterEffects implements CharacterEffects {
     }
 
     const jets = this.jets
+    jets.drive(car ? state.thrust : 0)
     jets.update(seconds, transforming, dt)
-    this.shake = Math.max(this.shake, Math.min(0.18, (jets.lift + jets.pack) * 0.06 + jets.impingement * 0.04))
+    // the car's own thrust is a light rumble, the transformation's burns a shake
+    const thrusting = car ? state.thrust : 0
+    this.shake = Math.max(this.shake, Math.min(0.18, (jets.lift + jets.pack * (1 - 0.7 * thrusting)) * 0.06 + jets.impingement * 0.04 * (1 - 0.6 * thrusting)))
     this.audio.air.update(Math.max(jets.lift, jets.pack * 0.85), Math.min(1, jets.impingement * 0.4), dt)
 
     while (this.pendingSteps.length) {

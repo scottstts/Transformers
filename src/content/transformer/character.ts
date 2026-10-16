@@ -61,6 +61,22 @@ export interface DriveProfile {
   bump: number
   /** a trailer riding a hitch behind the car (the semi's van) */
   trailer?: TrailerProfile
+  /** an air-propulsion pack pushing the body along (the Roadster's tail jets), fired with Shift's full power */
+  airThrust?: AirThrustProfile
+}
+
+/**
+ * Thrust that pushes the body itself, not through the tyres: it works with
+ * the rear sliding or the wheels in the air. It spools up and down at its
+ * rates (1/s) and fades out toward its own top speed (m/s); past the drive's
+ * `boostSpeed` the car carries the extra speed and bleeds it off as it coasts.
+ */
+export interface AirThrustProfile {
+  /** push at rest (m/s^2), on top of the drive */
+  accel: number
+  topSpeed: number
+  spoolUp: number
+  spoolDown: number
 }
 
 /**

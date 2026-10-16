@@ -44,6 +44,11 @@ import { FLAT_GROUND, type Ground } from './ground'
  * the springs top out and the car flies (yaw rate kept, no tyre forces) until
  * it lands into its bump stops.
  *
+ * A car with an air-propulsion pack (`airThrust`) fires it with Shift's
+ * full power: its thrust pushes the body forward directly, past the tyres'
+ * grip and the drive's top speed, and the speed it gains above `boostSpeed`
+ * bleeds off as coasting once the pack spools down.
+ *
  * Integrated in fixed sub-steps, so handling does not change with frame rate.
  */
 
@@ -125,6 +130,11 @@ export function updateCar(state: MotionState, input: CarControls, dt: number, lo
   if (!Number.isFinite(dt) || dt <= 0) return
 
   state.release = damp(state.release, loose ? 1 : 0, loose ? RELEASE_RATE : REGRIP_RATE, dt)
+  const air = car.airThrust
+  if (air) {
+    const firing = state.boost && state.speed > -1
+    state.thrust = damp(state.thrust, firing ? 1 : 0, firing ? air.spoolUp : air.spoolDown, dt)
+  } else state.thrust = 0
   state.steerInput = damp(state.steerInput, locked ? 0 : -input.driveSteering, STEER_RATE, dt)
 
   const steps = Math.max(1, Math.ceil(dt / STEP - 1e-6))
@@ -311,7 +321,10 @@ function step(state: MotionState, car: DriveProfile, throttle: number, locked: b
   let demand: number
   let braking = false
   if (throttle > 0) {
-    if (u < -0.3) { demand = car.brake; braking = true } else demand = (boost ? car.boostAccel : car.accel) * (1 - Math.pow(clamp(u / maxSpeed, 0, 1), 2))
+    if (u < -0.3) { demand = car.brake; braking = true }
+    // past the drive's own reach (an air pack's speed) the car coasts down to it as the pack lets go
+    else if (u > car.boostSpeed) demand = -(car.coast + u * car.coastDrag) * (1 - state.thrust)
+    else demand = (boost ? car.boostAccel : car.accel) * (1 - Math.pow(clamp(u / maxSpeed, 0, 1), 2))
   } else if (throttle < 0) {
     if (u > 0.3) { demand = -car.brake; braking = true } else demand = -car.reverse * (1 - clamp(-u / car.reverseSpeed, 0, 1))
   } else demand = -Math.sign(u) * Math.min(au / h, car.coast + au * car.coastDrag)
@@ -388,7 +401,11 @@ function step(state: MotionState, car: DriveProfile, throttle: number, locked: b
   const excess = beta - clamp(beta, -DRIFT_LIMIT, DRIFT_LIMIT)
   if (u > 0) yawAcc += DRIFT_LIMIT_GAIN * excess * easedRange(Math.hypot(u, v), DRIFT_LIMIT_SPEED[0], DRIFT_LIMIT_SPEED[1]) * Math.min(1, load)
 
-  u += (bodyX + v * r + support.forward) * h
+  // an air pack pushes the body along its axis, whatever the tyres hold
+  const air = car.airThrust
+  const thrust = air && state.thrust > 0 ? air.accel * state.thrust * Math.max(0, 1 - (u * u + v * v) / (air.topSpeed * air.topSpeed)) : 0
+
+  u += (bodyX + thrust + v * r + support.forward) * h
   v += (bodyY - u * r + support.left) * h
   r += yawAcc * h
 

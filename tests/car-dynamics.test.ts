@@ -88,8 +88,8 @@ describe.each(CARS)('%s handling', (_, car) => {
     }
     expect(Math.max(...angles) - Math.min(...angles)).toBeLessThan(0.12)
     expect(end.drift).toBeGreaterThan(0.9)
-    // sliding scrubs speed rather than gaining it
-    expect(Math.hypot(end.speed, end.lateral)).toBeLessThan(26)
+    // sliding scrubs speed rather than gaining it (an air pack pushes through it: it is meant to)
+    if (!car.airThrust) expect(Math.hypot(end.speed, end.lateral)).toBeLessThan(26)
   })
 
   it('straightens and grips again when Shift is released', () => {
@@ -119,5 +119,40 @@ describe.each(CARS)('%s handling', (_, car) => {
     })
     expect(stopped).toBeGreaterThan(0)
     expect(stopped).toBeLessThan(start / car.brake + 0.2)
+  })
+})
+
+describe('roadster air thrust', () => {
+  const car = ROADSTER_PROFILE.drive
+  const air = car.airThrust!
+
+  it('only a car with an air pack spools thrust', () => {
+    expect(drive(CYBERTRUCK_PROFILE.drive, 20, 1, () => controls(1, 0, true)).thrust).toBe(0)
+    expect(drive(car, 20, 1, () => controls(1, 0, true)).thrust).toBeGreaterThan(0.95)
+    expect(drive(car, 20, 1, () => controls(1, 0, false)).thrust).toBe(0)
+  })
+
+  it('pushes past the drive top speed toward its own, and accelerates harder', () => {
+    const fast = drive(car, 0, 20, () => controls(1, 0, true))
+    expect(fast.speed).toBeGreaterThan(car.boostSpeed + 10)
+    expect(fast.speed).toBeLessThan(air.topSpeed)
+    // with the pack against the same car without it, from 20 m/s for 2 s
+    const plain = drive({ ...car, airThrust: undefined }, 20, 2, () => controls(1, 0, true))
+    const pushed = drive(car, 20, 2, () => controls(1, 0, true))
+    expect(pushed.speed - 20).toBeGreaterThan((plain.speed - 20) * 1.5)
+  })
+
+  it('bleeds the extra speed off once Shift is let go', () => {
+    const state = drive(car, 0, 20, () => controls(1, 0, true))
+    const top = state.speed
+    for (let f = 0; f < 6 * 60; f++) updateCar(state, controls(1, 0, false), 1 / 60, false, car)
+    expect(state.thrust).toBeLessThan(0.01)
+    expect(state.speed).toBeLessThan(top - 10)
+  })
+
+  it('holds a powered drift without spinning while the pack pushes', () => {
+    let worst = 0
+    drive(car, 25, 4, (t) => controls(1, t < 0.4 ? 1 : 0.6, true), 60, (s) => { worst = Math.max(worst, Math.abs(slipAngle(s))) })
+    expect(worst).toBeLessThan(1.3)
   })
 })

@@ -16,7 +16,9 @@ export const ROADSTER_LABEL = 'Roadster'
  * a 2.91 m wheelbase on 0.39 m tyres, electric all-wheel drive with a
  * compressed-air propulsion pack in its tail) and its robot (hips 3.62 m up,
  * 6 m tall: the Cybertruck robot's class). A low, stiff, very fast car on
- * wide tyres: high grip that gives up late, little roll, a firm ride.
+ * wide tyres: high grip that gives up late, little roll, a firm ride. With
+ * Shift's full power the tail's air jets fire (`airThrust`): a hard push
+ * past the tyres' grip to 92 m/s.
  */
 export const ROADSTER_PROFILE: CharacterProfile = {
   drive: {
@@ -49,6 +51,7 @@ export const ROADSTER_PROFILE: CharacterProfile = {
     track: 1.72,
     rideFrequency: 1.75,
     bump: 0.1,
+    airThrust: { accel: 14, topSpeed: 92, spoolUp: 7, spoolDown: 4 },
   },
   robot: { walkSpeed: 4.25, runSpeed: 16.3 },
   camera: { carDistance: 7.4, robotDistance: 13.2, carFocus: 0.95, robotFocus: 4.0, carHalfLength: 2.6 },

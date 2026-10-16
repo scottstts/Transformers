@@ -27,6 +27,8 @@ export interface MotionState {
   boost: boolean
   /** 0..1 how far Shift has loosened the rear axle */
   release: number
+  /** 0..1 an air-propulsion pack's spool (DriveProfile.airThrust): its push and its jets */
+  thrust: number
   /** 0..1 overall tyre slip, for dust */
   slip: number
   /** 0..1 smoothed rear slide: the car is drifting */
@@ -73,7 +75,7 @@ export function createMotionState(): MotionState {
   return {
     mode: 'car', target: 0, progress: 0,
     pos: new Vector3(), yaw: 0.6, speed: 0, lateral: 0, yawRate: 0,
-    steer: 0, steerInput: 0, hands: 0, spin: 0, throttle: 0, boost: false, release: 0, slip: 0, drift: 0,
+    steer: 0, steerInput: 0, hands: 0, spin: 0, throttle: 0, boost: false, release: 0, thrust: 0, slip: 0, drift: 0,
     slideFront: 0, slideRear: 0, spinFront: 0, spinRear: 0, longAccel: 0, latAccel: 0, articulation: 0,
     pitch: 0, roll: 0, pitchV: 0, rollV: 0, accel: 0,
     body: 0, vy: 0, lift: 0, load: 1, ground: 0, airborne: false, impact: 0,

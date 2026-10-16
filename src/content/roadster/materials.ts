@@ -8,9 +8,9 @@ import { N } from '../../rendering/noise.ts'
  * r_helmet.py): every slot the export writes has a material of the same key
  * here, at the build's linear base colour, metalness, roughness and coat.
  *
- * The glass is opaque, clear-coated and dark, as on every car (a blended pane
- * is reactive coverage to the temporal resolve and shimmers at windscreen
- * size); the cabin behind it is hidden.
+ * The glass is opaque, as on every car (a blended pane is reactive coverage to
+ * the temporal resolve and shimmers at windscreen size); the cabin behind it
+ * is hidden. It is drawn as glass, not as black paint (see `tinted`).
  */
 
 /** Emissive levels other modules animate. */
@@ -129,6 +129,19 @@ function nap(c: Color, roughness: number): Material {
   return tag(m, c)
 }
 
+/**
+ * Very dark tinted glazing with a solar-control film, as it reads from
+ * outside: one optically flat interface (no clear coat, so it does not read as
+ * a lacquered panel) whose reflectance the film's coating raises to ~13 % at
+ * normal incidence, climbing to a mirror at grazing angles. The base is the
+ * bronze tint's faint glimpse of the dark cabin, almost nothing.
+ */
+function tinted(tint: Color, film: Color): Material {
+  const m = new MeshPhysicalNodeMaterial({ color: tint, metalness: 0, roughness: 0.02, ior: 1.52, specularIntensity: 1 })
+  m.specularColor = film
+  return tag(m, tint)
+}
+
 /** A lit lamp: its colour at a level an animated uniform scales. */
 function emissive(c: Color, intensity: number, level: FloatNode): Material {
   const m = new MeshBasicNodeMaterial()
@@ -157,9 +170,8 @@ export function createRoadsterMaterials(): Record<string, Material> {
   M.bronze = bronze(linear(0.38, 0.2, 0.09), 0.95, 0.3)
   M.nozzle = bronze(linear(0.8, 0.62, 0.38), 1, 0.22)
   M.rubber = rubber()
-  // the bronze-tinted glazing as it reads from outside: dark, a clear coat for its reflections (see the header)
-  const glass = linear(0.012, 0.008, 0.005)
-  M.glass = tag(new MeshPhysicalNodeMaterial({ color: glass, metalness: 0, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.02, ior: 1.5 }), glass)
+  // very dark bronze-tinted glazing, highly reflective (the film scales the 4 % of bare glass)
+  M.glass = tinted(linear(0.005, 0.0035, 0.0022), new Color(3.3, 3.2, 3.05))
   M.smoke = coated(linear(0.035, 0.035, 0.038), 0, 0.06, 1, 0.03)
   M.marker = coated(linear(0.07, 0.012, 0.008), 0, 0.05, 1, 0.03)
   M.carpet = nap(linear(0.012, 0.012, 0.013), 0.9)
