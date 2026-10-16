@@ -133,7 +133,7 @@ export function createBat(asset: TransformerAsset, contactEffects: ContactEffect
     model,
     gait: new RobotGait(BAT_GAIT),
     effects,
-    combat: createBatCombat(model, asset.weapon, effects, contactEffects, mix, sole),
+    combat: createBatCombat(model, asset.weapon ?? undefined, effects, contactEffects, mix, sole),
     profile: BAT_PROFILE,
     transformationDuration: model.duration,
     robotOffset: model.dims.robotF,

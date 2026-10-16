@@ -1,6 +1,6 @@
 # Weapons
 
-The robots' combat weapons are authored procedurally in Blender (`blender/weapons_build/`, package `wpn`) into `blender/weapons.blend`. Each is exported as its own asset, loaded with its character:
+The robots' combat weapons are authored procedurally in Blender (`blender/weapons_build/`, package `wpn`) into `blender/weapons.blend`. Each is exported as its own asset, loaded with its character (the Roadster has none: its cannons are built into its hands, roadster.md):
 - `assets/cybertruck-axe.{json,bin}`;
 - `assets/ferrari-f1-sword.{json,bin}`;
 - `assets/semi-gun.{json,bin}`;

@@ -31,17 +31,26 @@ export interface BoltStyle {
   forkLength: number
 }
 
+/** A discharge's colours (linear): its white-hot core and the broad glow of the sheath round it. */
+export interface BoltColors {
+  core: readonly [number, number, number]
+  sheath: readonly [number, number, number]
+}
+
+/** The Impala's crimson discharge. */
+export const CRIMSON_BOLTS: BoltColors = { core: [1.0, 0.8, 0.86], sheath: [1.0, 0.1, 0.2] }
+
 /** The ground a crawling bolt keeps to. */
 export interface BoltGround {
   height(x: number, z: number): number
 }
 
 /**
- * Lightning: the Impala's crimson discharge. A bolt is a jagged channel
+ * Lightning (the Impala's crimson discharge, the Roadster's white arcs). A bolt is a jagged channel
  * between two points, built by midpoint displacement (each subdivision
  * offsets its midpoint sideways by a share of its length, halving each
  * level), with forks thrown off along it. Each segment is a camera-facing
- * quad in one instanced additive draw: a white-hot core in a crimson sheath,
+ * quad in one instanced additive draw: a white-hot core in a coloured sheath,
  * a return-stroke flash in its first milliseconds, the current surging in a
  * stepped flicker, gone within its short life. A channel throws a few
  * forks, which do not fork again: a strike's segments stay bounded, so the
@@ -76,7 +85,7 @@ export class Lightning {
   readonly lastEnd = new Vector3()
   readonly lastMid = new Vector3()
 
-  constructor() {
+  constructor(colors: BoltColors = CRIMSON_BOLTS) {
     const quad = new PlaneGeometry(1, 1)
     quad.translate(0, 0.5, 0)
     const geometry = new InstancedBufferGeometry()
@@ -120,10 +129,10 @@ export class Lightning {
     const step = floor(this.time.mul(FLICKER)).add(s.z.mul(97.3))
     const surge = fract(sin(step.mul(12.9898)).mul(43758.5453)).mul(0.75).add(0.45)
     const fade = clamp(float(1).sub(u), 0, 1).pow(1.5)
-    // a narrow white-hot core in a broad crimson-pink glow (the quad is the glow's width)
+    // a narrow white-hot core in a broad glow (the quad is the glow's width)
     const core = exp(across.div(0.14).pow(2).negate())
     const sheath = exp(across.div(0.5).pow(2).negate())
-    const color = vec3(1.0, 0.8, 0.86).mul(core.mul(12)).add(vec3(1.0, 0.1, 0.2).mul(sheath.mul(3.2)))
+    const color = vec3(...colors.core).mul(core.mul(12)).add(vec3(...colors.sheath).mul(sheath.mul(3.2)))
     m.colorNode = select(alive, color.mul(s.y).mul(flash).mul(surge).mul(fade), vec3(0))
     this.mesh = new Mesh(geometry, m)
     this.mesh.frustumCulled = false

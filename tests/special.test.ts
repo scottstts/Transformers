@@ -5,6 +5,7 @@ import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { createSemi } from '../src/content/semi/index.ts'
 import { createBat } from '../src/content/bat/index.ts'
 import { createImpala } from '../src/content/impala/index.ts'
+import { createRoadster } from '../src/content/roadster/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CH, CHANNEL_NAMES, LEG } from '../src/content/transformer/combat/pose.ts'
 import { MAX_KEYS } from '../src/content/transformer/combat/moves.ts'
@@ -64,6 +65,15 @@ const FIGHTERS: Fighter[] = [
     apex: 0.3,
     // the charge and its slide onto the centre
     travel: 15,
+  },
+  {
+    name: 'roadster',
+    make: () => createRoadster({ ...readAsset('roadster'), weapon: null }, NO_CONTACT, new AudioMix()),
+    midCombo: [0, 0.4],
+    // it hangs twenty-four metres over the crowd
+    apex: 22,
+    // round the ring and up over its centre
+    travel: 14,
   },
 ]
 
@@ -148,8 +158,8 @@ describe.each(FIGHTERS)('$name special', ({ make, midCombo, apex, travel }) => {
     const p = new Vector3()
     const inside = (box: typeof chest, node: string, world: Vector3): boolean => box.containsPoint(p.copy(world).applyMatrix4(inv.copy(c.model.node(node).matrixWorld).invert()))
     const cores = [[chest, 'bone:chest'], [pelvis, 'bone:pelvis'], [head, 'bone:head']] as const
-    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))!
-    const formed = c.combat.effects.weapon!
+    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))
+    const formed = c.combat.effects.weapon
     const clicks = start === 'from the stance' ? [] : midCombo
     const at = start === 'from the stance' ? 0 : midCombo[1] + 0.25
     const origin = new Vector3()
@@ -178,7 +188,7 @@ describe.each(FIGHTERS)('$name special', ({ make, midCombo, apex, travel }) => {
         const w = new Vector3().setFromMatrixPosition(c.model.node(`bone:${b}`).matrixWorld)
         for (const [box, node] of cores) expect(inside(box, node, w), `${b} inside ${node} at ${t.toFixed(2)}`).toBe(false)
       }
-      if (weapon.visible) {
+      if (weapon && formed && weapon.visible) {
         const m = formed.asset.manifest
         const reach = formed.presence * Math.max(-m.extent[0], m.extent[1])
         for (let z = Math.max(-reach, m.extent[0]); z <= Math.min(reach, m.extent[1]); z += 0.1) {
@@ -199,7 +209,7 @@ describe.each(FIGHTERS)('$name special', ({ make, midCombo, apex, travel }) => {
     // done: the cutscene over, the stance back, the weapon gone, the gait in charge
     expect(combat.cinematic).toBe(false)
     expect(combat.active).toBe(false)
-    expect(weapon.visible).toBe(false)
+    expect(weapon?.visible ?? false).toBe(false)
     expect(c.model.overlay).toBeNull()
     expect(c.combat.overlay.pose.v[CH.air]).toBeCloseTo(0, 3)
   })

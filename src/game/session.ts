@@ -583,7 +583,7 @@ export class GameSession {
     effects.timeline(previous, state.progress)
     effects.update(dt, state)
 
-    this.cameraRig.update(frameDt, state, model.root, this.input.driving && !busy && state.mode === 'car')
+    this.cameraRig.update(frameDt, state, model.root, this.input.driving && !busy && state.mode === 'car', this.character.altitude?.() ?? 0)
     if (this.cinematic) {
       const t = fight.specialTime
       // the follow camera swings in behind the robot underneath the last shot, which eases into it
@@ -641,8 +641,8 @@ export class GameSession {
     t.heading = state.yaw
     t.guard = this.fight.guarded ? this.character.combat.effects.guardReach() : 0
     t.flash = this.fight.flashContact
-    // out of reach while the special carries it off or it is in the air
-    t.present = !this.fight.cinematic && this.fight.air < 1 && !this.jump.active
+    // out of reach while the special carries it off or it is in the air (a jump, a flying transformation)
+    t.present = !this.fight.cinematic && this.fight.air < 1 && !this.jump.active && (this.character.altitude?.() ?? 0) < 1
   }
 
   dispose(): void {

@@ -143,7 +143,7 @@ export function createSemi(asset: TransformerAsset, contactEffects: ContactEffec
     model,
     gait: new RobotGait(SEMI_GAIT),
     effects,
-    combat: createSemiCombat(model, asset.weapon, effects, contactEffects, mix, sole),
+    combat: createSemiCombat(model, asset.weapon ?? undefined, effects, contactEffects, mix, sole),
     profile: SEMI_PROFILE,
     transformationDuration: model.duration,
     robotOffset: model.dims.robotF,

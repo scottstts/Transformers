@@ -163,7 +163,7 @@ export function createImpala(asset: TransformerAsset, contactEffects: ContactEff
     model,
     gait: new RobotGait(IMPALA_GAIT),
     effects,
-    combat: createImpalaCombat(model, asset.weapon, effects, contactEffects, mix, sole),
+    combat: createImpalaCombat(model, asset.weapon ?? undefined, effects, contactEffects, mix, sole),
     profile: IMPALA_PROFILE,
     transformationDuration: model.duration,
     robotOffset: model.dims.robotF,

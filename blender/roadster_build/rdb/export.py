@@ -105,11 +105,17 @@ def _arrays(o, M, dg):
     pos = co @ R.T + np.array(M.translation)
     Rn = np.array(M.to_3x3().inverted().transposed())
     out = {}
-    for mi in np.unique(tm):
-        loops = tl[tm == mi].reshape(-1)
+    # several material indices can name one slot (a cut's faces reassigned to one
+    # material, the door posts and side pods): their triangles are gathered together,
+    # never written over each other
+    for slot in dict.fromkeys(slots):
+        mine = [mi for mi, s in enumerate(slots) if s == slot]
+        loops = tl[np.isin(tm, mine)].reshape(-1)
+        if not len(loops):
+            continue
         n = cn[loops] @ Rn.T
         n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
-        out[slots[mi]] = (pos[lv[loops]], n)
+        out[slot] = (pos[lv[loops]], n)
     return out
 
 

@@ -7,6 +7,7 @@ import { F1_LABEL, F1_WEAPON, createF1, loadF1Asset } from './ferrari-f1'
 import { SEMI_LABEL, SEMI_WEAPON, createSemi, loadSemiAsset } from './semi'
 import { BAT_LABEL, BAT_WEAPON, createBat, loadBatAsset } from './bat'
 import { IMPALA_LABEL, IMPALA_WEAPON, createImpala, loadImpalaAsset } from './impala'
+import { ROADSTER_LABEL, createRoadster, loadRoadsterAsset } from './roadster'
 
 /** A playable car: how to fetch its asset and build it, and how the vehicle menu presents it. */
 export interface RosterEntry {
@@ -16,8 +17,8 @@ export interface RosterEntry {
   accent: string
   /** colour of its special's energy in the HUD (CSS): the light its special is made of */
   special: string
-  /** the robot's weapon asset (<weapon>.* on the asset CDN), loaded with the car */
-  weapon: string
+  /** the robot's weapon asset (<weapon>.* on the asset CDN), loaded with the car; null when its weapons are built in */
+  weapon: string | null
   load(): Promise<PlayableTransformerAsset>
   create(asset: PlayableTransformerAsset, contactEffects: ContactEffects, mix: AudioMix): Character
 }
@@ -67,6 +68,16 @@ export const ROSTER: readonly RosterEntry[] = [
     weapon: IMPALA_WEAPON,
     load: loadImpalaAsset,
     create: createImpala,
+  },
+  {
+    id: 'roadster',
+    label: ROADSTER_LABEL,
+    accent: '#e9edf2',
+    special: '#f2f7ff',
+    // its cannons are built into its palms: no weapon to load
+    weapon: null,
+    load: loadRoadsterAsset,
+    create: createRoadster,
   },
 ]
 

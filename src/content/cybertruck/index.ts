@@ -73,7 +73,7 @@ export function createCybertruck(asset: TransformerAsset, contactEffects: Contac
     model,
     gait: new RobotGait(),
     effects,
-    combat: createCybertruckCombat(model, asset.weapon, effects, contactEffects, mix),
+    combat: createCybertruckCombat(model, asset.weapon ?? undefined, effects, contactEffects, mix),
     profile: CYBERTRUCK_PROFILE,
     transformationDuration: model.duration,
     robotOffset: model.dims.robotF,

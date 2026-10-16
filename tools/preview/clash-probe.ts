@@ -48,8 +48,10 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   }
   const [manifest, bin] = read(entry.id)
   const asset = decodeTransformerAsset(manifest as TransformerManifest, bin, entry.label)
-  const [wm, wb] = read(entry.weapon)
-  asset.weapon = decodeWeaponAsset(wm as WeaponManifest, wb, entry.label)
+  if (entry.weapon) {
+    const [wm, wb] = read(entry.weapon)
+    asset.weapon = decodeWeaponAsset(wm as WeaponManifest, wb, entry.label)
+  }
   const world = createDesertWorld(new Scene(), await mirrorCitadel())
   const player = entry.create(asset, world.contactEffects, new AudioMix())
   const state = createMotionState()
@@ -62,7 +64,7 @@ export async function probeClash(car: string, tokens: string[], until: number): 
   const node = (name: string): Object3D => model.node(name)
   const main = player.combat.overlay.build.main
   const weapon = node(`bone:hand.${main}`).children.find((c) => c.name.startsWith('weapon:'))
-  const extent = asset.weapon.manifest.extent
+  const extent = asset.weapon?.manifest.extent ?? [0, 0]
 
   const has = (name: string): boolean => { try { node(name); return true } catch { return false } }
   // the leg chain as far as this robot has it (not every foot carries a toe bone)

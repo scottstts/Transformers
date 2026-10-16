@@ -81,7 +81,7 @@ function blows(c: Character): SoldierImpact[] {
 }
 
 describe.each(ROSTER.map((entry) => ({ name: entry.id, entry })))('the combat contract: $name', ({ entry }) => {
-  const make = (): Character => entry.create({ ...readAsset(entry.id), weapon: readWeapon(entry.weapon) }, NO_CONTACT, new AudioMix())
+  const make = (): Character => entry.create({ ...readAsset(entry.id), weapon: entry.weapon ? readWeapon(entry.weapon) : null }, NO_CONTACT, new AudioMix())
   const character = make()
 
   it('rapid clicks cannot queue later moves; a fresh in-window click can chain', () => {

@@ -31,7 +31,7 @@ export async function benchCitadel(): Promise<void> {
     console.log(`garrisons + both navigation grids + renderer CPU: ${(performance.now() - enemies).toFixed(1)} ms`)
     // BENCH_CAR=<roster id> benches another player (default the truck)
     const entry = rosterEntry(process.env.BENCH_CAR ?? 'cybertruck')
-    const car = entry.create({ ...readAsset(entry.id), weapon: readWeapon(entry.weapon) }, world.contactEffects, mix)
+    const car = entry.create({ ...readAsset(entry.id), weapon: entry.weapon ? readWeapon(entry.weapon) : null }, world.contactEffects, mix)
     car.model.pose(1, null)
     slots.use(LightSlots.adopt(car.model.root, car.effects.object))
     scene.add(slots.object, car.model.root, car.effects.object, horde.object)

@@ -36,8 +36,10 @@ export async function probeFight(car: string, tokens: string[], until: number, e
   }
   const [manifest, bin] = read(entry.id)
   const asset = decodeTransformerAsset(manifest as TransformerManifest, bin, entry.label)
-  const [wm, wb] = read(entry.weapon)
-  asset.weapon = decodeWeaponAsset(wm as WeaponManifest, wb, entry.label)
+  if (entry.weapon) {
+    const [wm, wb] = read(entry.weapon)
+    asset.weapon = decodeWeaponAsset(wm as WeaponManifest, wb, entry.label)
+  }
   const scene = new Scene()
   const world = createDesertWorld(scene, await mirrorCitadel())
   const player = entry.create(asset, world.contactEffects, new AudioMix())
@@ -50,7 +52,7 @@ export async function probeFight(car: string, tokens: string[], until: number, e
   const DT = Number(process.env.PROBE_DT ?? 1 / 60)
   const q = [...clicks]
   const weapon = player.model.node(`bone:hand.${player.combat.overlay.build.main}`).children.find((c) => c.name.startsWith('weapon:'))
-  const edge = asset.weapon.manifest.edge
+  const edge = asset.weapon?.manifest.edge ?? [[0, 0, 0], [0, 0, 0]]
   const tip = (k: 0 | 1): string => {
     if (!weapon?.visible) return '-'
     return relPoint(new Vector3(...edge[k]).applyMatrix4(weapon.matrixWorld))
@@ -64,7 +66,7 @@ export async function probeFight(car: string, tokens: string[], until: number, e
   }
   // the weapon's head end and its off grip (where a second hand holds it)
   const along = (z: number): string => weapon?.visible ? relPoint(new Vector3(0, 0, z).applyMatrix4(weapon.matrixWorld)) : '-'
-  const offGrip = asset.weapon.manifest.grips.off
+  const offGrip = asset.weapon?.manifest.grips.off ?? [0, 0, 0]
   // how far the off hand's grip centre sits from the weapon's off grip (m): a two-handed hold that falls short
   const g = player.combat.overlay.build.grip
   // which way the cutting edge faces (weapon +x, robot frame: left, up, forward)
@@ -166,7 +168,7 @@ export async function probeFight(car: string, tokens: string[], until: number, e
       if (t >= 0) checkCores(t)
     } else if (t >= next - 1e-6 && t >= 0) {
       next += every
-      console.log(`t ${t.toFixed(2)} w ${fight.poseWeight.toFixed(2)} air ${fight.air.toFixed(2)} yaw ${(state.yaw * 57.3).toFixed(1)} pel ${rel('bone:pelvis')} sR ${rel('bone:upperarm.R')} sL ${rel('bone:upperarm.L')} eR ${rel('bone:forearm.R')} eL ${rel('bone:forearm.L')} hR ${rel('bone:hand.R')} mR ${rel('bone:middle1.R')} hL ${rel('bone:hand.L')} fR ${rel('bone:foot.R')} fL ${rel('bone:foot.L')} kR ${rel('bone:shin.R')} kL ${rel('bone:shin.L')} lift ${player.model.lift.toFixed(2)} edge ${tip(0)} ${tip(1)} head ${rel('bone:head')} wHead ${along(asset.weapon!.manifest.extent[1])} off ${weapon?.visible ? relPoint(new Vector3(...offGrip).applyMatrix4(weapon.matrixWorld)) : '-'} gapL ${offGap()} blade ${blade()}${channelValues()}`)
+      console.log(`t ${t.toFixed(2)} w ${fight.poseWeight.toFixed(2)} air ${fight.air.toFixed(2)} yaw ${(state.yaw * 57.3).toFixed(1)} pel ${rel('bone:pelvis')} sR ${rel('bone:upperarm.R')} sL ${rel('bone:upperarm.L')} eR ${rel('bone:forearm.R')} eL ${rel('bone:forearm.L')} hR ${rel('bone:hand.R')} mR ${rel('bone:middle1.R')} hL ${rel('bone:hand.L')} fR ${rel('bone:foot.R')} fL ${rel('bone:foot.L')} kR ${rel('bone:shin.R')} kL ${rel('bone:shin.L')} lift ${player.model.lift.toFixed(2)} edge ${tip(0)} ${tip(1)} head ${rel('bone:head')} wHead ${along(asset.weapon?.manifest.extent[1] ?? 0)} off ${weapon?.visible ? relPoint(new Vector3(...offGrip).applyMatrix4(weapon.matrixWorld)) : '-'} gapL ${offGap()} blade ${blade()}${channelValues()}`)
       if (parts.length) partBounds()
       if (profileX !== null) profile()
     }

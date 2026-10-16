@@ -172,7 +172,7 @@ describe('citadel contact', () => {
   })
 
   it.each(ROSTER.map((entry) => ({ name: entry.id, entry })))('routes $name walking, landing and fighting footfalls through the contacted material', ({ entry }) => {
-    const character = entry.create({ ...readAsset(entry.id), weapon: readWeapon(entry.weapon) }, { ...NO_CONTACT, surface: () => 'deck' }, new AudioMix())
+    const character = entry.create({ ...readAsset(entry.id), weapon: entry.weapon ? readWeapon(entry.weapon) : null }, { ...NO_CONTACT, surface: () => 'deck' }, new AudioMix())
     const sound = vi.spyOn(character.effects.audio, 'footstep')
     character.effects.addFootstep('L', 1)
     character.effects.takeoff()

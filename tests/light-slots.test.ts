@@ -15,7 +15,7 @@ function lightIds(scene: Scene): number[] {
 }
 
 describe('light slots', () => {
-  const cars = ROSTER.map((entry) => entry.create({ ...readAsset(entry.id), weapon: readWeapon(entry.weapon) }, NO_CONTACT, new AudioMix()))
+  const cars = ROSTER.map((entry) => entry.create({ ...readAsset(entry.id), weapon: entry.weapon ? readWeapon(entry.weapon) : null }, NO_CONTACT, new AudioMix()))
 
   it('keeps the scene lights the same whichever car plays', () => {
     const scene = new Scene()

@@ -55,7 +55,7 @@ export async function probeSwitch(from: string, to: string): Promise<void> {
     const cached = built.get(id)
     if (cached) return cached
     const entry = rosterEntry(id)
-    const car = entry.create({ ...readAsset(entry.id), weapon: readWeapon(entry.weapon) }, world.contactEffects, mix)
+    const car = entry.create({ ...readAsset(entry.id), weapon: entry.weapon ? readWeapon(entry.weapon) : null }, world.contactEffects, mix)
     lights.set(car, LightSlots.adopt(car.model.root, car.effects.object))
     built.set(id, car)
     return car
@@ -94,6 +94,70 @@ export async function probeSwitch(from: string, to: string): Promise<void> {
   frame()
   frame()
   console.log(`boot: ${programs} programs, ${pipelines} pipelines`)
+
+  /**
+   * PLAY=1: the car's own transformation back into the car and out again, a
+   * whole combo and its special, through their live update paths (the
+   * session's order: fight, gait, pose, the effects), every frame drawn with
+   * the car's culling off so each draw they issue is issued. A car whose
+   * effects only appear in play (the Roadster's jets, cannons, field and
+   * special) is held to the warm-up by what it really does, not only by what
+   * its `warm` reveals.
+   */
+  const playThrough = (car: Character, fight: RobotCombat, state: ReturnType<typeof createMotionState>): void => {
+    const restoreModel = disableCulling(car.model.root)
+    const restoreEffects = disableCulling(car.effects.object)
+    const dt = 1 / 60
+    const step = (T: number, previous: number): void => {
+      state.progress = T
+      car.model.pose(T, T >= 0.9 ? car.gait.update(dt, 0, 0, false, T >= 1, null) : null)
+      car.combat.effects.afterPose()
+      car.effects.timeline(previous, T)
+      car.effects.update(dt, state)
+      frame()
+    }
+    let T = 1
+    state.mode = 'car'
+    state.target = 0
+    while (T > 0) { const p = T; T = Math.max(0, T - dt / car.transformationDuration); step(T, p) }
+    state.mode = 'robot'
+    state.target = 1
+    while (T < 1) { const p = T; T = Math.min(1, T + dt / car.transformationDuration); step(T, p) }
+    // a whole combo (a click every 0.3 s: each chains as its window opens), then the special to its end
+    let special = false
+    for (let t = 0; t < 30; t += dt) {
+      if (t < 5 && Math.abs(t % 0.3) < dt) fight.press()
+      if (t >= 5.5 && !special) { fight.startSpecial(state, camera); special = true }
+      const s = dt * fight.tempo
+      fight.update(s, state, camera)
+      const pose = car.gait.update(s, state.speed, state.yawRate, false, true, null)
+      if (fight.poseWeight > 0) pose.air = (pose.air ?? 0) + (fight.air - (pose.air ?? 0)) * fight.poseWeight
+      car.model.root.position.copy(state.pos)
+      car.model.root.rotation.set(0, state.yaw, 0)
+      car.model.pose(1, pose)
+      car.combat.effects.afterPose()
+      car.effects.update(s, state)
+      camera.position.set(state.pos.x + 22, state.pos.y + 14, state.pos.z - 22)
+      camera.lookAt(state.pos.x, state.pos.y + 6, state.pos.z)
+      camera.updateMatrixWorld()
+      frame()
+      if (special && t > 6 && !fight.cinematic && !fight.active) break
+    }
+    fight.cancel()
+    restoreEffects()
+    restoreModel()
+    console.log(`${car.id}: played its transformation both ways, a whole combo and its special`)
+  }
+
+  if (process.env.PLAY) {
+    // the boot car played after the boot warm-up alone (GameSession.compile)
+    const booted = [programs, pipelines]
+    const state = createMotionState()
+    state.mode = 'robot'; state.target = state.progress = 1; state.yaw = 0
+    playThrough(first, new RobotCombat(first.combat, first.model, first.robotOffset, state, new CameraFx()), state)
+    console.log(`${first.id} (boot): built in play ${programs - booted[0]} programs, ${pipelines - booted[1]} pipelines`)
+    if (programs !== booted[0] || pipelines !== booted[1]) throw new Error('Shaders or pipelines built during play')
+  }
 
   let second = first
   const warmed = new Set([first])
@@ -166,6 +230,7 @@ export async function probeSwitch(from: string, to: string): Promise<void> {
       frame()
     }
     fight.cancel()
+    if (process.env.PLAY) playThrough(second, fight, state)
     const newPrograms = programs - switched[0], newPipelines = pipelines - switched[1]
     console.log(`${previous.id} -> ${second.id} (${cold ? 'first use' : 'cached'}): built in play ${newPrograms} programs, ${newPipelines} pipelines`)
     if (newPrograms || newPipelines) throw new Error('Shaders or pipelines built during play')

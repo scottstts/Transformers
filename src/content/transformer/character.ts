@@ -148,4 +148,11 @@ export interface Character {
   readonly robotOffset: number
   /** the robot's fighting: its four-move combo, weapon and effects */
   readonly combat: CharacterCombat
+  /**
+   * How far the body is flown above the ground it stands on (m), for a
+   * character whose transformation leaves the ground (the Roadster's flight):
+   * the follow camera looks up after it and the enemies cannot reach it.
+   * Absent: always on the ground.
+   */
+  altitude?(): number
 }

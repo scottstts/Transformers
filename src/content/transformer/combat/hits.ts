@@ -74,6 +74,8 @@ export interface SweepHit {
   lift: number
   /** Push toward this point in the move's ground frame instead of along the motion. */
   toward?: readonly [number, number]
+  /** Optional sound of the blow (as a strike's); unset, its kind's */
+  blowSound?: 'punch' | 'heavy' | 'slash' | 'cutlass' | 'none'
 }
 
 export interface BlastHit {
@@ -84,6 +86,8 @@ export interface BlastHit {
   damage: number
   knock: number
   lift: number
+  /** Optional sound of the blow (as a strike's); unset, its kind's */
+  blowSound?: 'punch' | 'heavy' | 'slash' | 'cutlass' | 'none'
 }
 
 export interface PullHit {

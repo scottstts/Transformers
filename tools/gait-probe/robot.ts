@@ -8,5 +8,5 @@ import { NO_CONTACT, readAsset, readWeapon } from '../../tests/support/assets.ts
 export function probeRobot(id: string, asset: TransformerAsset = readAsset(id)): Character {
   const entry = rosterEntry(id)
   if (entry.id !== id) throw new Error(`no robot ${id} in the roster`)
-  return entry.create({ ...asset, weapon: readWeapon(entry.weapon) }, NO_CONTACT, new AudioMix())
+  return entry.create({ ...asset, weapon: entry.weapon ? readWeapon(entry.weapon) : null }, NO_CONTACT, new AudioMix())
 }

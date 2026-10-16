@@ -150,7 +150,12 @@ export class RobotRig {
     this.local = bones.map(() => ({ t: new Vector3(), q: new Quaternion() }))
     this.world = bones.map(() => new Matrix4())
     this.hand = this.layout()
+    // the stand's arms may hang swung a little forward or back (the Roadster's 4 degrees back): the gait swings them from there
+    for (const side of ['L', 'R'] as const) this.armPitch[side] = _euler.setFromQuaternion(this.stand[this.index[`upperarm.${side}`]].q, 'ZYX').x * 180 / Math.PI
   }
+
+  /** each upper arm's pitch in the stand (deg, about X before its abduction) */
+  private readonly armPitch: Record<'L' | 'R', number> = { L: 0, R: 0 }
 
   /** The hands' construction (HandLayout), measured from the bones once. */
   readonly hand: HandLayout
@@ -224,7 +229,7 @@ export class RobotRig {
     const curl = g.curl / GAIT_REST_CURL
     const abduct = d.armAbduct * (g.abduct ?? 1)
     for (const [side, s] of [['L', 1], ['R', -1]] as const) {
-      set(`upperarm.${side}`, eulerXYZ(g.arms[side], -s * abduct, 0, tmp))
+      set(`upperarm.${side}`, eulerXYZ(g.arms[side] + this.armPitch[side], -s * abduct, 0, tmp))
       // twist about the arm's own axis first (it hangs along -Z): the elbow's hinge turns inward
       const twist = g.armTwist?.[side] ?? 0
       if (twist) this.local[this.index[`upperarm.${side}`]].q.multiply(_q1.setFromAxisAngle(Z_AXIS, -s * deg(twist)))
@@ -318,7 +323,9 @@ export class RobotRig {
       drop = carriage === -Infinity ? drop : carriage + softExcess(drop - carriage)
       // only a vault lifts the pelvis above the stand
       drop = MathUtils.lerp(softMaximum(0, drop), drop, vault)
-      root.elements[14] -= drop * reachWeight
+      // engaged with the floor as locomotion starts: switched on at once, the soft maximum's margin dropped the
+      // pelvis a couple of centimetres in one frame, which nearly straight standing knees took as a 12 degree snap
+      root.elements[14] -= drop * reachWeight * Math.min(1, minKnee / KNEE_FLOOR_ENGAGE)
     }
     root.elements[14] -= g.compression ?? 0
     if (root.elements[14] !== this.world[this.index.pelvis].elements[14]) this.forward(root)
@@ -380,6 +387,9 @@ function softMaximum(a: number, b: number): number {
   const overlap = Math.max(0, 0.06 - Math.abs(a - b))
   return Math.max(a, b) + overlap * overlap / 0.24
 }
+
+/** Knee floor (deg) over which the carriage sizing engages as locomotion starts. */
+const KNEE_FLOOR_ENGAGE = 4
 
 /** How far a reach beyond the carriage eases in before it is taken in full (m). */
 const EXCESS_EASE = 0.015

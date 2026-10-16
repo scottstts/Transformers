@@ -140,7 +140,7 @@ export function createF1(asset: TransformerAsset, contactEffects: ContactEffects
     model,
     gait: new RobotGait(RACER_GAIT),
     effects,
-    combat: createF1Combat(model, asset.weapon, effects, contactEffects, mix, sole),
+    combat: createF1Combat(model, asset.weapon ?? undefined, effects, contactEffects, mix, sole),
     profile: F1_PROFILE,
     transformationDuration: model.duration,
     robotOffset: model.dims.robotF,

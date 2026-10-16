@@ -2,11 +2,13 @@ import { PerspectiveCamera, Scene, Vector3, type Object3D } from 'three/webgpu'
 import { createHeadlessRenderer } from './headless'
 import { adoptReversedDepth } from '../../src/rendering/depth'
 import { Sparks } from '../../src/content/transformer/combat/fx/sparks'
-import { Lightning } from '../../src/content/impala/combat/fx/lightning'
+import { Lightning } from '../../src/content/transformer/combat/fx/lightning'
 import { Tracers } from '../../src/content/semi/combat/fx/tracers'
 import { MuzzleFlashes } from '../../src/content/semi/combat/fx/flashes'
 import { Lances } from '../../src/content/bat/combat/fx/lances'
 import { Vortex } from '../../src/content/bat/combat/fx/vortex'
+import { Inflow } from '../../src/content/roadster/combat/fx/inflow'
+import { EnergyOrb } from '../../src/content/roadster/combat/fx/energy-orb'
 
 function withRandom<T>(random: () => number, run: () => T): T {
   const previous = Math.random
@@ -89,6 +91,14 @@ export async function probeFacing(): Promise<void> {
       vortex.update(0.4)
       await check(streak ? 'bat vortex streak' : 'bat vortex puff', vortex.mesh)
     }
+    // the Roadster's streaks of air drawn in, and its orb's beam
+    const inflow = new Inflow()
+    withRandom(random, () => inflow.emit({ count: 60, center: new Vector3(0, 1, 0), radius: [3, 4], below: 0.5, above: 1, pull: 0.5, swirl: 2, life: [3, 3], width: 0.2, strength: 1 }))
+    inflow.update(0.6)
+    await check('roadster inflow', inflow.mesh)
+    const orb = new EnergyOrb()
+    orb.setBeam(new Vector3(-3, 2, 0), new Vector3(3, 0, 0), 0.8, 1)
+    await check('roadster orb beam', orb.object)
     if (failures.length) throw new Error(`Camera-facing effects produced no lit pixels: ${failures.join(', ')}`)
   } finally {
     renderer.dispose()

@@ -1,0 +1,61 @@
+# Roadster character
+
+The new Tesla Roadster, its robot (6.0 m, the Cybertruck robot's class) and the flying transformation are authored in Blender (`blender/roadster_build/`, roadster-model.md) and exported as `assets/roadster.{json,bin}`. The package is `src/content/roadster/`. The robot carries no weapon asset: its cannons are built into its hands (`RosterEntry.weapon` and `PlayableTransformerAsset.weapon` are null).
+
+## Flight in the game
+
+- **Altitude is in the asset.** The transformation's lift track carries the flight (`flight.py`'s W(t): lift-off 0.8 s, boost to 1.6 s, one ballistic arc to the touchdown at 6.6 s, about 18.8 m at the top); the model plays it as its lift. Nothing in the game re-derives it.
+- **`Character.altitude()`** is that lift while the transformation plays (0 otherwise). The follow camera looks up after it: its target rises with the body, the eye rises only 45 % of the altitude and backs off 0.55 m per metre (`ALTITUDE_RISE`, `ALTITUDE_PULL`), so the climb reads as height over the ground it left rather than the world sinking under a camera riding along. The soldiers cannot reach a body more than a metre up.
+- **The hero landing** (6.6 s) lands on the left foot, the right knee and the right hand (the reference pose): a cold bowl pressed under the hand, the sand surging out, crust thrown up, a heavy double footfall and a hard shake (`RoadsterEffects.landing`). Played backward it is the push off.
+
+## Compressed air (`fx/air-jets.ts`, `fx/jet-columns.ts`, `fx/vapor.ts`)
+
+- Cold air, not fuel: white condensate columns and the cloud they throw where they strike the ground, lit like cloud (white where the sky lights it, cool grey underneath); no glow, flame, soot or light. Matches `ref_images/roadster/fly.JPG`: columns clear for a hand's width under the outlet, then dense, widening and streaming; a billowing white cloud rolling out along the ground.
+- **Outlets** are read off the exported nodes: the four lift jets at the foot of their telescoping stages (`asm:jet.*.stage`, local (0, 0, -0.2), thrust down -Z), the pack's four nozzles and four compressor engines on the tail's raked face (`asm:tail`, axis (0, 0.979, -0.204)). The pack's outlets point down from 5.4 s to the stand.
+- **Schedule** (seconds of the transformation, a function of time alone, so it plays the same backward): lift jets spool 0.42-0.82 s as the stages reach the ground, burn through the boost and die by 2.2 s; four short attitude puffs steady the flip; the pack lights 5.25-5.95 s and burns to the touchdown, dying by 7.05 s. Backward: the pack launches the jump back into the car and the lift jets brake its landing.
+- **Columns**: one instanced draw of twelve open cones placed on the GPU from four vec4s each; opacity is the path length through a round column (the normal against the view), so the silhouette is soft without a march. A column ends where its axis meets the ground; the strike feeds the cloud (`Vapor`, a GPU-evaluated premultiplied sprite pool, two noise fetches, no fog), the desert's own sand blast and a faint cold-air shimmer (`HeatHaze`).
+- **Sound** (`audio/air.ts`): the propeller recording's spectrum as a seamless loop (two decorrelated copies, a lowpass opening with throttle), a nozzle hiss above the recording's 4 kHz band limit, the ground's wash and a soft pressure thump as the air lights. No crackle or combustion rumble.
+- A fight drives the pack through `AirJets.boost` (Whiteout's run, leap, hover and descent).
+
+## Runtime choices
+
+- **Rig:** the Blender stand hangs the arms swung 4° back; the live rig now reads each upper arm's stand pitch from the stand (`RobotRig.armPitch`, zero on every other robot), so the handover is exact. The stand's knees are nearly straight (3°), which made the rig's carriage sizing snap the knees 12° in the first frame of a walk; that sizing now engages over the first 4° of the knee floor (`KNEE_FLOOR_ENGAGE`).
+- **Live skeleton:** the audit (`AUDIT_HOSTS=1 node tools/pose-audit.mjs roadster`) finds no car part resting on another bone at the stand, and every brace's two pins share a bone, so nothing is re-hosted and no brace is re-laid live.
+- **Feet:** the foot and toe castings are `part:` nodes (`footNodes`), rolled along their plane (`rollSupport`). Soles fitted with `gait-probe.mjs --sole`: sharp edges, heel 0.395, toe 0.975, ankle 0.74 (within a few millimetres at every pitch).
+- **Gait:** the heavy machine scaled to 3.62 m hips: walk 4.25 m/s on 2.86 m steps (Froude 0.51, dimensionless cadence 0.90), run 16.3 m/s on 5.37 m steps (1.83), a `runCycle` run; bounce 0.67 / 1.44 g; the wide stand's track drawn in while moving.
+- **Profile:** a low, stiff, very fast car: 2.91 m wheelbase, 0.39 m tyres, high grip (1.32) that gives up late, little roll, 56 / 70 m/s, electric all-wheel drive weighted 62 % rear.
+- **Materials** (`materials.ts`): every slot at the build's linear colour and finish. Pearl white is a clear-coated white with a weak thin-film layer (the pearl's colour shift) and orange peel in the coat; carbon twill fades to its mean by its own screen footprint (the tows are far below a pixel). Lamps and the visor are emissive levels (`ROADSTER_LIGHTS`): markers blink while it transforms, the cabin goes dark as the car opens, the visor lights as the robot comes out of the flip.
+- **Engine:** the Cybertruck's electric drive motor, now shared (`transformer/audio/electric-drive.ts`).
+
+## Sounds (`audio/sound-models.ts`, `tools/roadster-sound-model.mjs`)
+
+Fitted to `ref_sounds/roadster/` (never shipped), synthesised by `src/audio/spectral.ts`:
+
+- **One-shots** (spectral-envelope models plus their low tones, fitted within 2-4 dB of the recordings by band; a varied take measures 5-6 dB, `--compare`): `shock` (the palm cannon: a 36 Hz punch under a broadband roar), `energy` (the energy cannon: a 41 Hz body under a bright wash), `explosion` (Whiteout's impact: a deep blast, its body under 60 Hz, rolling on for two seconds; it replaced the shared layered explosion), `landing` (the robot coming down out of its flight: a heavy thump with a metal ring; played only car to robot, cued so its loudest moment falls on the touchdown; the push off it, robot to car, stays footfalls), `pass` (a pass of the sprint going by). A cue can land a take's loudest moment on its blow (`CannonAudio.play` `peakIn`): the palm moves cue `shock` at the charge, so the take's rise plays under it.
+- **Loops** (steady spectra, seamless): `distortion` (a sub rumble on a 40 Hz line with a 50 Hz series over it; the field's voice, its pitch sinking as it tightens) and `propeller` (the air pack's roar). No blow sounds from the soldiers' side either: every Roadster hit names `blowSound` none (blasts and sweeps may name one now, as strikes could), so its blows are heard only as its own blasts, discharges and field.
+
+## Combat (`combat/`)
+
+The hands are the weapons. A palm faces its blast with the forearm turned knuckles-level then the wrist bent back (`wz` -90, `wy` -80; `tools/palm-probe.mjs` prints where a pose puts the palms); the cannon fires along the palm's normal. The palms' glow follows them after the pose (`afterPose`), as does the palms' light (the fighter's light slot). Its colour is a hot, cold-edged white.
+
+1. **Right palm cannon** (strike 0.24 s): the left foot steps in, hips and chest drive the palm out; a cone of shocked air races out (`fx/shock-cones.ts`: refraction through its own normal, a faint condensation skin), condensation thrown in a ring and along the blast, sand blown off the ground ahead, a flash. Small area: 8 m, 60°.
+2. **Left palm cannon** (0.27 s): the hips pivot back on a step through, a little harder.
+3. **Arc storm**: a wide braced step, both palms up, six pulses in under a second, the palms firing in turn while the hips carry the aim across the front, each throwing white arcs (`Lightning` with white colours, now shared) to whatever stands in the front half circle (rays fanned across it find the bodies; the rest strike the sand); the strikes hold every soldier there seizing (`shock`), the last, both palms together, throws them.
+4. **Singularity**: the right fist raised before the brow, the left fist chambered at the hip (the deep chest leaves no room to brace across it), the air round the fist warped (`fx/field.ts`: the scene behind twisted and pinched toward the fist, ripples running in), streaks of air spiralling in (`fx/inflow.ts`, analytic paths), sand dragged along the ground; everything within 17 m drawn to a point 3.4 m ahead, struck every 0.15 s; then the arm swung out flat to the right side as the torso turns 70° after it, and the field bursts: a wall of white air rolling out all round (`fx/burst-ring.ts`), the sand surging after it, everything thrown outward (19 m).
+
+- **Guard:** both forearms raised before the face, the gullwing doors they carry turned out as shields.
+- **Travel:** 0.82 / 0.83 / 0.94 / 0.84 m (the cannons step in; the singularity plants wide).
+
+## Whiteout (the special)
+
+- Beats: the visor blazing as it drops into a sprinter's crouch, the pack lighting; it breaks into a run round a ring 32 m across (the centre 16 m ahead, the robot starting on its near edge), 3.5 laps clockwise seen from above, the first at the full radius, then drawn in to 6 m; a speedster's run (the Quicksilver look): streaks of light from the head, torso, hands and feet trailing back round the ring (`fx/speed-trails.ts`, a time long, so they reach further round as it speeds up), afterimages of the body left every 0.03 s (`fx/afterimages.ts`, spaced by the speed, torn back along their motion), sand torn up under it, air shed and drawn round inside it (filmed high and far out, then from inside among the crowd); out of the last lap it leaps on the pack 24 m over the crowd and hangs on its columns, hands raised, while the orb is conjured (`fx/energy-orb.ts`) in slow motion, the sky's charge struck into it and down into the crowd; it hurls it down (a beam from the hands to the orb in flight), a white sun on the sand (a crater of glass, the surge, crust thrown up, two bursts rolling out, arcs crawling out over the ground, the flash and the lens's blast wave, a deep explosion fitted to the user's recording); it comes down slowly on the pack and stands in the glass.
+- **Geometry** in the special's ground frame: at angle phi and radius r it stands at [r sin phi, CENTER - r cos phi], heading 90 - phi; the keys are sampled from a constant-acceleration build-up (`phiAt`), the radius eased in after the first lap (`radiusAt`). The run's legs are free legs in a sprint's cycle at 3.2 steps a second (the body's speed far outruns them: the wall is what reads), the arms pumping opposite. It turns back to its starting heading in the leap (a whole number of turns), so nothing unwinds.
+- **Hits:** the ring draws everything within 22 m of its centre in, harder each lap (5, 9, 13 m/s), and beats on what it holds every 0.2 s; the orb's three crackles seize the crowd; the impact (26 m) is the last blow.
+- **Lights:** the palms' (the fighter's), the blast's, and the orb's own (the third slot).
+- Real length: about 14.7 s for 12.35 s of special time.
+
+- **Afterimages** draw the body again from a coarse copy of every rigid part (vertex clustering at 7 cm in each part's frame, built at load in about 30 ms: 30 k triangles against the body's 0.9 M), one instanced draw of 16 copies whose poses are each part's world matrix at the capture, in storage; a capture uploads its own slot. The streaks sample their anchors after the pose (`afterPose`): sampled before it, they started a frame (two metres at full speed) behind the body.
+
+## Warm-up
+
+Every effect is created at load and revealed by `warm`: the jets' columns, the vapour pool and its shimmer (under the character's effects object), the palm glows, shock cones, arcs, inflow, field, burst rings, the run's streaks and afterimages, and the orb's three draws. `PLAY=1 node tools/switch-probe.mjs <from> roadster` plays the transformation both ways, a whole combo and the special after a first-use switch: nothing is built in play.

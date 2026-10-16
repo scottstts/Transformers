@@ -19,13 +19,18 @@ export interface TransformerAsset {
   lift: Float32Array
   /** weight of the meshes' second shape per frame (their `morph*` attributes), if any */
   morph?: Float32Array
-  /** the robot's combat weapon, a separate export (blender/weapons_build) */
-  weapon?: WeaponAsset
+  /** the robot's combat weapon, a separate export (blender/weapons_build); null for a robot whose weapons are built in */
+  weapon?: WeaponAsset | null
 }
 
-/** A roster-ready character asset: vehicle geometry and combat weapon have both finished loading. */
+/**
+ * A roster-ready character asset: its vehicle geometry and its combat weapon
+ * have both finished loading. `weapon` is null only for a robot that has none
+ * to load (the Roadster fights with what is built into its hands), so a loader
+ * cannot report ready while forgetting one.
+ */
 export interface PlayableTransformerAsset extends TransformerAsset {
-  weapon: WeaponAsset
+  weapon: WeaponAsset | null
 }
 
 /**

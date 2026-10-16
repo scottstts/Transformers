@@ -3,8 +3,8 @@
 The Blender build lives in `blender/roadster_build/rdb` (`run.py` entry), saved to
 `blender/roadster.blend`. `rdb_build.car_stage()` builds the car (approved and locked);
 `rdb_build.robot_stage()` then builds the robot on top of it, docks the car parts and
-bakes the transformation. Step 1: the robot and transformation are in their first
-rough pass, awaiting inspection.
+bakes the transformation. The model and the transformation are approved and exported;
+the game side is roadster.md.
 
 ## Reference registration
 
@@ -402,6 +402,10 @@ flip at the apex, then a thrust-braked landing as the car.
   `export_game.py` in the connected Blender, or headless on a saved roadster.blend.
 - Geometry is exported at authoring density with modifiers applied (no reduction):
   about 0.9 M triangles.
+- Triangles are gathered per slot name, not per material index: a cut whose faces are all
+  reassigned to one material (the door window posts, the side pods) keeps several indices naming
+  one slot. Keyed by index, each overwrote the last, and the posts and pods left with only their
+  edge walls (see-through slots in the side glass).
 - Nodes:
   - `bone:` joints.
   - `part:` castings on their nests. The nests' growth is the scale track.

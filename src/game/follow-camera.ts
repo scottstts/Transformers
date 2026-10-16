@@ -30,6 +30,15 @@ const TRAVEL_FOLLOW = 0.65
 const CAMERA_CLEARANCE = 0.7
 /** The lowest the camera goes over the ground under it (m). */
 const GROUND_CLEARANCE = 0.55
+/**
+ * A body flown up off the ground (the Roadster's transformation) is followed
+ * by the look, but the camera rises only this share of its altitude and backs
+ * off by `ALTITUDE_PULL` metres per metre of it: the view looks up at the body
+ * over the ground it left, so the climb reads as height, not as the world
+ * sinking away under a camera that rides along with it.
+ */
+const ALTITUDE_RISE = 0.45
+const ALTITUDE_PULL = 0.55
 
 export class FollowCamera {
   private readonly camera: PerspectiveCamera
@@ -45,6 +54,8 @@ export class FollowCamera {
   private lastLook = -10
   private initialized = false
   private radius: number
+  /** the followed altitude (m), eased as the target is */
+  private altitude = 0
   private clearRadius: number
   private recovering = false
   private obstacles: Object3D[] = []
@@ -189,7 +200,8 @@ export class FollowCamera {
     return this.focus.copy(this.localFocus).applyMatrix4(root.matrixWorld)
   }
 
-  update(dt: number, state: MotionState, root: Object3D, driving = false): void {
+  /** `altitude`: how far the body is flown above the ground it stands on (m; Character.altitude) */
+  update(dt: number, state: MotionState, root: Object3D, driving = false, altitude = 0): void {
     const now = performance.now() / 1000
     if (this.framingGlide < 1) this.glideFraming(dt)
     if (state.progress < 0.5 && driving && now - this.lastLook > 0.3) {
@@ -199,10 +211,11 @@ export class FollowCamera {
     }
     const k = easedRange(state.progress, 0.1, 0.6)
     if (this.broadside && (Math.abs(state.speed) > 0.3 || state.progress > 0)) this.broadside = false
-    let distance = lerp(this.framing.carDistance, this.framing.robotDistance, k)
+    let distance = lerp(this.framing.carDistance, this.framing.robotDistance, k) + altitude * ALTITUDE_PULL
     // on a narrow (portrait) screen the broadside backs off until the whole car fits across
     if (this.broadside) distance = Math.max(distance, (this.framing.carHalfLength ?? SIDE_HALF_SPAN) / (Math.tan(this.camera.fov * Math.PI / 360) * this.camera.aspect))
     const focus = this.focusPoint(state, root)
+    focus.y += altitude
     if (!this.initialized) {
       this.target.copy(focus)
       this.radius = distance
@@ -212,11 +225,14 @@ export class FollowCamera {
       this.target.lerp(focus, 1 - Math.exp(-dt * 8))
       this.radius = damp(this.radius, distance, 8, dt)
     }
-    const minimumPitch = Math.asin(clamp((0.5 + this.ground.height(this.target.x, this.target.z) - this.target.y) / this.radius, -1, 1))
+    this.altitude = damp(this.altitude, altitude, 8, dt)
+    // the eye rides the body's altitude only in part: it looks up at a flying body
+    const sink = this.altitude * (1 - ALTITUDE_RISE)
+    const minimumPitch = Math.asin(clamp((0.5 + this.ground.height(this.target.x, this.target.z) - this.target.y + sink) / this.radius, -1, 1))
     const pitch = Math.max(this.pitch + lerp(0, 0.02, k), minimumPitch)
     this.position.set(
       this.target.x + Math.sin(this.yaw) * Math.cos(pitch) * this.radius,
-      this.target.y + Math.sin(pitch) * this.radius,
+      this.target.y + Math.sin(pitch) * this.radius - sink,
       this.target.z + Math.cos(this.yaw) * Math.cos(pitch) * this.radius,
     )
     if (this.cinematic || !this.obstacles.length) {

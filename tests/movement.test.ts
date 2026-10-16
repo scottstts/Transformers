@@ -9,6 +9,7 @@ import { F1_PROFILE, RACER_GAIT } from '../src/content/ferrari-f1'
 import { SEMI_PROFILE, SEMI_GAIT } from '../src/content/semi'
 import { BAT_PROFILE, BAT_GAIT } from '../src/content/bat'
 import { IMPALA_PROFILE, IMPALA_GAIT } from '../src/content/impala'
+import { ROADSTER_PROFILE, ROADSTER_GAIT } from '../src/content/roadster'
 import { HEAVY_GAIT, RobotGait } from '../src/content/transformer/animation/gait'
 
 const CAR = CYBERTRUCK_PROFILE.drive
@@ -101,6 +102,7 @@ describe.each([
   { name: 'semi', profile: SEMI_PROFILE, style: SEMI_GAIT },
   { name: 'bat', profile: BAT_PROFILE, style: BAT_GAIT },
   { name: 'impala', profile: IMPALA_PROFILE, style: IMPALA_GAIT },
+  { name: 'roadster', profile: ROADSTER_PROFILE, style: ROADSTER_GAIT },
 ])('$name obstructed robot movement', ({ profile, style }) => {
   describe.each(['wall', 'rock'])('%s', (obstacle) => {
     it.each([false, true])('keeps its gait while blocked, resumes freely and stops on key release (running %s)', (running) => {

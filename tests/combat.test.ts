@@ -5,6 +5,7 @@ import { createF1 } from '../src/content/ferrari-f1/index.ts'
 import { createSemi } from '../src/content/semi/index.ts'
 import { createBat } from '../src/content/bat/index.ts'
 import { createImpala } from '../src/content/impala/index.ts'
+import { createRoadster } from '../src/content/roadster/index.ts'
 import { AudioMix } from '../src/audio/mix.ts'
 import { CH, CHANNEL_NAMES } from '../src/content/transformer/combat/pose.ts'
 import type { Character } from '../src/content/transformer/character.ts'
@@ -21,6 +22,8 @@ interface Fighter {
   clicks: number[]
   /** the least ground each move gains (m) */
   travel: [number, number, number, number]
+  /** false for a robot with no weapon to form (its cannons are built in) */
+  weaponed?: boolean
   /** the first move that forms the weapon (a single click of an unarmed first move never shows it) */
   armedFrom?: number
 }
@@ -63,9 +66,17 @@ const FIGHTERS: Fighter[] = [
     // the cutlass from the first thrust
     armedFrom: 0,
   },
+  {
+    name: 'roadster',
+    make: () => createRoadster({ ...readAsset('roadster'), weapon: null }, NO_CONTACT, new AudioMix()),
+    clicks: [0, 0.4, 0.8, 2.15],
+    // the palm cannons step in, the storm braces and steps, the singularity plants wide and is swung round
+    travel: [0.6, 0.6, 0.6, 0.5],
+    weaponed: false,
+  },
 ]
 
-describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2 }) => {
+describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, weaponed = true, armedFrom = 2 }) => {
   const character = make()
   const { moveset } = character.combat
 
@@ -123,9 +134,11 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
     const head = bodyCore(c, 'bone:head', 0.1)
     const inv = new Matrix4()
     const p = new Vector3()
-    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))!
-    expect(weapon).toBeDefined()
-    expect(weapon.children.length).toBeGreaterThan(0)
+    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))
+    if (weaponed) {
+      expect(weapon).toBeDefined()
+      expect(weapon!.children.length).toBeGreaterThan(0)
+    } else expect(weapon).toBeUndefined()
     let frames = 0
     let armed = 0
     const inside = (box: Box3, node: string, world: Vector3): boolean => box.containsPoint(p.copy(world).applyMatrix4(inv.copy(c.model.node(node).matrixWorld).invert()))
@@ -151,7 +164,7 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
         }
       }
       const formed = c.combat.effects.weapon
-      if (weapon.visible && formed) {
+      if (weapon && weapon.visible && formed) {
         armed++
         if (c.combat.overlay.pose.v[CH['w.two']] > 0.999 && fight.poseWeight === 1) {
           // the other hand's grip centre (the build's is the right hand's; the left mirrors x)
@@ -181,20 +194,20 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
       }
     }, 1 / 120)
     expect(frames).toBeGreaterThan(300)
-    expect(armed).toBeGreaterThan(60)
+    if (weaponed) expect(armed).toBeGreaterThan(60)
     // back in the stance, unarmed, the gait in charge
     expect(combat.active).toBe(false)
-    expect(weapon.visible).toBe(false)
+    expect(weapon?.visible ?? false).toBe(false)
     expect(c.model.overlay).toBeNull()
   })
 
   it('a single click plays move 1 and recovers', () => {
     const c = make()
     let seenWeapon = false
-    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))!
-    const combat = runFight(c, [0], 3, () => { seenWeapon ||= weapon.visible })
-    expect(seenWeapon).toBe(armedFrom === 0)
-    expect(weapon.visible).toBe(false)
+    const weapon = c.model.node(`bone:hand.${c.combat.overlay.build.main}`).children.find((o) => o.name.startsWith('weapon:'))
+    const combat = runFight(c, [0], 3, () => { seenWeapon ||= weapon?.visible ?? false })
+    expect(seenWeapon).toBe(weaponed && armedFrom === 0)
+    expect(weapon?.visible ?? false).toBe(false)
     expect(combat.active).toBe(false)
   })
 
@@ -242,7 +255,7 @@ describe.each(FIGHTERS)('$name fighting', ({ make, clicks, travel, armedFrom = 2
     }, dt, [], (t, fight, state) => {
       fight.onStrike = (index) => {
         strikes.push(index)
-        if (index >= 2) expect(c.combat.effects.weapon!.presence).toBeGreaterThan(0.95)
+        if (index >= 2 && weaponed) expect(c.combat.effects.weapon!.presence).toBeGreaterThan(0.95)
       }
       fight.setSteer({ x: exits % 2 === 0 ? 1 : -1, z: 0 })
       if (!released && strikes.length > exits && fight.releasable) {

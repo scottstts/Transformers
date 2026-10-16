@@ -6,6 +6,7 @@ import { CYBERTRUCK_PROFILE } from '../src/content/cybertruck/index.ts'
 import { SEMI_GAIT, SEMI_PROFILE } from '../src/content/semi/index.ts'
 import { BAT_GAIT, BAT_PROFILE } from '../src/content/bat/index.ts'
 import { IMPALA_GAIT, IMPALA_PROFILE } from '../src/content/impala/index.ts'
+import { ROADSTER_GAIT, ROADSTER_PROFILE } from '../src/content/roadster/index.ts'
 import { HEAVY_GAIT, RobotGait, type GaitStyle } from '../src/content/transformer/animation/gait.ts'
 import { RobotRig } from '../src/content/transformer/model/rig.ts'
 import { NO_CONTACT, readAsset } from './support/assets.ts'
@@ -19,6 +20,8 @@ const cases = [
   { name: 'bat', style: BAT_GAIT, speeds: [BAT_PROFILE.robot.walkSpeed, BAT_PROFILE.robot.runSpeed], steps: [2.18, 4.1], cadence: [3.7 / 2.18, 14.2 / 4.1] },
   // the Impala is the heavy machine scaled to its legs, its run a ballistic `runCycle`
   { name: 'impala', style: IMPALA_GAIT, speeds: [IMPALA_PROFILE.robot.walkSpeed, IMPALA_PROFILE.robot.runSpeed], steps: [2.27, 4.26], cadence: [3.77 / 2.27, 14.5 / 4.26] },
+  // the Roadster is the heavy machine scaled to its 3.62 m hips, its run a ballistic `runCycle`
+  { name: 'roadster', style: ROADSTER_GAIT, speeds: [ROADSTER_PROFILE.robot.walkSpeed, ROADSTER_PROFILE.robot.runSpeed], steps: [2.86, 5.37], cadence: [4.25 / 2.86, 16.3 / 5.37] },
 ]
 const dt = 1 / 240
 const sides = ['L', 'R'] as const
@@ -304,6 +307,7 @@ describe.each([
   { name: 'semi', style: SEMI_GAIT, walk: SEMI_PROFILE.robot.walkSpeed },
   { name: 'bat', style: BAT_GAIT, walk: BAT_PROFILE.robot.walkSpeed },
   { name: 'impala', style: IMPALA_GAIT, walk: IMPALA_PROFILE.robot.walkSpeed },
+  { name: 'roadster', style: ROADSTER_GAIT, walk: ROADSTER_PROFILE.robot.walkSpeed },
 ])('$name walk', ({ name, style, walk }) => {
   const { dims } = readAsset(name).manifest.rig
 

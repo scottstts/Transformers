@@ -50,7 +50,7 @@ The Cybertruck's axe-stump, ground slam and special's slam sounds keep their gro
 
 ## Driving and walking
 
-Driving plays only a plain electric drive motor: a soft hum following the driven wheels' speed (wheelspin winds it up) with a faint, heavily lowpassed whine, silent at rest. Rolling tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill).
+Driving plays only a plain electric drive motor (`transformer/audio/electric-drive.ts`, shared with the Roadster): a soft hum following the driven wheels' speed (wheelspin winds it up) with a faint, heavily lowpassed whine, silent at rest. Rolling tyre roar, gravel and brighter motor tones were removed on request (they sounded shrill).
 
 Sliding tyres (drift, wheelspin, lock) have their own shared voice (`transformer/audio/tyres.ts`), silent until the tread slides faster than 1.5 m/s, so ordinary cornering makes no tyre sound. On the desert a sliding tyre doesn't squeal; it tears through the crust with a broadband roar. The voice has three layers, whose levels alone follow the slide:
 - a scrub from the turbulent roar texture through a fixed highpass and lowpass (900 Hz for the truck, `HEAVY_TYRES`);

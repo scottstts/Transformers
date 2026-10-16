@@ -17,7 +17,7 @@ import { IMPALA_HITS } from './hits'
 import { IMPALA_SPECIAL } from './special'
 import { ThunderFx } from './special-fx'
 import { BladeArcs } from './fx/blade-arcs'
-import { Lightning } from './fx/lightning'
+import { Lightning } from '../../transformer/combat/fx/lightning'
 import { ShockRing } from './fx/shock-ring'
 import { SweepRing } from './fx/sweep-ring'
 

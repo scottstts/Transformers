@@ -23,8 +23,10 @@ export async function probeLightning(until: number, every: number): Promise<void
   }
   const [manifest, bin] = read(entry.id)
   const asset = decodeTransformerAsset(manifest as TransformerManifest, bin, entry.label)
-  const [wm, wb] = read(entry.weapon)
-  asset.weapon = decodeWeaponAsset(wm as WeaponManifest, wb, entry.label)
+  if (entry.weapon) {
+    const [wm, wb] = read(entry.weapon)
+    asset.weapon = decodeWeaponAsset(wm as WeaponManifest, wb, entry.label)
+  }
   const world = createDesertWorld(new Scene(), await mirrorCitadel())
   const player = entry.create(asset, world.contactEffects, new AudioMix())
   const state = createMotionState()

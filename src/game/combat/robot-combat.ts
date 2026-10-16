@@ -620,7 +620,7 @@ export class RobotCombat {
     while (blasts && this.nextBlast < blasts.length && blasts[this.nextBlast].t <= t) {
       const b = blasts[this.nextBlast++]
       const [lat, fwd] = b.at
-      e.shape = 'circle'; e.kind = b.kind; e.blowSound = undefined
+      e.shape = 'circle'; e.kind = b.kind; e.blowSound = b.blowSound
       e.x = this.origin.x + Math.sin(h) * fwd + Math.cos(h) * lat
       e.z = this.origin.z + Math.cos(h) * fwd - Math.sin(h) * lat
       e.heading = h; e.reach = b.radius; e.arc = Math.PI * 2
@@ -650,7 +650,7 @@ export class RobotCombat {
       for (let i = 0; i < sweeps.length; i++) {
         const w = sweeps[i]
         if (t < w.t0 || t > w.t1) continue
-        e.shape = 'circle'; e.kind = w.kind; e.blowSound = undefined
+        e.shape = 'circle'; e.kind = w.kind; e.blowSound = w.blowSound
         e.x = d.x + Math.sin(state.yaw) * w.ahead
         e.z = d.z + Math.cos(state.yaw) * w.ahead
         e.heading = state.yaw; e.reach = w.radius; e.arc = Math.PI * 2
