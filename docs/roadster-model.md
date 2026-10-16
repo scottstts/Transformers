@@ -217,8 +217,43 @@ tail deck 0.903.
   - Calves: the rear wheels sit on the outer calves, under white arches.
 - Robot armour is faceted convex plates (hs.py: gem plates, sector wraps round a
   limb, arch fenders round a wheel) over graphite mechanics with bronze rams and
-  hoses. The head is a sphere with the helmet, faceplate, V visor, cheek guards
-  and horn blades layered on it (r_head.py).
+  hoses.
+
+### Head and neck (r_helmet.py, r_head.py)
+
+- Traced from ref_images/roadster/head-face-neck.png. Its front and back panels
+  are orthographic at 1.55 mm per pixel (centre lines u 312.5 / 943.5, head centre
+  c at v 295, the visor's centre height); they set every outline's X and Z. The
+  near-profile panel is the same head drawn 1.087x larger (1.426 mm per pixel)
+  and sets the depths. Where the panels disagree, the front panel wins: the back
+  panel's lowest plate under the ear is left out because the front shows none there.
+- The stowed head lies face down in the nose. In the head frame the car floor is
+  at Y -0.31 and the hood line at Y 0.54 - 0.78 Z. So the face's front is held at
+  Y -0.297, and the horn tips at Y 0.19. The horns rake less than the profile
+  draws them, with a raked leading edge and an upright trailing edge.
+- The black dome is flat facets. The centre panels, top cap and crown are each one
+  plane across the centre line. Each side facet's free corner is solved onto the
+  plane of its other three. The mask is a twisted wedge: its centre recedes 0.10 m
+  top to bottom, while its edges under the jaw blades hardly move. So it folds on
+  convex diagonals instead.
+- Under every shell and plate is a closed gloss helmet body (head.core). It is
+  fitted by horizontal rays from the head's axis to the first inner surface,
+  less 6 mm, so every seam shows it recessed, never the hollow behind a panel.
+  Below the plates it tapers into the neck on fixed sections (r_helmet.LOWER).
+  Change a plate, and the body refits on the next build.
+- The back spine plates are inset panels, 4 mm proud of the dome.
+- The visor is one continuous white strip in a slot between the brow and the mask.
+  Its V and plan curve are zc / ys in r_helmet.py.
+- The neck stands on the neck bone. It has a front plate stack, back spine plates,
+  front rams (converging down), rear rams (upright) and two links under the chin.
+  It is bolted through a base flange onto the chest deck, which is flat at z -0.380
+  about c. Each ram hangs on rod-end lugs: the pins run level and square to the
+  ram, through clevis forks. The lower forks stand on the flange. The upper forks
+  are posted up into the head body. They are on the neck bone, so a head pitch
+  slides the posts inside the head rather than parting a joint.
+- `headref.render(dir)` renders the head and neck orthographically at each panel's
+  scale, for pixel overlays on the sheet. `refine.sync()` swaps the head and neck
+  meshes in place, without a rebuild or rebake.
 
 ## Transformation (flight.py, choreo.py, linkage.py, bake.py)
 

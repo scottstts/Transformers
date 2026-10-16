@@ -83,8 +83,13 @@ def side(s):
     hs.drum(f, P(X, Y, W + 0.04), (0, 0, 1), 0.14, 0.08, 'gunmetal', 0.012, 24)     # wrist bearing
     out['forearm.%s.core' % S] = (f, 'mech', 'forearm.' + S)
     fa = K.Mesh()
-    hs.gem(fa, [P(X - 0.12, Y - 0.19, E - 0.08), P(X + 0.10, Y - 0.20, E - 0.06), P(X + 0.10, Y - 0.17, W + 0.20),
-                P(X - 0.10, Y - 0.16, W + 0.16)], (0, -1, 0), 0.05, 0.3, 0.8)
+    # Long swept vambrace with an elbow-side peak, tapered wrist and a single
+    # broad diagonal facet. Its back seats on the existing forearm casting.
+    hs.gem(fa, [P(X - 0.13, Y - 0.19, E - 0.13), P(X + 0.08, Y - 0.19, E - 0.035),
+                P(X + 0.16, Y - 0.19, E - 0.30), P(X + 0.12, Y - 0.17, W + 0.23),
+                P(X - 0.07, Y - 0.16, W + 0.12), P(X - 0.15, Y - 0.18, W + 0.34)],
+           (0, -1, 0), 0.05, 0.24, 0.6,
+           ridge=[P(X + 0.025, Y - 0.285, E - 0.30), P(X - 0.01, Y - 0.245, W + 0.29)])
     hs.gem(fa, [P(X - 0.16, Y - 0.10, E - 0.14), P(X - 0.17, Y + 0.10, E - 0.16), P(X - 0.15, Y + 0.08, W + 0.30),
                 P(X - 0.14, Y - 0.08, W + 0.26)], (-s, 0, 0), 0.04, 0.3, 0.8)
     out['forearm.%s.armour' % S] = (fa, 'armour', 'forearm.' + S)

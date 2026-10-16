@@ -1,15 +1,12 @@
-"""Head (concept sheet, all four views): a spherical skull in a black gloss
-helmet. The faceted black faceplate carries a glowing V visor; white cheek
-guards sweep forward along the face from the temples; a round dark ear disc
-with a bronze ring sits on each side; two tall white blade horns rise from the
-temples, raked back and canted out. Everything is layered on the sphere
-(rig.HEAD_R about the head centre); the head itself is never stretched.
+"""Head (r_helmet.py, traced from the head/face/neck sheet) and the neck, in
+robot rest coordinates. Neck parts below are metres about the head centre c,
+read off the same sheet (front: S 1.55 mm/px about u 312.5, v 295; back: about
+u 943.5). The neck hangs on the neck bone; its lower ends run into the chest.
 """
 import math
-from mathutils import Vector, Matrix
+from mathutils import Vector
 from . import kit as K, hs, rig
-
-R = 0.235
+from .r_helmet import fx, fz, bx
 
 
 def centre():
@@ -17,112 +14,169 @@ def centre():
     return Vector((0, h.y, h.z + 0.28))
 
 
-def sph(c, az, el, r):
-    """Point on a sphere about c: az from forward (-y) toward +x, el up (degrees)."""
-    a, e = math.radians(az), math.radians(el)
-    return c + Vector((math.sin(a) * math.cos(e), -math.cos(a) * math.cos(e), math.sin(e))) * r
-
-
 def build_meshes():
-    c = centre()
-    core = K.Mesh()
-    # skull: a sphere slightly inside the helmet (closes every view through the seams)
-    rings = []
-    for k in range(1, 16):
-        e = -90 + k * 180 / 16
-        rings.append([sph(c, a * 360 / 32, e, R - 0.012) for a in range(32)])
-    core.loft(rings, 'graphite')
-    # jaw block under the sphere, the faceplate closes over its front
-    hs.chbox(core, c + Vector((0, -0.04, -0.24)), (0.24, 0.26, 0.14), 0.03, 'graphite')
+    from .r_helmet import build
+    return build(centre())
 
-    helm = K.Mesh()
-    # helmet dome: faceted black gloss, from the brow line back over the crown to the nape
+
+def _ell(c, z, rx, fy, by, n=32):
+    cy, ry = (fy + by) / 2, (by - fy) / 2
+    return [c + Vector((rx * math.sin(i * math.tau / n), cy - ry * math.cos(i * math.tau / n), z)) for i in range(n)]
+
+
+def _slab(m, c, outline, y_front, depth, ch, mat):
+    """Front-facing plate: outline [(x, z)] at depth y_front (about c), its
+    front face chamfered ch, its back depth behind."""
+    cx = sum(x for x, _ in outline) / len(outline)
+    cz = sum(z for _, z in outline) / len(outline)
     pts = []
-    for el in (8, 30, 52, 72):
-        for az in range(-150, 151, 30):
-            if el < 20 and abs(az) < 45:
-                continue                       # brow: the faceplate rises here
-            pts.append(sph(c, az, el, R + 0.012))
-    for az in range(150, 211, 30):
-        for el in (-30, 0, 30):
-            pts.append(sph(c, az, el, R + 0.012))
-    pts.append(sph(c, 0, 90, R + 0.03))
-    pts += [sph(c, a, -38, R * 0.9) for a in range(105, 256, 30)]   # nape skirt
-    helm.hull(pts, 'trim')
-    # centre crest ridge: a raised keel from the brow over the crown
-    keel = [sph(c, 0, e, R + 0.045) for e in (25, 50, 75)] + [sph(c, 180, e, R + 0.03) for e in (75, 45)]
-    base = [sph(c, s * 9, e, R + 0.006) for s in (-1, 1) for e in (22, 50, 80)] + \
-           [sph(c, 180 + s * 10, e, R + 0.006) for s in (-1, 1) for e in (75, 40)]
-    helm.hull(keel + base, 'trim')
-
-    face = K.Mesh()
-    # faceplate: a faceted black mask, a vertical centre ridge, chin point below the sphere
-    fp = []
-    for az in (-38, -22, 0, 22, 38):
-        for el in (14, -5, -24):
-            fp.append(sph(c, az, el, R + 0.020 + (0.018 if az == 0 else 0)))
-    fp += [c + Vector((0, -0.19, -0.27)), c + Vector((0.075, -0.16, -0.25)), c + Vector((-0.075, -0.16, -0.25))]
-    fp += [sph(c, a, e, R * 0.6) for a in (-30, 30) for e in (-20, 10)]
-    face.hull(fp, 'trim')
-    # visor: one V chevron of light across the eyes (lowest at the centre)
-    for s in (-1, 1):
-        for k in range(6):
-            a0, a1 = s * k * 7.0, s * (k + 1) * 7.0
-            e0, e1 = 2 + k * 2.3, 2 + (k + 1) * 2.3
-            seg = []
-            for az, el in ((a0, e0), (a1, e1)):
-                for de in (-1.5, 1.5):
-                    seg.append(sph(c, az, el + de, R + 0.036))
-                    seg.append(sph(c, az, el + de, R + 0.016))
-            face.hull(seg, 'visor')
-    # brow shelf over the visor (dark gloss, slightly proud), peaked at the centre
-    brow = [sph(c, az, 8 + abs(az) * 0.32 + de, R + rr) for az in range(-44, 45, 11) for de, rr in ((5, 0.026), (10, 0.032), (15, 0.022))]
-    face.hull(brow, 'trim')
-
-    white = K.Mesh()
-    for s in (-1, 1):
-        # cheek guard: the white side of the helmet, from the temple down the side of the
-        # face to the jaw, its front edge framing the faceplate
-        out = [sph(c, s * 44, 26, R + 0.03), sph(c, s * 74, 40, R + 0.035), sph(c, s * 100, 24, R + 0.03),
-               sph(c, s * 104, -14, R + 0.03), sph(c, s * 70, -46, R + 0.02), sph(c, s * 30, -50, R + 0.03),
-               sph(c, s * 36, -10, R + 0.034)]
-        n = (sph(c, s * 68, -2, 1) - c).normalized()
-        hs.gem(white, out, n, 0.035, 0.28, 0.9)
-        # a second, smaller plate layered over the guard's upper half (the horn's footing)
-        tp = [sph(c, s * 62, 34, R + 0.06), sph(c, s * 90, 40, R + 0.06), sph(c, s * 98, 16, R + 0.06),
-              sph(c, s * 72, 8, R + 0.06)]
-        hs.gem(white, tp, (sph(c, s * 80, 26, 1) - c).normalized(), 0.03, 0.3, 0.8)
-        # horn: a tall faceted blade, broad at its root, raked back and canted out
-        root = sph(c, s * 80, 30, R + 0.07)
-        up = Vector((s * 0.22, 0.34, 0.91)).normalized()
-        fwd = Vector((0, -1, 0.30)).normalized()
-        fwd = (fwd - up * fwd.dot(up)).normalized()
-        side = up.cross(fwd).normalized()
-        L = 0.44
-        blade = [root + fwd * 0.075, root - fwd * 0.065, root + up * L * 0.62 + fwd * 0.035,
-                 root + up * L + fwd * 0.004, root + up * L * 0.55 - fwd * 0.05]
-        thick = [p + side * 0.016 for p in blade] + [p - side * 0.016 for p in blade]
-        keel = [root + up * L * 0.30 + fwd * 0.01 + side * w for w in (0.032, -0.032)]
-        white.hull(thick + keel, 'armour')
-    ear = K.Mesh()
-    for s in (-1, 1):
-        ax = Vector((s, 0, 0))
-        ec = sph(c, s * 90, -6, R + 0.01) + Vector((0, 0.03, 0))
-        hs.drum(ear, ec, ax, 0.085, 0.05, 'graphite', 0.012, 32)
-        hs.drum(ear, ec + ax * 0.02, ax, 0.062, 0.03, 'bronze', 0.006, 32)
-        hs.drum(ear, ec + ax * 0.034, ax, 0.040, 0.02, 'trim', 0.006, 24)
-    return {'core': core, 'helm': helm, 'face': face, 'white': white, 'ear': ear}
+    for x, z in outline:
+        d = Vector((x - cx, z - cz))
+        k = max(0.0, 1 - ch / max(d.length, 1e-6))
+        pts.append(c + Vector((cx + d.x * k, y_front, cz + d.y * k)))
+        pts.append(c + Vector((x, y_front + ch, z)))
+        pts.append(c + Vector((x, y_front + depth, z)))
+    m.hull(pts, mat)
 
 
 def neck_meshes():
-    n = rig.HEADS['neck']
-    h = rig.HEADS['head']
+    c = centre()
+
+    def P(x, y, z):
+        return c + Vector((x, y, z))
+
     m = K.Mesh()
-    # articulated column: stacked rings between collar and skull base
-    hs.ribs(m, n + Vector((0, 0, -0.10)), h + Vector((0, 0, 0.08)), 4, 0.12, 0.10, 0.05, 'graphite')
-    m.cyl(n + Vector((0, 0, -0.14)), h + Vector((0, 0, 0.10)), 0.075, 'gunmetal', 20)
+    # column: graphite core from inside the chest up into the skull (profile:
+    # the neck's front runs at u 270-290, behind the chin)
+    m.loft([_ell(c, z, rx, fy, by) for z, rx, fy, by in
+            ((-.375, .082, -.036, .173), (-.36, .080, -.038, .175), (-.25, .075, -.045, .180),
+             (-.165, .062, -.055, .165))], 'graphite')
+    # segment collars down the column
+    for z in (-.215, -.270, -.325):
+        m.loft([_ell(c, z + dz, rx, fy, by) for dz, rx, fy, by in
+                ((-.016, .084, -.046, .181), (-.010, .090, -.052, .187), (.010, .090, -.052, .187),
+                 (.016, .084, -.046, .181))], 'gunmetal')
+    # front stack under the chin: front u 282-337, v 430-525, each tucked
+    # under the one above
+    for (v0, v1, u0, u1), y in (((430, 452, 282, 330), -.080), ((455, 490, 290, 335), -.071),
+                                ((492, 525, 288, 337), -.062)):
+        w0, w1 = (fx(u0) - fx(u1)) / 2, (fx(u0) - fx(u1)) / 2 + .002
+        _slab(m, c, [(-w0, fz(v0)), (w0, fz(v0)), (w1, fz(v1)), (-w1, fz(v1))], y, .035, .006, 'helmet')
+    # back spine (back u 915-975, v 350-430; u 905-985, v 452-527)
+    for out, y in (([(915, 350), (972, 350), (975, 358), (975, 398), (915, 398), (912, 358)], .222),
+                   ([(920, 402), (967, 402), (967, 428), (920, 428)], .212),
+                   ([(918, 452), (969, 452), (985, 466), (985, 527), (902, 527), (902, 466)], .205)):
+        pts = []
+        for u, v in out:
+            pts.append((-bx(u), fz(v)))
+        cx = sum(x for x, _ in pts) / len(pts)
+        cz = sum(z for _, z in pts) / len(pts)
+        hull = []
+        for x, z in pts:
+            d = Vector((x - cx, z - cz))
+            k = max(0.0, 1 - .006 / d.length)
+            hull += [P(cx + d.x * k, y, cz + d.y * k), P(x, y - .006, z), P(x, y - .036, z)]
+        m.hull(hull, 'helmet')
+    # base flange bolted onto the chest deck (the deck under the neck is flat
+    # at z -0.380 about c); every lower mount stands on it
+    oct_ = [(-.150, -.100), (.150, -.100), (.190, -.060), (.190, .195), (.150, .235), (-.150, .235),
+            (-.190, .195), (-.190, -.060)]
+    _plinth(m, c, oct_, FLANGE_TOP, -.386, .008, 'gunmetal')
+    for i, (x, y) in enumerate(oct_):
+        q = Vector(oct_[(i + 1) % 8])
+        for t in (.25, .75):
+            p2 = Vector((x, y)).lerp(q, t) * .88 + Vector((0, .0675)) * .12
+            hs.bolts(m, [P(p2.x, p2.y, FLANGE_TOP)], (0, 0, 1), .006, .004, 'graphite')
+    floor = c.z + FLANGE_TOP
     for s in (-1, 1):
-        hs.ram(m, n + Vector((s * 0.12, 0.05, -0.08)), h + Vector((s * 0.09, 0.02, 0.06)), 0.022)
-        hs.hose(m, [n + Vector((s * 0.15, -0.04, -0.10)), n + Vector((s * 0.15, -0.09, 0.05)),
-                    h + Vector((s * 0.10, -0.10, 0.04))], 0.014, 'bronze')
+        # front rams (front: rod from under the jaw u 200 v 340, cylinder down
+        # to u 262 v 525; profile: from under the ear forward to the chest)
+        ram(m, P(s * .100, .000, -.330), P(s * .168, .100, -.095), .019, floor)
+        # rear rams (back u 850 v 365 to u 840 v 500)
+        ram(m, P(s * .150, .195, -.330), P(s * .140, .190, -.120), .016, floor)
+        # links flanking the front stack, flange to chin
+        ram(m, P(s * .055, -.030, -.333), P(s * .066, -.052, -.200), .010, floor, short=True)
     return m
+
+
+FLANGE_TOP = -.355
+
+
+def _plinth(m, c, outline, top, bottom, ch, mat):
+    """Plate on an (x, y) outline from bottom to top (about c), top edge chamfered."""
+    cx = sum(x for x, _ in outline) / len(outline)
+    cy = sum(y for _, y in outline) / len(outline)
+    pts = []
+    for x, y in outline:
+        d = Vector((x - cx, y - cy))
+        k = 1 - ch / d.length
+        pts += [c + Vector((cx + d.x * k, cy + d.y * k, top)), c + Vector((x, y, top - ch)),
+                c + Vector((x, y, bottom))]
+    m.hull(pts, mat)
+
+
+def _lug(m, p, k, r, w, mat='gunmetal'):
+    """Rod-end eye on a pin along k."""
+    m.lathe([(-w / 2, 0.0), (-w / 2, r - .002), (-w / 2 + .002, r), (w / 2 - .002, r), (w / 2, r - .002),
+             (w / 2, 0.0)], mat, p, k, 24)
+
+
+def _clevis(m, pin, k, up, reach, gap, post=0.0):
+    """Fork round a lug: two cheeks either side of it on a pin along k, running
+    `reach` along `up` to a block across them; `post` carries the block on
+    into the part it is fixed to."""
+    up = (up - k * up.dot(k)).normalized()
+    side = k.cross(up)
+    t, R = .007, .022
+    for sg in (-1, 1):
+        cen = pin + k * sg * (gap / 2 + t / 2)
+        pts = []
+        for j in range(12):
+            a = j * math.tau / 12
+            q = cen + (side * math.cos(a) + up * math.sin(a)) * R
+            pts += [q + k * t / 2, q - k * t / 2]
+        for d in (-1, 1):
+            q = cen + up * reach + side * d * R
+            pts += [q + k * t / 2, q - k * t / 2]
+        m.hull(pts, 'graphite')
+    w = gap / 2 + t + .004
+    blk = []
+    for a, b in ((reach, .024 + post), ):
+        for e in (a, a + b):
+            for d in (-1, 1):
+                for g in (-1, 1):
+                    blk.append(pin + up * e + side * d * (R + .003) + k * g * w)
+    m.hull(blk, 'graphite')
+    m.lathe([(-w - .002, 0.0), (-w - .002, .0065), (w + .002, .0065), (w + .002, 0.0)], 'chrome', pin, k, 16)
+    for sg in (-1, 1):
+        m.lathe([(0.0, 0.0), (0.0, .010), (.003, .010), (.004, .008), (.004, 0.0)], 'gunmetal',
+                pin + k * sg * (w + .002), k * sg, 6)
+
+
+def ram(m, a, b, r, floor, short=False):
+    """Ram on lugs between two clevises: the lower fork stands on the flange,
+    the upper one is posted up into the head's underside; floor is the flange
+    top (world z). The pins run square to the ram, level, so it swings fore
+    and aft."""
+    ax = (b - a).normalized()
+    L = (b - a).length
+    k = ax.cross(Vector((0, 0, 1))).normalized()
+    gap = r * 1.1 + .002
+    e = max(r, .012)
+    _lug(m, a, k, e, gap - .002)
+    _lug(m, b, k, e, gap - .002)
+    _clevis(m, a, k, Vector((0, 0, -1)), a.z - floor - .012, gap)
+    _clevis(m, b, k, Vector((0, 0, 1)), .018, gap, post=.06 if not short else .02)
+    s0 = e * .7
+    split = L * (.42 if short else .55)
+    body = 'graphite' if short else 'gunmetal'
+    m.lathe([(s0, 0.0), (s0, r * .7), (s0 + r * .3, r), (split - r * .7, r), (split - r * .7, 0.0)], body, a, ax, 24)
+    if not short:
+        m.lathe([(s0 + r * .5, 0.0), (s0 + r * .5, r * 1.08), (s0 + r * 1.1, r * 1.08), (s0 + r * 1.1, 0.0)],
+                'bronze', a, ax, 24)
+    m.lathe([(split - r * .7, 0.0), (split - r * .7, r * 1.16), (split, r * 1.16), (split, 0.0)],
+            'gunmetal' if short else 'bronze', a, ax, 24)
+    m.lathe([(split - .01, 0.0), (split - .01, r * .5), (L - e * .7, r * .5), (L - e * .7, 0.0)],
+            'gunmetal' if short else 'chrome', a, ax, 16)
+    m.lathe([(L - e * .7 - r * .9, 0.0), (L - e * .7 - r * .9, r * .68), (L - e * .7, r * .68), (L - e * .7, 0.0)],
+            'gunmetal', a, ax, 16)

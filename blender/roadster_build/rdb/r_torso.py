@@ -56,7 +56,7 @@ def spine():
     # abs: chevron plates stacked down the centre, each a little proud of the one below
     for k in range(4):
         z = z1 - 0.06 - k * 0.115
-        w = 0.30 - k * 0.025
+        w = 0.43 - k * 0.045
         hs.gem(arm, [V((-w / 2, -0.27, z + 0.05)), V((w / 2, -0.27, z + 0.05)), V((w / 2 - 0.02, -0.28, z - 0.03)),
                      V((0, -0.30, z - 0.07)), V((-w / 2 + 0.02, -0.28, z - 0.03))], (0, -1, 0.1), 0.05, 0.25, 0.7,
                'satin')

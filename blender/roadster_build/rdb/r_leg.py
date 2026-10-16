@@ -44,7 +44,13 @@ def side(s):
     # rings (z, centre x, centre y, rx, ry), widest a third of the way down
     rings = [(H - 0.06, 0.0, -0.02, 0.29, 0.29), (H - 0.42, 0.02, -0.04, 0.33, 0.33),
              (Kz + 0.42, 0.01, -0.03, 0.29, 0.30), (Kz + 0.16, 0.0, -0.01, 0.22, 0.25)]
-    hs.sector(a, limb(rings), 222, 318, 0.07, s, 5, keel=(268, 0.05))
+    # Tapered thigh shield: oblique crown, long central arris, pointed inner
+    # termination. The knee remains exposed rather than wearing a square cuff.
+    hs.gem(a, [P(-0.17, -0.23, H - 0.10), P(0.12, -0.24, H - 0.16),
+               P(0.25, -0.23, H - 0.46), P(0.20, -0.23, Kz + 0.38),
+               P(-0.04, -0.23, Kz + 0.15), P(-0.19, -0.23, Kz + 0.47),
+               P(-0.23, -0.23, H - 0.47)], (0, -1, 0), 0.065, 0.30, 0.35,
+           ridge=[P(0.035, -0.405, H - 0.43), P(0.015, -0.35, Kz + 0.43)])
     hs.sector(a, limb([(z - 0.04, cx, cy, rx + 0.005, ry + 0.005) for z, cx, cy, rx, ry in rings[:3]]), -32, 38, 0.06, s, 5,
               keel=(2, 0.035))
     hs.sector(a, limb([(H - 0.30, 0.0, -0.02, 0.27, 0.28), (Kz + 0.36, 0.0, -0.02, 0.24, 0.26)]), 160, 214, 0.05, s, 4)
@@ -61,12 +67,18 @@ def side(s):
     out['shin.%s.core' % S] = (k, 'mech', 'shin.' + S)
     w = K.Mesh()
     # knee cap: a faceted shield over the joint, keeled
-    hs.sector(w, limb([(Kz + 0.26, 0.0, -0.02, 0.21, 0.27), (Kz + 0.04, 0.0, -0.04, 0.24, 0.31),
-                  (Kz - 0.16, 0.0, -0.02, 0.20, 0.27)]), 215, 325, 0.08, s, 5, keel=(270, 0.05))
+    hs.gem(w, [P(-0.12, -0.24, Kz + 0.24), P(0.13, -0.24, Kz + 0.21),
+               P(0.19, -0.27, Kz + 0.01), P(0.03, -0.27, Kz - 0.15),
+               P(-0.16, -0.26, Kz - 0.06)], (0, -1, 0), 0.07, 0.30, 0.65,
+           ridge=[P(0.025, -0.39, Kz + 0.05)])
     # shin: a long keeled front plate flaring toward the boot, an inner plate
     rings = [(Kz - 0.24, 0.0, 0.0, 0.25, 0.28), (Kz - 0.70, 0.0, -0.01, 0.29, 0.31),
              (A + 0.50, 0.0, 0.0, 0.30, 0.32), (A + 0.20, 0.0, 0.02, 0.27, 0.30)]
-    hs.sector(w, limb(rings), 220, 322, 0.07, s, 5, keel=(270, 0.045))
+    hs.gem(w, [P(-0.17, -0.22, Kz - 0.23), P(0.12, -0.22, Kz - 0.28),
+               P(0.24, -0.23, Kz - 0.69), P(0.20, -0.24, A + 0.45),
+               P(0.02, -0.24, A + 0.19), P(-0.22, -0.23, A + 0.39),
+               P(-0.23, -0.22, Kz - 0.72)], (0, -1, 0), 0.065, 0.28, 0.4,
+           ridge=[P(0.035, -0.365, Kz - 0.66), P(0.01, -0.345, A + 0.42)])
     hs.sector(w, limb([(z, cx, cy, rx - 0.01, ry - 0.01) for z, cx, cy, rx, ry in rings[:3]]), 150, 216, 0.06, s, 4)
     out['shin.%s.armour' % S] = (w, 'armour', 'shin.' + S)
     # the rear wheel's arch on the outer calf: white plates over its top and front,

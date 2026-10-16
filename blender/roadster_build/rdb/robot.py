@@ -12,6 +12,8 @@ from . import kit as K, rig
 # (bone, part name, finish): bevel width and the smoothing angle (facet edges
 # sharper than it are bevelled; the faceted armour keeps every facet crisp)
 FINISH = {'armour': (0.006, 12), 'mech': (0.004, 30), 'smooth': (0.003, 40), 'fine': (0.0015, 30)}
+HEAD_FINISH = {'head.core': (0.002, 40), 'head.helm': (0.002, 20), 'head.face': (0.0015, 20),
+               'head.white': (0.0025, 15), 'head.ear': (0.001, 30), 'neck': (0.003, 30)}
 
 
 def reset():
@@ -40,7 +42,7 @@ def place(mesh, name, bone, finish='armour', nested=True):
     """Write a casting under its bone (through a nest node at its centre)."""
     if not mesh.v:
         return None
-    w, a = FINISH[finish]
+    w, a = HEAD_FINISH.get(name, FINISH[finish])
     if nested:
         lo = Vector([min(p[i] for p in mesh.v) for i in range(3)])
         hi = Vector([max(p[i] for p in mesh.v) for i in range(3)])
