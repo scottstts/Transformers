@@ -97,7 +97,8 @@ export class DesertSurface implements ContactEffects {
       const along = Math.abs(c.heading.x * c.velocity.x + c.heading.z * c.velocity.z) / speed
       width = c.width * along + PATCH * Math.sqrt(Math.max(0, 1 - along * along))
     }
-    this.tracks.mark(wheel, c.point, width, Math.min(1, slide / FULL_SCRAPE), c.slide)
+    // the floor's ceramic or deck holds no track: skipping the mark ends the ribbon, and it restarts back on the sand
+    if (!this.paved(c.point)) this.tracks.mark(wheel, c.point, width, Math.min(1, slide / FULL_SCRAPE), c.slide)
     this.dust.wheel(c.point, c.velocity, c.slide, dt)
     this.grit.spray(c.point, c.velocity, c.slide, dt)
   }

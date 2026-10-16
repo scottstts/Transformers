@@ -48,7 +48,7 @@ One height field serves the CPU (wheels, robot, camera, effects, rocks) and the 
 
 ## Surface response
 
-The world answers contact through `DesertSurface` (the `ContactEffects` interface): dust for tyres, footfalls and jet blasts, grit, tyre tracks and footprints. A tyre reports one `TyreContact` per frame: its point, heading, ground velocity and the tread's sliding velocity over the ground. Tracks and footprints share one imprint shader (`sand-imprint.ts`).
+The world answers contact through `DesertSurface` (the `ContactEffects` interface): dust for tyres, footfalls and jet blasts, grit, tyre tracks and footprints. A tyre reports one `TyreContact` per frame: its point, heading, ground velocity and the tread's sliding velocity over the ground. Tracks and footprints share one imprint shader (`sand-imprint.ts`) and are laid only on sand: on the citadel's ceramic or deck a footprint is dropped and a tyre's ribbon ends (the decals lie on the terrain under the floor, so a mark there would show through the paving).
 
 - **Ribbons:** one per wheel, written into a shared ring of 4096 quads (0.3 m each). Only newly written quads are uploaded. A frame without contact ends a ribbon.
 - **Shading:** the ribbon has no texture. Its shader rebuilds the floor from the ground's own albedo and relief (`groundSurface`, shared with the ground material), then adds the rut, the displaced-sand lip and the chevron tread imprint as a height field lit through the normal. Outside the tyre it equals the bare ground, so its edges blend without a seam.
