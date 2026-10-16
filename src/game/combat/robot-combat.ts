@@ -624,8 +624,10 @@ export class RobotCombat {
       e.x = this.origin.x + Math.sin(h) * fwd + Math.cos(h) * lat
       e.z = this.origin.z + Math.cos(h) * fwd - Math.sin(h) * lat
       e.heading = h; e.reach = b.radius; e.arc = Math.PI * 2
-      e.damage = b.damage; e.knock = b.knock; e.lift = b.lift; e.motion = 0; e.sweep = -1; e.radial = true
-      e.final = e.special && b.t === this.finalAt
+      e.damage = b.damage; e.knock = b.knock; e.lift = b.lift; e.motion = 0; e.radial = true
+      e.sweep = b.inner === undefined ? -1 : this.sweepBase + WAVE_SWEEP
+      e.inner = b.inner ?? 0
+      e.final = e.special && b.t >= this.finalAt
       sink(e)
     }
     const pulls = hits.pulls

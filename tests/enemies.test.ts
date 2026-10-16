@@ -345,6 +345,17 @@ describe('horde', () => {
     expect(Math.hypot(s.vx, s.vz)).toBe(0)
   })
 
+  it('takes a blast wave band at its whole damage at the band\'s rim, as a strike band', () => {
+    const { horde, sector, target, at, run, blow } = make()
+    const yard = sector('forecourt').yard.at
+    at(yard[0], yard[1])
+    run(6)
+    const s = horde.nearby(target.x, target.z, 12).find((u) => Math.hypot(u.x - target.x, u.z - target.z) > 2)!
+    const d = Math.hypot(s.x - target.x, s.z - target.z)
+    horde.hit(blow(s, 320, { shape: 'circle', arc: Math.PI * 2, inner: d - 0.6, reach: d + 0.02, radial: true, kind: 'blast', knock: 24, lift: 12, sweep: 903, special: true, final: true, bite: false }))
+    expect(s.alive).toBe(false)
+  })
+
   it('holds a soldier the lightning catches on its feet seizing, throws it down as it lets go, and keeps it down until its stun runs out', () => {
     const { horde, sector, target, at, run, blow } = make()
     const yard = sector('forecourt').yard.at

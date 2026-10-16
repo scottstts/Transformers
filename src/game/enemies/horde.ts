@@ -395,7 +395,7 @@ export class Horde {
       const f = wave ? 1 : 1 - 0.55 * Math.pow(Math.min(1, d / e.reach), 2)
       dirX = rx; dirZ = rz
       knock *= f
-      if (e.shape === 'circle') damage *= Math.min(1, 0.4 + 0.6 * (1 - d / e.reach) * 1.6)
+      if (e.shape === 'circle' && !wave) damage *= Math.min(1, 0.4 + 0.6 * (1 - d / e.reach) * 1.6)
     } else if (e.shape === 'circle' || e.shape === 'capsule') {
       // ploughed through: along the motion and out of the path
       const side = Math.sign(dx * hz - dz * hx) || 1

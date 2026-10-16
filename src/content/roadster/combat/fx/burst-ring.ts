@@ -1,6 +1,7 @@
 import { AdditiveBlending, BufferAttribute, DoubleSide, DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicNodeMaterial, Vector3, type Node } from 'three/webgpu'
 import { clamp, cos, exp, float, instancedBufferAttribute, mix, positionGeometry, pow, select, sin, smoothstep, uniform, vec2, vec3 } from 'three/tsl'
 import { N } from '../../../../rendering/noise.ts'
+import { SHOCK_EASE } from '../../../transformer/combat/fx/shock-front.ts'
 
 /** Rings at once (the oldest is overwritten), and the band's divisions round its circumference. */
 const RINGS = 4
@@ -52,7 +53,7 @@ export class BurstRing {
     const life = r.z as Node<'float'>
     const u = clamp(age.div(life), 0, 1)
     const alive = age.greaterThanEqual(0).and(age.lessThan(life))
-    const out = float(1).sub(pow(float(1).sub(u), 2.6))
+    const out = float(1).sub(pow(float(1).sub(u), SHOCK_EASE))
     const radius = (r.x as Node<'float'>).add((r.y as Node<'float'>).sub(r.x as Node<'float'>).mul(out))
     const height = (r.w as Node<'float'>).mul(mix(float(1), float(0.4), u))
     const angle = positionGeometry.x as Node<'float'>, up = positionGeometry.y as Node<'float'>

@@ -12,6 +12,9 @@ import { createMotionState } from '../src/game/types.ts'
 import { updateCar } from '../src/game/car-dynamics.ts'
 import { RobotJump } from '../src/game/jump.ts'
 import { NO_CONTACT, REST_GAIT, readAsset } from './support/assets.ts'
+import { WHITEOUT, WHITEOUT_HITS } from '../src/content/roadster/combat/special.ts'
+import { shockFront } from '../src/content/transformer/combat/fx/shock-front.ts'
+import { lastHitTime } from '../src/content/transformer/combat/hits.ts'
 
 const asset = { ...readAsset('roadster'), weapon: null }
 const manifest = asset.manifest
@@ -281,5 +284,27 @@ describe('roadster sounds', () => {
       for (let i = 1; i < n; i++) step += Math.abs(loop[i] - loop[i - 1])
       expect(Math.abs(loop[0] - loop[n - 1])).toBeLessThan(4 * step / (n - 1))
     }
+  })
+})
+
+describe('roadster whiteout', () => {
+  it('sends the impact\'s blast wave out through the crowd: bands from the core out to 26 m, each struck as the ring\'s front gets there', () => {
+    const blasts = WHITEOUT_HITS.blasts!
+    const core = blasts.find((b) => b.t === WHITEOUT.impact && b.inner === undefined)!
+    const bands = blasts.filter((b) => b.inner !== undefined)
+    const { from, reach, life } = WHITEOUT.blastWave
+    expect(bands.length).toBeGreaterThan(5)
+    // the impact stays the special's last blow; the wave shares its finality
+    expect(lastHitTime(WHITEOUT_HITS)).toBe(WHITEOUT.impact)
+    bands.forEach((b, k) => {
+      expect(b.inner).toBeCloseTo(k ? bands[k - 1].radius : core.radius, 6)
+      expect(b.radius).toBeGreaterThan(b.inner!)
+      if (k < bands.length - 1) expect(shockFront(from, reach, (b.t - WHITEOUT.impact) / life)).toBeCloseTo(b.radius, 6)
+      // it breaks what it reaches, thrown out from the impact
+      expect(b.at).toEqual(core.at)
+      expect(b.damage).toBe(core.damage)
+      expect(b.lift).toBeGreaterThan(5)
+    })
+    expect(bands[bands.length - 1].radius).toBe(26)
   })
 })

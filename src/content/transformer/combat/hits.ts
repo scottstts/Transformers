@@ -88,6 +88,8 @@ export interface BlastHit {
   lift: number
   /** Optional sound of the blow (as a strike's); unset, its kind's */
   blowSound?: 'punch' | 'heavy' | 'slash' | 'cutlass' | 'none'
+  /** a wave's front (m), as a strike's `inner`, for a wave running out from a ground point rather than the robot */
+  inner?: number
 }
 
 export interface PullHit {
@@ -173,7 +175,7 @@ export interface PullEvent {
 export function lastHitTime(h: MoveHits): number {
   let t = 0
   for (const s of h.strikes ?? []) if (s.inner === undefined) t = Math.max(t, s.t)
-  for (const b of h.blasts ?? []) t = Math.max(t, b.t)
+  for (const b of h.blasts ?? []) if (b.inner === undefined) t = Math.max(t, b.t)
   for (const w of h.sweeps ?? []) t = Math.max(t, w.t1)
   return t
 }

@@ -1,7 +1,7 @@
 import { AdditiveBlending, BufferAttribute, DoubleSide, DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicNodeMaterial, Vector3 } from 'three/webgpu'
 import { clamp, cos, exp, float, instancedBufferAttribute, mix, positionGeometry, pow, select, sin, smoothstep, uniform, vec2, vec3 } from 'three/tsl'
 import { N } from '../../../../rendering/noise.ts'
-import { SHOCK_EASE } from './shock-front.ts'
+import { SHOCK_EASE } from '../../../transformer/combat/fx/shock-front.ts'
 
 /** Rings at once (the oldest is overwritten), and the band's divisions round its circumference. */
 const RINGS = 3

@@ -1,4 +1,4 @@
-/** How the shock ring's front eases out over its life (ShockRing's shader and the blows that ride with it). */
+/** How a shock ring's front eases out over its life (the Impala's ShockRing, the Roadster's BurstRing, and the blows that ride with them). */
 export const SHOCK_EASE = 2.6
 
 /** The front's radius (m) of a ring growing from `from` to `reach` m, `u` (0..1) of the way through its life. */

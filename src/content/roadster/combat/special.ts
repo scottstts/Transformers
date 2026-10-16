@@ -3,6 +3,7 @@ import type { Channel } from '../../transformer/combat/pose'
 import type { MoveCue } from '../../transformer/combat/moves'
 import type { BlastHit, MoveHits, PullHit, StrikeHit } from '../../transformer/combat/hits'
 import type { SpecialMove } from '../../transformer/combat/special'
+import { shockFront, shockReaches } from '../../transformer/combat/fx/shock-front'
 
 /**
  * Whiteout: the Roadster's special. The visor blazes and it drops into a
@@ -50,6 +51,8 @@ const LAND = 10.75
 const CRACKLE = [6.4, 6.85, 7.3]
 /** Where it comes down: the near rim of the blast's glass. */
 const LAND_AT = CENTER - 5.5
+/** The impact's blast wave (fx/burst-ring.ts): its foot grows from `from` to `reach` m over `life` s. */
+const BLAST_WAVE = { from: 2, reach: 46, life: 1.25 } as const
 
 /** The run's legs: steps per second and their throw (m forward and back of the hip, swing lift). */
 const CADENCE = 3.2
@@ -379,6 +382,7 @@ export const WHITEOUT = {
   land: LAND,
   /** where the throw hangs from, and the impact (m ahead) */
   hoverAt: HOVER_AT,
+  blastWave: BLAST_WAVE,
 } as const
 
 /**
@@ -386,7 +390,9 @@ export const WHITEOUT = {
  * twenty-two metres of its centre in, harder lap by lap, and the wall going
  * round beats on whatever it holds (a blow every RING_BEAT on everything
  * inside it); the orb's charge crackles down into the crowd and holds it
- * seizing; the impact (26 m) is the last blow and breaks everything at once.
+ * seizing; the impact is the last blow, breaking the crushed crowd under it
+ * (CORE m), and its blast wave throws everything out to 26 m as its front
+ * reaches it.
  */
 const RING_BEAT = 0.2
 const ringBlows: BlastHit[] = []
@@ -403,9 +409,30 @@ const crackle: StrikeHit[] = CRACKLE.map((t) => ({
   t, kind: 'blast', blowSound: 'none', reach: 11, arc: 360, damage: 20, knock: 0, lift: 0, outward: true, bite: false, shock: 0.5,
 }))
 
+/**
+ * The blast wave, as the Impala's finale wave: a band every WAVE_BEAT of its
+ * life, from the core out to the blast's reach, catching whatever its front
+ * has passed since the last and throwing it alike.
+ */
+const CORE = 7
+const BLAST_REACH = 26
+const WAVE_BEAT = 0.04
+const wave: BlastHit[] = []
+{
+  const { from, reach, life } = BLAST_WAVE
+  const end = shockReaches(from, reach, BLAST_REACH)
+  let inner = CORE
+  for (let u = shockReaches(from, reach, CORE) + WAVE_BEAT / life; inner < BLAST_REACH; u += WAVE_BEAT / life) {
+    const front = u >= end ? BLAST_REACH : shockFront(from, reach, u)
+    if (front <= inner) continue
+    wave.push({ t: IMPACT + Math.min(u, end) * life, kind: 'blast', blowSound: 'none', at: [0, CENTER], radius: front, inner, damage: 600, knock: 24, lift: 12 })
+    inner = front
+  }
+}
+
 export const WHITEOUT_HITS: MoveHits = {
   pulls,
-  blasts: [...ringBlows, { t: IMPACT, kind: 'blast', blowSound: 'none', at: [0, CENTER], radius: 26, damage: 600, knock: 30, lift: 17 }],
+  blasts: [...ringBlows, { t: IMPACT, kind: 'blast', blowSound: 'none', at: [0, CENTER], radius: CORE, damage: 600, knock: 30, lift: 17 }, ...wave],
   strikes: crackle,
 }
 

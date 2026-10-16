@@ -1,7 +1,7 @@
 import type { CombatHits, StrikeHit } from '../../transformer/combat/hits'
 import { CYCLONE, IMPALA_MOVES } from './moves'
 import { THUNDER } from './special'
-import { shockFront, shockReaches } from './fx/shock-front'
+import { shockFront, shockReaches } from '../../transformer/combat/fx/shock-front'
 
 /**
  * What the Impala's cutlass does to the soldiers (combat/hits.ts). The

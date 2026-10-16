@@ -402,7 +402,8 @@ export class WhiteoutFx {
     p.contact.crater(c, 9, 1.1 * strength)
     p.contact.surge(c, 18, 1.4 * strength)
     p.contact.eject(c, 17 * strength, 46, _up, 0.65, 0.65)
-    p.rings.emit(c, 2, 46, 1.25, 9)
+    const w = WHITEOUT.blastWave
+    p.rings.emit(c, w.from, w.reach, w.life, 9)
     p.rings.emit(c, 1, 30, 0.8, 3.5)
     p.blast.flash(_a.copy(c).setY(c.y + 3), 0xf2f6ff, 700 * strength, 1.6, 90)
     frame.camera.flash(1.3 * strength, 0.6)
