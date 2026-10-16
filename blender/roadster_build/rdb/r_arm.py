@@ -51,17 +51,12 @@ def side(s):
     hub = V((s * HX, Y, Z))
     R = 0.392 + 0.03            # the tyre plus clearance
     xi, xo = HX - 0.40, HX + 0.17  # inner wall face, outer lip (the tyre face stays open)
-    # the arch: four faceted plates over the tyre from behind round to the front, the
-    # outer radius peaking toward the top-back corner (concept side view)
-    hs.arch(p, (s * HX, Y, Z), s, R, xi, xo, [(-8, 40), (40, 88), (88, 136), (136, 184), (184, 214)],
-            lambda a: R + 0.09 + 0.06 * math.exp(-((a - 70) / 45) ** 2) - 0.03 * max(0.0, (a - 150) / 64), 'armour')
-    # front plate dropping past the tyre (the pauldron reaches below the wheel at the front)
-    hs.gem(p, [P(xi + 0.02, Y - R - 0.10, Z - 0.10), P(xo - 0.01, Y - R - 0.08, Z - 0.12), P(xo - 0.05, Y - R + 0.04, Z - 0.50),
-               P(xi + 0.08, Y - R + 0.06, Z - 0.52)], (0, -1, -0.2), 0.08, 0.25, 0.7)
-    # crown plate on top, peaked toward the outside
-    hs.gem(p, [P(xi + 0.04, Y - 0.30, Z + R + 0.11), P(xo - 0.08, Y - 0.24, Z + R + 0.12),
-               P(xo - 0.10, Y + 0.30, Z + R + 0.15), P(xi + 0.04, Y + 0.36, Z + R + 0.14)], (s * 0.2, 0, 1), 0.06,
-           0.3, 0.9)
+    # the fender: one smooth swept arch over the tyre from behind, over the top
+    # and down past the front of the wheel (the concept's pauldron reaches below
+    # the wheel at the front), deepest toward the top-back corner and again where
+    # it drops past the front
+    hs.fender(p, (s * HX, Y, Z), s, R, xi, xo, -8, 234,
+              lambda a: R + 0.10 + 0.06 * math.exp(-((a - 75) / 50) ** 2) + 0.06 * math.exp(-((a - 222) / 22) ** 2))
     # white outer plate on the upper arm, under the pauldron
     hs.gem(p, [P(X + 0.17, Y - 0.16, Z - 0.48), P(X + 0.19, Y + 0.14, Z - 0.48), P(X + 0.17, Y + 0.12, E + 0.16),
                P(X + 0.15, Y - 0.12, E + 0.12)], (s, 0, 0), 0.06, 0.3, 0.8)

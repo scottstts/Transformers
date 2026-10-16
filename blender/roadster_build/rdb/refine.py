@@ -18,10 +18,10 @@ def sync(head_only=True):
     meshes['neck'] = r_head.neck_meshes()
     for s in (() if head_only else (-1, 1)):
         for n, (m, _, _) in r_leg.side(s).items():
-            if n.endswith('.armour'):
+            if n.endswith(('.armour', '.arch')):
                 meshes[n] = m
         for n, (m, _, _) in r_arm.side(s).items():
-            if n.startswith('forearm.') and n.endswith('.armour'):
+            if (n.startswith('forearm.') and n.endswith('.armour')) or n.endswith('.pauldron'):
                 meshes[n] = m
     for n, (m, _) in ({} if head_only else r_torso.spine()).items():
         if n.endswith('.armour'):

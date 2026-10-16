@@ -73,4 +73,6 @@ def robot_stage(bake=True):
         linkage.bind(S)
         out['braces'] = linkage.build(S)
         out.update(B.bake())
+        from . import lid
+        out['lid'] = lid.build()       # keyed on the baked tail; rebuild after every bake
     return out

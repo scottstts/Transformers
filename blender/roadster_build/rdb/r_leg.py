@@ -89,8 +89,8 @@ def side(s):
     xi, xo = hub.x - 0.17, hub.x + 0.16
     arch = K.Mesh()
     # the fender over the wheel: from behind its top round to the front, deepest at the front-top
-    hs.arch(arch, hub, s, R, xi, xo, [(55, 100), (100, 140), (140, 180), (180, 212)],
-            lambda ang: R + 0.10 + 0.05 * math.sin(math.radians((ang - 55) * 180 / 157)), 'armour')
+    hs.fender(arch, hub, s, R, xi, xo, 55, 212,
+              lambda ang: R + 0.10 + 0.05 * math.sin(math.radians((ang - 55) * 180 / 157)))
     hs.prism(arch, [(-R + 0.04, -R + 0.1), (R - 0.04, -R + 0.1), (R, 0.0), (R * 0.6, R), (-R * 0.6, R), (-R, 0.0)],
              V((s * xi, hub.y, hub.z)), V((0, 1, 0)), V((0, 0, 1)), V((s, 0, 0)), -0.03, 0.03, 0.01, 'graphite')
     hs.drum(arch, V((s * (xi + 0.05), hub.y, hub.z)), (1, 0, 0), 0.09, 0.10, 'gunmetal', 0.01, 32)

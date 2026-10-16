@@ -208,7 +208,8 @@ tail deck 0.903.
     white covers close the front wheel arches.
   - Back: the floor tub and the tail fold up the back as a hinge chain. The tail stands
     rear end down as the flight pack, rear glass facing back and the fans and nozzles
-    thrusting down. The roof strip folds into its open top as a black glass lid. The tub,
+    thrusting down. The roof strip folds into its open top (it lies inside, below the rim);
+    a two-leaf lid seals the top at the end (lid.py, below). The tub,
     holding the folded cabin and the windscreen, stands between the pack and the back.
   - Forearms: the gullwing doors are the shields, with the door glass folded down
     inside the skin.
@@ -216,8 +217,13 @@ tail deck 0.903.
     arched pauldrons.
   - Calves: the rear wheels sit on the outer calves, under white arches.
 - Robot armour is faceted convex plates (hs.py: gem plates, sector wraps round a
-  limb, arch fenders round a wheel) over graphite mechanics with bronze rams and
-  hoses.
+  limb) over graphite mechanics with bronze rams and hoses.
+- The wheel fenders (pauldrons, calf arches) are smooth swept arches (hs.fender):
+  the arc is finely stepped and smooth shaded, while the section keeps the low-poly
+  edges (flat inner face, chamfered outer lip, crown crease). The ends taper toward
+  the tyre. The pauldron's arc runs from -8 to 234 deg and is deepest at the top-back
+  and where it drops past the front of the wheel. Tyre clearance, wall face and lip
+  are as before.
 
 ### Head and neck (r_helmet.py, r_head.py)
 
@@ -314,6 +320,21 @@ flip at the apex, then a thrust-braked landing as the car.
   - The tail turns 180 deg over the tub's rear edge (3.1 to 4.2 s), rear end down.
   - Hinges are explicit keys (`('hinge', pivot, axis, deg)`). Interpolating a 180 deg
     turn between poses is ambiguous and flipped the tail forward through the robot.
+  - The pack's lid (lid.py) has two gloss-black leaves on a knuckle joint. Closed, they
+    lie on the pack's rim plane, which the near wall top, both side bands and the rear
+    glass's top edge all sit on (z = 5.349 - 0.351 (y - 0.766) in the stand pose). The
+    outline follows the rear glass's curved edge.
+    - Folded face to face, the pair stands upright inside the tail's near wall (a solid
+      75 mm slab). It is hidden in the car and through the whole transformation.
+    - 8.20 s: the pair rises out of the wall top. 8.45 s: the front leaf swings back
+      about the near rim. 8.72 to 8.97 s: the rear leaf unfolds onto the far half.
+    - The head is tipped back over the near wall through the landing, so the pair
+      stands up only after it has come forward.
+    - The leaves are the only nodes keyed: children of the tail's node, local matrices
+      derived from the stand pose. `robot_stage()` rebuilds them after every bake.
+    - A lid can't close the mouth before the end: in the car the cabin's rear reaches
+      into the mouth, the windscreen and door glass pass through it until 3.3 s, and
+      the roof folds into it.
 - **Front wheels:** after the clip has dropped, they telescope 0.32 m straight out of
   their arches. The shoulder braces take them at 3.25 s, and they slide onto the pauldron
   hubs along the axle from 0.35 m outboard.

@@ -200,6 +200,34 @@ def sector(m, rings, a0, a1, thick, s=1, n=5, mat='armour', keel=None, gap=0.0):
     return m.hull(pts, mat)
 
 
+def fender(m, hub, s, R, xi, xo, a0, a1, rout, mat='armour', step=2.0, taper=14.0):
+    """Smooth swept fender round a wheel whose axle is x: one continuous arc
+    from a0 to a1 (degrees from +y (back) through up (90) to front (180)), its
+    section a crisp low-poly profile: flat inner face at radius R, a chamfered
+    outer lip at x = xo, a crease along the crown, a chamfered inner shoulder
+    at x = xi. rout(a) is the crown radius; the last `taper` degrees at each
+    end draw the crown down toward the tyre. Fine steps keep the arc smooth,
+    the profile's corners stay sharp."""
+    hub = Vector(hub)
+    W = xo - xi
+    n = max(2, int(math.ceil((a1 - a0) / step)))
+    rings = []
+    for i in range(n + 1):
+        a = a0 + (a1 - a0) * i / n
+        e = min(a - a0, a1 - a) / taper
+        k = 1.0 if e >= 1 else 0.45 + 0.55 * K.smooth(e)
+        ro = R + (rout(a) - R) * k
+        t = ro - R
+        c1, c2 = 0.012, min(0.035, t * 0.32)
+        prof = [(xi, R), (xo - c1, R), (xo, R + c1), (xo, ro - c2), (xo - c2, ro),
+                (xi + 0.45 * W, ro + min(0.014, t * 0.12)), (xi + 0.035, ro - 0.012), (xi, ro - 0.045)]
+        r = math.radians(a)
+        d = Vector((0, math.cos(r), math.sin(r)))
+        base = Vector((0, hub.y, hub.z))
+        rings.append([base + Vector((s * x, 0, 0)) + d * rr for x, rr in prof])
+    return m.loft(rings, mat)
+
+
 def arch(m, hub, s, R, xi, xo, spans, rout, mat='armour', lip=0.035):
     """Arched fender round a wheel whose axle is x: hub (x, y, z) world; spans
     [(a0, a1)] in degrees from +y (back) through up (90) to front (180);
