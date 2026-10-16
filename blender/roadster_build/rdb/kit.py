@@ -62,6 +62,7 @@ def materials():
     material('paint', (0.78, 0.78, 0.76), 0.0, 0.22, 1.0)
     material('armour', (0.80, 0.80, 0.78), 0.0, 0.30, 0.8)
     material('satin', (0.020, 0.021, 0.024), 0.15, 0.45, 0.3)        # satin black body trim
+    material('trim', (0.012, 0.012, 0.014), 0.0, 0.10, 1.0)          # gloss-black door window frame posts
     material('carbon', (0.012, 0.013, 0.015), 0.2, 0.32, 0.6)        # diffuser, splitter, wing
     material('graphite', (0.028, 0.029, 0.032), 0.85, 0.38)          # robot mechanics
     material('gunmetal', (0.10, 0.10, 0.11), 0.92, 0.30)
@@ -94,7 +95,7 @@ def materials():
     ck.inputs['Color2'].default_value = (0.024, 0.025, 0.028, 1)
     material('caliper', (0.55, 0.56, 0.58), 0.9, 0.35)                  # satin silver calipers
     material('lamphouse', (0.62, 0.63, 0.65), 0.85, 0.22)               # satin silver lamp reflector (3/4 photo)
-    material('lens', (0.70, 0.72, 0.74), 0.0, 0.06, 1.0)                 # lamp lenses: pale, glossy (3/4 photo)
+    material('lens', (0.88, 0.91, 0.96), 0.0, 0.12, 1.0, emission=3.5)   # lit headlamp lenses (front photo)
     material('marker', (0.07, 0.012, 0.008), 0.0, 0.05, 1.0)             # red-brown tinted marker lens
     material('smoke', (0.035, 0.035, 0.038), 0.0, 0.06, 1.0)            # smoked lamp lenses
     material('nozzle', (0.80, 0.62, 0.38), 1.0, 0.22)                   # bronze nozzle liners

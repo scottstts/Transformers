@@ -18,9 +18,14 @@ P3 = ((0, 1.893, 0.903), (0, 2.006, 0.697))         # wing end plate seam
 POD_TOP = ((0, 1.848, 0.606), (0, 2.135, 0.707))   # black pod / end plate boundary (side frame)
 A_PILLAR = ((0.775, -1.270, 0), (0.567, -0.342, 0))  # windshield edge in plan
 ROOF_Y0, ROOF_Y1 = -0.342, 0.551
-# frame seams across the side glass (side frame): the two edges of the narrow strip
-# behind the A-pillar, and the front edge of the strip ahead of the door shut line
-GLASS_SEAMS = (((-0.518, 0.885), (-0.237, 1.150)), ((0.307, 0.924), (0.453, 1.132)))
+# the door's window frame posts (side frame, door-open photo): solid black members
+# carried by the door, the door glass held between them. The front post runs from
+# the windshield edge back to POST_SEAMS[0], the rear post from POST_SEAMS[1] back
+# to the door shut line S2, which carries on up its rear edge. Each rises from the
+# belt to the underside of the white roof rail.
+POST_SEAMS = (((-0.518, 0.885), (-0.237, 1.150)), ((0.307, 0.924), (0.453, 1.132)))
+POST_TOPS = ((-0.330, -0.237), (0.453, 0.535))    # y span of each post where it meets the rail
+POST_D = 0.025                                     # section depth inward from the glass face
 # the windshield's side edge (side frame, shadow-boosted 6x crop): a straight line
 # from the A-pillar foot to the roof seam
 SCREEN_EDGE = ((0, -0.582, 0.868), (0, -0.324, 1.146))
@@ -61,11 +66,19 @@ def hood_edge(sx):
     return P.plane(p, q, along=(0, 0, 1), keep=(0, -1.6, 0))
 
 
-def glass_seam(sx, bot, top, half=0.001):
-    """Thin slab region across the side glass along a measured seam line."""
-    p, q = Vector((0, bot[0], bot[1])), Vector((0, top[0], top[1]))
-    n = (q - p).cross(Vector((1, 0, 0))).normalized()
-    return [(p + n * half, n), (p - n * half, -n), x_plane(sx * 0.45, True), axis_plane(2, 1.16, False)]
+def rail_floor(y):
+    """Height of the white roof rail's lower edge at y (start of the rail band)."""
+    ring, src = B.canopy_ring(y)
+    return ring[src.index(3)].z
+
+
+def door_post(i, door_glass):
+    """Region of door frame post i (0 front, 1 rear) inside the door's glazing."""
+    (yb, zb), (yt, zt) = POST_SEAMS[i]
+    side = -1 if i == 0 else 1
+    ya, yc = POST_TOPS[i]
+    under_rail = P.plane((0, ya, rail_floor(ya)), (0, yc, rail_floor(yc)), keep=(0, (ya + yc) / 2, 0.5))
+    return door_glass + [P.plane((0, yb, zb), (0, yt, zt), keep=(0, side * 2.0, 1.0)), under_rail]
 
 
 def roof_edge(sx, outboard=False):
@@ -116,11 +129,15 @@ def adopt(obj, node, name, bevel=0.004, smooth_angle=24, nsrc=None):
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.modifier_apply(modifier=dt.name)
     if bevel:
+        # fillet exactly the edges set_smooth marked as creases: an angle limit
+        # switched on and off along creases whose angle hovers near it (dashes)
+        me = obj.data
+        w = me.attributes.get('bevel_weight_edge') or me.attributes.new('bevel_weight_edge', 'FLOAT', 'EDGE')
+        w.data.foreach_set('value', [1.0 if e.use_edge_sharp else 0.0 for e in me.edges])
         mod = obj.modifiers.new('edge fillets', 'BEVEL')
         mod.width = bevel
         mod.segments = 3
-        K.enum_set(mod, 'limit_method', 'ANGLE')
-        mod.angle_limit = math.radians(smooth_angle)
+        K.enum_set(mod, 'limit_method', 'WEIGHT')
         mod.harden_normals = nsrc is None
         if nsrc is None:
             wn = obj.modifiers.new('normals', 'WEIGHTED_NORMAL')
@@ -139,6 +156,7 @@ def set_smooth(obj, smooth_angle=24):
     bm.from_mesh(me)
     band = bm.faces.layers.int.get('band')
     soft = set(obj.get('soft_points', ()))
+    behind = dict(obj.get('sharp_behind', {}))
     for e in bm.edges:
         if not e.is_manifold:
             e.smooth = False
@@ -154,6 +172,9 @@ def set_smooth(obj, smooth_angle=24):
                 lo, hi = min(a, b), max(a, b)
                 k = 0 if hi - lo > 1 else lo
                 e.smooth = k in soft
+                if e.smooth and str(k) in behind:
+                    y = (e.verts[0].co.y + e.verts[1].co.y) / 2
+                    e.smooth = y < behind[str(k)]
         else:
             e.smooth = e.calc_face_angle(0) <= math.radians(smooth_angle)
     bm.to_mesh(me)
@@ -238,14 +259,18 @@ def body_panels():
     P._boolean(shell, rake, 'DIFFERENCE')
     bpy.data.objects.remove(rake, do_unlink=True)
     canopy = raw(B.canopy_mesh(), 'src.canopy')
+    frame = raw(B.canopy_mesh(POST_D), 'src.frame')   # the glazing surface, POST_D deep
     shell['soft_points'] = [3, 5, 7]
     NSRC['shell']['soft_points'] = [3, 5, 7]
+    # the sail ridge (p3) is a crisp line behind the glass edge's corner
+    shell['sharp_behind'] = NSRC['shell']['sharp_behind'] = {'3': 1.26, '7': 1.26}
     NSRC['front']['soft_points'] = [5]
     NSRC['canopy']['soft_points'] = [1, 5, 9]
     for o in NSRC.values():
         set_smooth(o)
     front_shell['soft_points'] = [5]
     canopy['soft_points'] = [1, 5, 9]   # side glass bulge and roof crown
+    frame['soft_points'] = [1, 5, 9]
 
     mid = mid_planes()
     door_r = {sx: mid + [x_plane(sx * 0.70, True), P.plane(*ROCKER, keep=(0, 0, 1.0))] for sx in (1, -1)}
@@ -284,8 +309,15 @@ def body_panels():
     out['nose'] = P.cut(front_shell, 'nose', remove=[mid[:2], hood_r] + flap_cut)[0]
     for sx, s in ((1, 'L'), (-1, 'R')):
         out['door.' + s] = P.cut(shell, 'door.' + s, keep=[door_r[sx]])[0]
-        out['door.%s.glass' % s] = P.cut(canopy, 'door.%s.glass' % s, keep=[door_glass[sx]], 
-                                          remove=[shield] + [glass_seam(sx, *g) for g in GLASS_SEAMS], cap='satin')[0]
+        posts = [door_post(i, door_glass[sx]) for i in (0, 1)]
+        out['door.%s.glass' % s] = P.cut(canopy, 'door.%s.glass' % s, keep=[door_glass[sx]],
+                                          remove=[shield] + posts, cap='satin')[0]
+        # the posts share the glazing's outer surface, so their faces sit flush with the glass
+        for i, post_r in enumerate(posts):
+            post = P.cut(frame, 'door.%s.post%d' % (s, i), keep=[post_r], remove=[shield], cap='trim')[0]
+            for k in range(len(post.data.materials)):
+                post.data.materials[k] = K.MATERIALS['trim']
+            out['door.%s.post%d' % (s, i)] = post
         out['plate.' + s] = P.cut(shell, 'plate.' + s, keep=[plate_side[sx]], remove=[wing_r])[0]
     out['tub'] = P.cut(shell, 'tub', keep=[mid], remove=[door_r[1], door_r[-1]])[0]
     out['wing'] = P.cut(shell, 'wing', keep=[wing_r])[0]
@@ -304,7 +336,7 @@ def body_panels():
     out['roof'] = P.cut(canopy, 'roof', keep=[roof_r], cap='glass')[0]
     out['rearglass'] = P.cut(canopy, 'rearglass', remove=[shield, roof_r, door_glass[1], door_glass[-1]],
                              cap='glass')[0]
-    for o in (shell, front_shell, canopy):
+    for o in (shell, front_shell, canopy, frame):
         bpy.data.objects.remove(o, do_unlink=True)
     return out
 
@@ -387,7 +419,7 @@ def build():
     parts = body_panels()
     nodes = {}
     for name, obj in parts.items():
-        host = name.split('.glass')[0].replace('.side', '')
+        host = name.split('.glass')[0].split('.post')[0].replace('.side', '')
         if name in ('screen',):
             host = 'nose'
         if name == 'rearglass':
@@ -396,10 +428,12 @@ def build():
             src = parts[host] if host in parts else obj
             nodes[host] = carrier(host, centre(src))
     for name, obj in parts.items():
-        host = 'nose' if name == 'screen' else 'tail' if name == 'rearglass' else name.split('.glass')[0].replace('.side', '')
-        glass = name in ('screen', 'rearglass', 'roof') or name.endswith('.glass')
+        host = 'nose' if name == 'screen' else 'tail' if name == 'rearglass' else name.split('.glass')[0].split('.post')[0].replace('.side', '')
+        glass = name in ('screen', 'rearglass', 'roof') or name.endswith('.glass') or '.post' in name
         src = NSRC['canopy'] if glass else NSRC['front'] if name in FRONT_PANELS else NSRC['shell']
-        adopt(obj, nodes[host], name, bevel=0.0008 if glass else 0.0015, nsrc=src)
+        if name == 'wing':
+            src = None   # flat facets and crisp ridges: transferred loft normals blotched them
+        adopt(obj, nodes[host], name, bevel=0.0008 if glass and '.post' not in name else 0.0015, nsrc=src)
     for o in NSRC.values():
         bpy.data.objects.remove(o, do_unlink=True)
     front.build(nodes['nose'])

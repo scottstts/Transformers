@@ -64,7 +64,7 @@ def copy_of(src, name):
         c.objects.link(o)
     o.matrix_world = src.matrix_world.copy()
     o[K.TAG] = True
-    for key in ('soft_points',):
+    for key in ('soft_points', 'sharp_behind'):
         if key in src:
             o[key] = src[key]
     return o

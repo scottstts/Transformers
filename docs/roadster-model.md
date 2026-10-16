@@ -84,11 +84,30 @@ tail deck 0.903.
 - The light bar and nose face are straight across: the 3/4 photo's camera fit is
   best with no plan bow (mean 14 px against 17 px with the top view's apparent
   95 mm curve). The nose corners are rounded in plan (body.CORNER_R).
-- The front lip is a 65 mm black blade that wraps the nose corners and runs back
-  along the body side to the front wheel, its bottom falling from z 0.264 to 0.19.
+- The black front (front photo through the fitted camera, 3/4 photo): a convex
+  carbon visor under the light bar whose sharp lower edge is the thin highlight
+  line, an open intake cavity below it (front.INTAKE) with the sensor on its back
+  wall, and the lip. The lip is a rounded-rectangle blade across the nose
+  (z 0.266-0.332) that steps down 30 mm at each corner and runs back along the
+  sides, its bottom falling to 0.19 at the wheel. The black rocker band under each
+  white nose corner sits below a 20 mm shadow gap along p1 (front.corner_gap).
+- The nose face widens downward (front photo): the white corner's inner edge runs
+  straight from the light bar's end out to |x| 0.583 at p1. Ahead of the front
+  wheel opening the lower body (p0, p1) reaches |x| 0.87, in line with the tyre's
+  outer face, so the shell hides the wheels from the front (body.NOSE_LOW); the
+  side crease p2 by the opening follows the top view (0.82 at y -1.81).
 - The windshield's side edge and the door frame seam behind it are measured lines
-  on the side frame (car.SCREEN_EDGE, GLASS_SEAMS); the white roof rail runs down
-  the A-pillar to the cowl.
+  on the side frame (car.SCREEN_EDGE, GLASS_SEAMS).
+- The white roof rail is the 45-degree chamfer between roof and side glass, with
+  the black seal in the side glass's plane. Down the front it is the A-pillar, a
+  part of the body: straight in plan (body.A_PILLAR_X), full width to the
+  windscreen's corner, where it runs into the white body. The side glass and seal
+  close on the belt line where the pillar reaches down to it, so the side window's
+  front tip ends behind the pillar foot. Ahead of the foot the windscreen's side
+  edge is the pillar's inner line (body.PILLAR_IN) until it meets the hood edge.
+- The windscreen rises straight off the hood and stands 11 mm above the side
+  silhouette at the A-pillar foot; that lift eases out behind the foot
+  (body.screen_lift). The pillar's top edge follows the silhouette, not the lift.
 - Glass meets body on the body's own crease (canopy base 1 mm above p4) and a
   seat volume under the glass is cut from the shell, so no body facet crosses the
   glass between stations.
@@ -101,6 +120,26 @@ tail deck 0.903.
   console, slim alcantara dash and carbon face, floating screen, white square
   yoke, the alcantara header / A-pillar hoop / diagonal struts / rails, a mirror
   on a triangular bracket, carbon door cards with an alcantara blade and red light.
+- Rear quarter (top view): behind the rear door joint the rail's top edge is the
+  rear glass's side edge, straight and slightly inward to a corner at y 1.20, then
+  straight in to the deck (body.EDGE_X). The window's top edge stays outboard
+  (RAIL_X), so the white rail over the rear quarter window widens into a shallow
+  surface lying with the sail. Behind the window tip it runs out into the sail over
+  RUNOUT (body.REAR_FOOT): no separate strip carries on to the deck.
+- The rear quarter window closes to a point: its pane keeps one inclination to the
+  tip (body.quarter_base), its lower edge lands on the seal line, the seal tapers
+  out over the last 60 mm, and its bows fall with the square of its height.
+- The sails' ridges stand up beside the rear glass; the glass and the lid floor
+  stay at their heights (rear photo, rear view at 33 s in the video, top view).
+  Each ridge (shell p3, body.RIDGE_X / RIDGE_Z) carries the rail-top plan line
+  straight on from the glass edge's corner and rises RIDGE_POP above the glass
+  edge, with a concave outer flank (SAIL_CONCAVE) and an inner face down to the
+  glass edge. On the wing lid it runs down in a straight line to the deck at an
+  apex by the trailing edge, and the floor's edges turn out from the glass's
+  trailing corners to that apex, so each lid triangle is one plane. The lid's
+  outer deck and floor carry no bow, the ridge crease is sharp behind y 1.26
+  (shell 'sharp_behind'), and the lid takes no transferred loft normals (they
+  blotched its facets).
 - Inspection renders use AgX and denoised EEVEE ray tracing (stage.py).
 
 ## Modules
@@ -110,8 +149,17 @@ tail deck 0.903.
   its ledge, embossed plate and camera, reflectors, the U mask with its nozzle slot,
   flanged nozzles, fan cells, ramped diffuser with strakes, and the raked side pods.
 - `front.py` light bar, carbon-weave grille, sensor, lip, splitter (kept inside the
-  plan outline) and the headlamps, which are the lower tip of each fender-top facet
-  up to a level edge at z 0.72, with LED fins.
+  plan outline). The headlamps are the tip of each fender-top facet ahead of
+  y -1.884, in the lit 'lens' material, with nothing added on them.
+- Front photo: both edges of the fender-top facet are straight seen from the front
+  (body.FRONT_LINES): the crease p3 from the nose tip to the fender peak, the hood
+  edge p4 from the tip to y -1.505. Their heights stay measured; x follows the
+  lines. The side crease p2 also runs straight out from the lamp tip (front
+  photo): its height follows a line from the tip to the measured crease at
+  y -1.808 (P2_LINE_Y), and in plan it keeps a smoothly growing offset outboard
+  of the straight p3 line back to y -1.86, so the faces between them neither
+  twist nor overhang. The measured side crease begins at z 0.50 at the nose; only
+  the tip constraint joined it to the lamp, which made it sag behind the tip.
 - `side.py` side markers; the fender flaps are cut in `car.body_panels`.
 - `wheels.py` tyres with grooves and sidewall lettering, the six-arm rim with its
   aero disc and bronze vanes, drilled discs; calipers and suspension sit on
@@ -136,5 +184,11 @@ tail deck 0.903.
   slot above them. Four lift jets (behind the front wheels, under the rear pods)
   are a fixed sleeve and a telescoping stage (`asm.jet.*`, `asm.jet.*.stage`).
 - Doors are gullwings that carry the side glass and the roof outboard of the
-  tapered centre strip (|x| 0.160 -> 0.095); the side glass has the measured frame
-  seams behind the A-pillar and ahead of the door shut line.
+  tapered centre strip (|x| 0.160 -> 0.095). The two black bands on the side glass
+  are the door's window frame posts (`door.*.post0/1`), structural members the
+  door carries, not trim: the front post runs from the windshield edge back to
+  POST_SEAMS[0], the rear post from POST_SEAMS[1] back to the door shut line S2
+  (the door-open photo shows the body's quarter glass starting at S2). They rise
+  from the belt to the underside of the white roof rail and are cut from a
+  POST_D (25 mm) deep version of the glazing loft, so their faces sit flush with
+  the glass and the pane sits between them with the 3 mm panel gap.
