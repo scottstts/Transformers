@@ -470,3 +470,39 @@ flip at the apex, then a thrust-braked landing as the car.
   the offset that keeps the lowest support point at z = 0, which the bake already
   makes exact (within 4 mm).
 - `asm:cabin` keeps its folded scale at the stand, hidden inside the tub.
+
+## Extra: cinematic film scene (one-off, not part of the workflow)
+
+The user asked for this separately, outside the transformer workflow (tasks/*.md),
+as a personal render of the Roadster. It has nothing to do with the game or the
+export. Do not build a film scene for other cars unless the user asks for one.
+
+- `rdb/cinematic.py` builds the "Roadster Film" scene in roadster.blend (frames
+  1-600, 30 fps), run from the model scene:
+  `from rdb import cinematic; cinematic.build()`. It is not called by car_stage,
+  robot_stage or the export, and it rebuilds the film scene from scratch.
+- The car is a copy of every car part at frame 0, with the build tag removed, so
+  rebuilds of the model leave it alone. Rerun `build()` after a model change to
+  refresh it. The model scene and its timeline are not touched.
+- The parts ride a rig (`film.car`): parked for four shots, then it pulls away from
+  frame 481 (0 to 54 km/h in 4 s). Each wheel and its sidewall lettering turn about
+  the hub by distance travelled over rolling radius; the calipers ride the body.
+- Five shot cameras, 4 s each, each aimed at an animated target: roof pan, side pan
+  with zoom, front arc, rear push-in, and a chase camera riding the car.
+- The cut is baked into one camera, `film.camera` (the scene camera). Every frame it
+  takes the live shot camera's transform, lens, f-stop and focus distance. Keys are
+  constant into each cut, so the cuts are hard and motion blur does not smear across
+  them. Timeline markers only label the shots. After editing a shot camera, rerun
+  `cinematic.bake_master()` with the film scene active.
+- Ground: a 2 km glossy bronze floor (half metallic, clear coat, soft roughness
+  variation) under a faint dusk sky.
+- Lighting follows the reference photos: light and shadow, not fill from every side.
+  - One raking key spot from the front-right and above lays a soft-edged pool on the
+    floor; the side grades into shadow toward the tail.
+  - A faint top light, a thin shoulder strip and a dim rim light only the car
+    (light linking): area panels mirrored in the glossy floor as hard-edged white
+    slabs.
+  - The studio lights ride the car's rig, so the chase keeps its light.
+  - The sun is a trace.
+- It is a starting point. Render settings, compositing and the final render are the
+  user's; `build()` changes only the film scene's objects, frame range and fps.
