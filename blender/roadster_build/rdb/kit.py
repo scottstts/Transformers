@@ -40,20 +40,22 @@ def reset():
         collection(name, root)
 
 
-def material(name, color, metal=0.0, rough=0.3, coat=0.0, emission=0.0, transmit=0.0, alpha=1.0):
+def material(name, color, metal=0.0, rough=0.3, coat=0.0, emission=0.0, transmit=0.0, alpha=1.0,
+             ior=1.5, spec_tint=(1.0, 1.0, 1.0), spec_level=0.5):
     m = bpy.data.materials.get('roadster.' + name) or bpy.data.materials.new('roadster.' + name)
     m.use_nodes = True
     p = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')
     for socket, value in {'Base Color': (*color, 1), 'Metallic': metal, 'Roughness': rough,
                           'Coat Weight': coat, 'Coat Roughness': 0.06,
                           'Transmission Weight': transmit, 'Emission Color': (*color, 1),
-                          'Emission Strength': emission, 'Alpha': alpha}.items():
+                          'Emission Strength': emission, 'Alpha': alpha, 'IOR': ior,
+                          'Specular Tint': (*spec_tint, 1), 'Specular IOR Level': spec_level}.items():
         p.inputs[socket].default_value = value
     m.diffuse_color = (*color, 1)
     MATERIALS[name] = m
     if transmit:
         m.use_raytrace_refraction = True
-        p.inputs['IOR'].default_value = 1.5
+        m.thickness_mode = 'SLAB'   # the glazing is a thin shell, not a solid
     return m
 
 
@@ -69,12 +71,16 @@ def materials():
     material('bronze', (0.38, 0.20, 0.09), 0.95, 0.30)                # copper-bronze actuator accents
     material('chrome', (0.80, 0.80, 0.82), 1.0, 0.08)
     material('rubber', (0.010, 0.010, 0.011), 0.0, 0.80)
-    material('glass', (0.030, 0.018, 0.010), 0.0, 0.03, 1.0, transmit=0.2)   # bronze-tinted glazing
+    # Bronze-tinted glazing: clear glass that tints what passes through it (the colour is the
+    # tint per surface crossed) under a bronze solar-control film, which warms and raises its
+    # reflection. No coat: glass is one optically flat interface, not a lacquered panel.
+    material('glass', (0.30, 0.18, 0.09), 0.0, 0.02, transmit=1.0, ior=1.52,
+             spec_tint=(1.0, 0.74, 0.48), spec_level=0.6)
     material('carpet', (0.012, 0.012, 0.013), 0.0, 0.9)
     material('leather', (0.018, 0.018, 0.019), 0.0, 0.55, 0.1)
     material('seatshell', (0.82, 0.82, 0.80), 0.0, 0.25, 0.8)
     material('interior', (0.022, 0.022, 0.024), 0.1, 0.45)
-    material('ambient', (1.0, 0.012, 0.010), 0.0, 0.2, emission=4.0)               # red ambient strips
+    material('ambient', (1.0, 0.012, 0.010), 0.0, 0.2)               # red ambient strips (unlit)
     material('alcantara', (0.16, 0.16, 0.165), 0.0, 0.95)
     material('seatwhite', (0.74, 0.74, 0.73), 0.0, 0.55)
     material('screen', (0.010, 0.014, 0.020), 0.0, 0.05, 0.6, emission=0.3)

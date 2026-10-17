@@ -9,8 +9,9 @@ import { N } from '../../rendering/noise.ts'
  * here, at the build's linear base colour, metalness, roughness and coat.
  *
  * The glass is opaque, as on every car (a blended pane is reactive coverage to
- * the temporal resolve and shimmers at windscreen size); the cabin behind it
- * is hidden. It is drawn as glass, not as black paint (see `tinted`).
+ * the temporal resolve and shimmers at windscreen size). The build's glass is
+ * transmissive; here it is a dark mirror (see `mirrored`), with the cabin
+ * behind it hidden.
  */
 
 /** Emissive levels other modules animate. */
@@ -23,7 +24,7 @@ export const ROADSTER_LIGHTS = {
   marker: uniform(1.0),
   /** the visor, 0 dark .. 1 running, above 1 blazing (a fight's flare, the special) */
   visor: uniform(0.0),
-  /** the cabin's red ambient strips and screen */
+  /** the cabin screen */
   cabin: uniform(1.0),
 }
 
@@ -130,16 +131,14 @@ function nap(c: Color, roughness: number): Material {
 }
 
 /**
- * Very dark tinted glazing with a solar-control film, as it reads from
- * outside: one optically flat interface (no clear coat, so it does not read as
- * a lacquered panel) whose reflectance the film's coating raises to ~13 % at
- * normal incidence, climbing to a mirror at grazing angles. The base is the
- * bronze tint's faint glimpse of the dark cabin, almost nothing.
+ * Dark mirrored glazing (a bronze solar film over black): all reflection, no
+ * diffuse. `reflect` is its bronze reflectance at normal incidence, rising to a
+ * mirror at grazing angles. With no diffuse term the sun has nothing to shade,
+ * so the canopy's large curved panes do not show their small dents and ripples
+ * in N.L, and a slight roughness softens the reflections that would trace them.
  */
-function tinted(tint: Color, film: Color): Material {
-  const m = new MeshPhysicalNodeMaterial({ color: tint, metalness: 0, roughness: 0.02, ior: 1.52, specularIntensity: 1 })
-  m.specularColor = film
-  return tag(m, tint)
+function mirrored(reflect: Color, roughness: number): Material {
+  return tag(new MeshStandardNodeMaterial({ color: reflect, metalness: 1, roughness }), linear(0.004, 0.003, 0.002))
 }
 
 /** A lit lamp: its colour at a level an animated uniform scales. */
@@ -170,8 +169,8 @@ export function createRoadsterMaterials(): Record<string, Material> {
   M.bronze = bronze(linear(0.38, 0.2, 0.09), 0.95, 0.3)
   M.nozzle = bronze(linear(0.8, 0.62, 0.38), 1, 0.22)
   M.rubber = rubber()
-  // very dark bronze-tinted glazing, highly reflective (the film scales the 4 % of bare glass)
-  M.glass = tinted(linear(0.005, 0.0035, 0.0022), new Color(3.3, 3.2, 3.05))
+  // dark bronze mirror glazing
+  M.glass = mirrored(linear(0.25, 0.19, 0.13), 0.07)
   M.smoke = coated(linear(0.035, 0.035, 0.038), 0, 0.06, 1, 0.03)
   M.marker = coated(linear(0.07, 0.012, 0.008), 0, 0.05, 1, 0.03)
   M.carpet = nap(linear(0.012, 0.012, 0.013), 0.9)
@@ -185,7 +184,8 @@ export function createRoadsterMaterials(): Record<string, Material> {
   M.lens = emissive(linear(0.88, 0.91, 0.96), 3.5, ROADSTER_LIGHTS.head)
   M.tail = emissive(linear(0.85, 0.02, 0.01), 5, ROADSTER_LIGHTS.tail)
   M.amber = emissive(linear(0.95, 0.45, 0.05), 2, ROADSTER_LIGHTS.marker)
-  M.ambient = emissive(linear(1, 0.012, 0.01), 4, ROADSTER_LIGHTS.cabin)
+  // the door cards' ambient strips, unlit (the photos show no cabin light through the glass)
+  M.ambient = plain(linear(1, 0.012, 0.01), 0, 0.2)
   M.screen = emissive(linear(0.04, 0.056, 0.08), 1, ROADSTER_LIGHTS.cabin)
   // the visor: hot white, the character's colour
   M.visor = emissive(linear(0.9, 0.95, 1), 8, ROADSTER_LIGHTS.visor)

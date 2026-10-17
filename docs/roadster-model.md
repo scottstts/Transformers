@@ -49,6 +49,12 @@ tail deck 0.903.
   bowed outward by a measured sagitta (`body.SHELL_BULGE`), and rings are 12 mm
   apart. The canopy is a 6 mm glass shell, not a filled volume, so the cabin
   shows through it.
+- The glazing is a true dielectric (`kit.materials` 'glass'): full transmission,
+  IOR 1.52, no coat, Slab thickness. Its base colour is the bronze tint per surface
+  crossed (0.30, 0.18, 0.09), dark enough that the cabin only shows faintly, and a
+  bronze specular tint at Specular IOR Level 0.6 stands for the solar-control film's
+  warm, raised reflection (the top photo's golden sheen). A dark diffuse base with
+  partial transmission under a coat reads as lacquered black paint, not glass.
 - Rear and front perspective photos are registered at a plane (`reference.PLANES`):
   the rear at the tail plane (603 px/m, anchored on the deck edge, cross-checked
   against the side frame's lower lip), the front at the nose plane. The front
