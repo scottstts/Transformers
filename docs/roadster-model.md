@@ -49,6 +49,31 @@ tail deck 0.903.
   bowed outward by a measured sagitta (`body.SHELL_BULGE`), and rings are 12 mm
   apart. The canopy is a 6 mm glass shell, not a filled volume, so the cabin
   shows through it.
+- Glass sections are single curves, not bowed facets (reflections bent along
+  every join between separately bowed facets):
+  - The glass top (windscreen, roof, rear glass) is one parabola across from rail
+    edge to rail edge. Its centre is ROOF_CROWN (5.8 mm) above the rail-edge
+    chord, where the old bowed halves peaked, so the side silhouette is unchanged.
+    Bowing each half separately left a 6 mm valley on the centre line (an M).
+  - On the windscreen that parabola is one surface, z = centre - k x^2, with k
+    Gaussian-smoothed along y (SCREEN_K_SIGMA, 60 mm; fades back to each
+    section's own k by y -0.55). The edge points sit on it (they move under 3 mm),
+    and the interior points are spaced over a smoothed edge x. The glass edge
+    turns a corner at the A-pillar foot (hood edge V to pillar line); a parabola
+    fitted to each section's own edge carried that corner across the screen as a
+    trench (k 0.016 to 0.027 within 4 cm).
+  - The side glass is one parabola from belt to seal. Its outward bow is
+    SIDE_BOW on the tallest pane and falls with the square of the pane's height
+    (constant curvature); a fixed bow tripled the curvature toward both tips.
+  - Toward its front tip the side glass keeps the door's 40 degree inclination
+    (SIDE_TILT): the pillar's lower edge flares out to it, while its top edge (the
+    windscreen's side edge) stays on the A-pillar line. Following the pillar line
+    in, the pane twisted from 41 to 75 degrees over its last 15 cm.
+  - The glass's inner skin is offset along a direction taken across INNER_SPAN
+    (8 mm each way along the section), not from the adjacent points. Where the
+    side glass closes to its front tip, pane, seal and pillar corner share 3 mm;
+    a 6 mm offset along local normals folded the inner skin through itself,
+    which showed through the glass as a dark crease at the A-pillar foot.
 - The glazing is a true dielectric (`kit.materials` 'glass'): full transmission,
   IOR 1.52, no coat, Slab thickness. Its base colour is the bronze tint per surface
   crossed (0.30, 0.18, 0.09), dark enough that the cabin only shows faintly, and a
@@ -71,7 +96,12 @@ tail deck 0.903.
   tile, not the full frame: discrepancies of a few millimetres only show zoomed.
 - Feature curves are pchip-interpolated stations then Gaussian-smoothed along y
   (body.SMOOTH): raw pchip is only C1 and its curvature steps at every station
-  showed as vertical bands in reflections.
+  showed as vertical bands in reflections. The top silhouette (SIL_Z) is smoothed
+  the same way (60 mm, moves it under 2.1 mm).
+- Judge surface quality in reflections, not under the studio stage: its dark world
+  and area lights hide what the game's sky shows. A temporary striped world (black
+  and white bands in elevation) on glossy dark paint and opaque glass shows
+  every curvature step as a bent stripe; restore the world and `K.materials()` after.
 - The front fender is cut from its own shell (shell_mesh(flank=True)): its flank
   is one smooth arc from rocker to the fender-top crease, as the 3/4 photo shows;
   everything behind the fender / door shut line comes from the faceted shell.
@@ -112,9 +142,15 @@ tail deck 0.903.
   close on the belt line where the pillar reaches down to it, so the side window's
   front tip ends behind the pillar foot. Ahead of the foot the windscreen's side
   edge is the pillar's inner line (body.PILLAR_IN) until it meets the hood edge.
-- The windscreen rises straight off the hood and stands 11 mm above the side
-  silhouette at the A-pillar foot; that lift eases out behind the foot
-  (body.screen_lift). The pillar's top edge follows the silhouette, not the lift.
+- The windscreen's centre line (body.SCREEN_C) is one quintic from the cowl to
+  SCREEN_JOIN (y -0.65), matching the roof's centre line there in height, slope
+  and curvature. It is convex throughout (nearly straight off the hood), so its
+  slope never rises and the reflection runs as one smooth band. It stands up to
+  12 mm above the roof line at the A-pillar foot and at least 3 mm above the glass
+  edge ahead of the foot. The pillar's top edge follows the silhouette, not the
+  lift. A slope-only lift that ended at y -0.95, with the centre clamped onto the
+  hood edge ahead of the foot, rippled it (convex, concave, convex, concave): the
+  wavy band in game light.
 - Glass meets body on the body's own crease (canopy base 1 mm above p4) and a
   seat volume under the glass is cut from the shell, so no body facet crosses the
   glass between stations.
@@ -136,6 +172,10 @@ tail deck 0.903.
 - The rear quarter window closes to a point: its pane keeps one inclination to the
   tip (body.quarter_base), its lower edge lands on the seal line, the seal tapers
   out over the last 60 mm, and its bows fall with the square of its height.
+- Ahead of the ridge, shell p3 is a smooth-shaded subdivision of the sail, so any
+  kink in it is a bump in the sail. It follows p4 under a dense 30 mm Gaussian
+  (body._p4_smooth, SAIL_SIGMA), which rounds p4's corner at the window tip; a
+  5-tap kernel there was five shifted copies of the corner.
 - The sails' ridges stand up beside the rear glass; the glass and the lid floor
   stay at their heights (rear photo, rear view at 33 s in the video, top view).
   Each ridge (shell p3, body.RIDGE_X / RIDGE_Z) carries the rail-top plan line

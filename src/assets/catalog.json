@@ -82,12 +82,12 @@
       "sha256": "a44d52016a7bc8b2ab8253d1c5a9c37abb01f7fdb4de2300843af8b3a8636bf4"
     },
     "roadster.bin": {
-      "bytes": 14134952,
-      "sha256": "7789d39d059dcd148ae6490aa823146701cb36d825693381e6510dc108e788d4"
+      "bytes": 14131268,
+      "sha256": "81fe99a13ab4fbbfdcf12c99bfacd715395364cc8452b2bbec9bd8706a7be745"
     },
     "roadster.json": {
-      "bytes": 138784,
-      "sha256": "25d5a3fecdd578cda6121d8008bc1810afd0985cb9f91fb1c3c91fd0bf591a0d"
+      "bytes": 138802,
+      "sha256": "c6a3b13cfe09334fac492cd80d9a3752313cca217a4e1a0c0eadcd9299503b15"
     },
     "semi-gun.bin": {
       "bytes": 1194696,

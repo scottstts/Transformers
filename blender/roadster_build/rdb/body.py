@@ -170,7 +170,9 @@ def smoothed(xs, ys, sigma, step=0.004):
 
 
 P = {k: smoothed(_Y, [r[i + 1] for r in ST], SMOOTH.get(k, 0.045)) for i, k in enumerate(KEYS)}
-SIL_Z = pchip([a for a, b in SIL], [b for a, b in SIL])
+# smoothed like the stations (moves it < 2 mm): the roof, windscreen, rail and side
+# glass all hang off it, and raw pchip's curvature steps banded their reflections
+SIL_Z = smoothed([a for a, b in SIL], [b for a, b in SIL], 0.06)
 _RAIL_ROOF = pchip([a for a, b in RAIL], [b for a, b in RAIL])
 # Top view: the A-pillar (the windshield's side edge) is straight in plan from its
 # foot (y -1.27, |x| 0.785) to the windshield's top corner (y -0.342, 0.567); a
@@ -262,16 +264,11 @@ def sta(y):
         s['z4'] = s['z4'] * (1 - t) + qz * t
         # p3 is a subdivision of the same sail surface, not a second ridge.
         # The old x3/z3 track turned sharply inward and upward over 77 mm.
-        # Around the side glass's tip, where p4 turns a corner, it follows a
-        # smoothed p4 so the corner does not crease the sail.
-        ax, az = s['x4'], s['z4']
-        g = K.smooth(y, 0.90, 0.98) * (1 - K.smooth(y, 1.30, 1.40))
-        if g > 0:
-            ws = [(d, math.exp(-0.5 * (d / 0.03) ** 2)) for d in (-0.06, -0.03, 0.0, 0.03, 0.06)]
-            pts = [(quarter_p4(y + d), w) for d, w in ws]
-            W = sum(w for d, w in ws)
-            ax = ax * (1 - g) + sum(p[0] * w for p, w in pts) / W * g
-            az = az * (1 - g) + sum(p[1] * w for p, w in pts) / W * g
+        # It follows p4 smoothed (SAIL_SIGMA), so p4's corner at the side glass's
+        # tip does not crease the sail. p3 is smooth-shaded, so every kink in it
+        # is a bump in the sail: a 5-tap kernel (five shifted copies of the
+        # corner) rippled the sail into rings.
+        ax, az = _p4_smooth(y)
         s['x3'] = s['x3'] * (1 - t) + (s['x2'] * .12 + ax * .88) * t
         s['z3'] = s['z3'] * (1 - t) + (s['z2'] * .12 + az * .88) * t
         if y > EDGE_CORNER[0]:
@@ -297,22 +294,52 @@ QUARTER_Z = pchip(QUARTER_Y + [1.30, 1.55, 1.84, 1.96, TAIL_Y],
 RUNOUT = 0.25     # length over which the roof rail runs out into the sail behind the tip
 
 
-# The windscreen rises straight off the hood (SCREEN_Z0 at the cowl, SCREEN_Z1 at
-# the A-pillar foot) and lies 11 mm above the side silhouette line there; behind
-# the foot that lift eases out, matching height and slope, so the screen runs
-# into the roof without a step (a lip at the A-pillar foot) or a sag.
-SCREEN_Z0, SCREEN_Z1, SCREEN_LIFT_Y = 0.842, 0.905, -0.95
+# The glass top (windscreen, roof, rear glass) is one convex crown across: each
+# section is a parabola from the edge (the rail's top edge, on the silhouette less
+# 5.5 mm) up to the centre line, ROOF_CROWN above the old chord centre, so the
+# highest point stays where the side silhouette put it. Two separately bowed
+# halves made an M with a 6 mm valley on the centre line, and its stripes waved
+# across the windscreen.
+ROOF_CROWN = 0.0058
+# Windscreen centre line: one quintic from the cowl (height, slope, curvature) to
+# SCREEN_JOIN, where it meets the roof's centre line in height, slope and
+# curvature. It is convex throughout (curvature 0 to -0.08 / m, nearly straight off
+# the hood): its slope never rises, so the reflection runs as one smooth band. That
+# puts it up to 12 mm above the roof line at the A-pillar foot (the pillar's top
+# edge stays on the silhouette), and at least 3 mm above the glass edge ahead of
+# the foot. A slope-only Hermite to y -0.95 plus a clamp onto the hood edge rippled
+# it (convex, concave, convex, concave) into a band.
+SCREEN_Z0, SCREEN_S0, SCREEN_K0, SCREEN_JOIN = 0.844, 0.30, -0.05, -0.65
+
+
+def _roof_line(y):
+    return SIL_Z(y) - 0.005 + ROOF_CROWN
+
+
+def _screen_centre():
+    y0, y1, e = CANOPY_Y0, SCREEN_JOIN, 0.004
+    p1, v1 = _roof_line(y1), (_roof_line(y1 + e) - _roof_line(y1 - e)) / (2 * e)
+    a1 = (_roof_line(y1 + e) - 2 * p1 + _roof_line(y1 - e)) / (e * e)
+    h = y1 - y0
+
+    def f(y):
+        t = (y - y0) / h
+        return ((1 - 10 * t ** 3 + 15 * t ** 4 - 6 * t ** 5) * SCREEN_Z0
+                + (t - 6 * t ** 3 + 8 * t ** 4 - 3 * t ** 5) * SCREEN_S0 * h
+                + (0.5 * t ** 2 - 1.5 * t ** 3 + 1.5 * t ** 4 - 0.5 * t ** 5) * SCREEN_K0 * h * h
+                + (10 * t ** 3 - 15 * t ** 4 + 6 * t ** 5) * p1
+                + (-4 * t ** 3 + 7 * t ** 4 - 3 * t ** 5) * v1 * h
+                + (0.5 * t ** 3 - t ** 4 + 0.5 * t ** 5) * a1 * h * h)
+    return f
+SCREEN_C = _screen_centre()
 
 
 def screen_lift(y):
-    y0 = -1.27
-    if y >= SCREEN_LIFT_Y or y < y0:
+    """Height of the windscreen centre above the roof line (the silhouette is held
+    level ahead of the A-pillar foot)."""
+    if y >= SCREEN_JOIN:
         return 0.0
-    d0 = SCREEN_Z1 - (SIL_Z(y0) - 0.005)
-    m0 = (SCREEN_Z1 - SCREEN_Z0) / (y0 - CANOPY_Y0) - (SIL_Z(y0 + 0.005) - SIL_Z(y0)) / 0.005
-    hl = SCREEN_LIFT_Y - y0
-    u = (y - y0) / hl
-    return (2 * u ** 3 - 3 * u * u + 1) * d0 + (u ** 3 - 2 * u * u + u) * hl * m0
+    return SCREEN_C(y) - _roof_line(y)
 
 
 def PILLAR_IN(y):
@@ -349,6 +376,33 @@ def quarter_base(y):
     xg = sx + (sz - z - 0.001) * _glass_cot() + 0.003
     w = K.smooth(y, 0.95, SIDE_TIP)
     return P['x4'](y) * (1 - w) + xg * w, z
+
+
+SAIL_SIGMA = 0.03
+_P4S = []
+
+
+def _p4_smooth(y):
+    """The quarter's body edge p4 (blended in from the stations as in sta) under a
+    dense Gaussian of SAIL_SIGMA along y."""
+    import numpy as np
+    if not _P4S:
+        step = 0.002
+        g = np.arange(QUARTER_Y[0] - 0.2, TAIL_Y + step / 2, step)
+        v = []
+        for yy in g:
+            t = K.smooth(yy, QUARTER_Y[0], QUARTER_Y[1])
+            qx, qz = quarter_p4(yy)
+            v.append((P['x4'](yy) * (1 - t) + qx * t, P['z4'](yy) * (1 - t) + qz * t))
+        v = np.array(v)
+        r = int(3 * SAIL_SIGMA / step)
+        k = np.exp(-0.5 * (np.arange(-r, r + 1) * step / SAIL_SIGMA) ** 2)
+        k /= k.sum()
+        sm = [np.convolve(np.concatenate([2 * c[0] - c[r:0:-1], c, 2 * c[-1] - c[-2:-r - 2:-1]]), k, 'valid')
+              for c in (v[:, 0], v[:, 1])]
+        _P4S.extend([g, sm[0], sm[1]])
+    g, sx, sz = _P4S
+    return float(np.interp(y, g, sx)), float(np.interp(y, g, sz))
 
 
 def quarter_p4(y):
@@ -618,23 +672,56 @@ def shell_mesh(flank=False):
 
 
 GLASS_T = 0.006
+INNER_SPAN = 0.008     # half-span along the section for the glass's offset direction
+# side glass: outward bow of the tallest pane (0.275 m, door middle), and the
+# door's inclination (40 degrees from vertical) held over the front tip
+SIDE_BOW, SIDE_BOW_H = 0.020, 0.275
+SIDE_TILT, SIDE_FRONT_TILT_Y = math.tan(math.radians(40.0)), (-1.0, -0.8)
 
 
-def canopy_ring(y, t=GLASS_T):
+SCREEN_K_SIGMA, SCREEN_K_Y = 0.06, (-0.75, -0.55)   # smoothing of k; fade to the roof
+_SK = []
+
+
+def _screen_k(y):
+    """Crown coefficient k (z = centre - k x^2) of the windscreen: each section's
+    own k under a Gaussian of SCREEN_K_SIGMA along y, faded back to the section's
+    own k over SCREEN_K_Y."""
+    import numpy as np
+    if not _SK:
+        step = 0.004
+        g = np.arange(CANOPY_Y0, SCREEN_K_Y[1] + 0.3, step)
+        k, xs = [], []
+        for yy in g:
+            (ex, ez), cz = canopy_ring(yy, _top=True)
+            k.append((cz - ez) / (ex * ex))
+            xs.append(ex)
+        r = int(3 * SCREEN_K_SIGMA / step)
+        kern = np.exp(-0.5 * (np.arange(-r, r + 1) * step / SCREEN_K_SIGMA) ** 2)
+        kern /= kern.sum()
+        w = np.array([1.0 - K.smooth(yy, *SCREEN_K_Y) for yy in g])
+        _SK.append(g)
+        for v in (np.array(k), np.array(xs)):
+            sv = np.convolve(np.concatenate([2 * v[0] - v[r:0:-1], v, 2 * v[-1] - v[-2:-r - 2:-1]]), kern, 'valid')
+            _SK.append(sv * w + v * (1 - w))
+    g, k, xs = _SK
+    return float(np.interp(y, g, k)), float(np.interp(y, g, xs))
+
+
+def canopy_ring(y, t=GLASS_T, _top=False):
     s = sta(y)
     bx, bz = s['x4'] - 0.003, s['z4'] + 0.001    # the glass edge sits on the body crease
     if y <= -1.27:
-        u = (y - CANOPY_Y0) / (-1.27 - CANOPY_Y0)
         rx, rz = bx, bz + 0.004
-        cz = SCREEN_Z0 + (SCREEN_Z1 - SCREEN_Z0) * u
+        cz = SCREEN_C(y)
     elif y < SIDE_TIP:
         rx, rz = RAIL_X(y), (SIL_Z(y) - 0.040 if y < 0.8 else 0.0)
         if y >= 0.8:  # side glass closes to its rear tip on the sail line
             rz = SIL_Z(y) - 0.040
-        cz = SIL_Z(y) - 0.005 + screen_lift(y)
+        cz = _roof_line(y) + screen_lift(y)
     else:
         rx, rz = bx, bz + 0.004    # the band behind the tip is set below
-        cz = SIL_Z(y) - 0.005
+        cz = _roof_line(y)
     rz = max(rz, bz + 0.004)
     cz = max(cz, rz + 0.004)
     # the white roof rail seen from the side (side frame profiles): its top is the
@@ -656,9 +743,10 @@ def canopy_ring(y, t=GLASS_T):
     # ahead of the foot the edge lies on the hood; behind it the pillar top follows
     # the roof line within 40 mm
     kk = K.smooth(y, -1.29, -1.25)
-    # the rail's top edge is the side silhouette (the screen's centre lift is not
-    # on it), kept above the body crease at the foot with a soft max
-    top = cz - 0.0005 - (screen_lift(y) if y < SIDE_TIP else 0.0)
+    # the rail's top edge is the side silhouette less 5.5 mm (the crown and the
+    # screen's centre lift are not on it), kept above the body crease at the foot
+    # with a soft max
+    top = SIL_Z(y) - 0.0055
     lo = bz + 0.0055
     top = 0.5 * (top + lo + math.sqrt((top - lo) ** 2 + 0.004 ** 2))
     tz = top * kk + min(rz + 0.0015, cz - 0.001) * (1 - kk)
@@ -669,20 +757,18 @@ def canopy_ring(y, t=GLASS_T):
         tx = min(bx - 0.001, PILLAR_IN(y))
     if y > 0.551:
         tx = EDGE_X(y)     # the rail's top edge behind the rear door joint (top view)
+    if -1.27 < y < SIDE_FRONT_TILT_Y[1]:
+        # toward its front tip the side glass keeps the door's inclination: the
+        # pillar's lower edge flares out to the pane (its top edge stays on the
+        # A-pillar line). Following the pillar line in, the pane twisted from 41 to
+        # 75 degrees over its last 15 cm and fanned the reflections.
+        w = 1.0 - K.smooth(y, *SIDE_FRONT_TILT_Y)
+        rx = rx * (1 - w) + (bx - (r_bot - bz) * SIDE_TILT) * w
     g = max(0.0, (bx - rx) / max(1e-6, r_bot - bz))      # side glass: run per rise
     rail_x, seal_x = rx, rx + (r_bot - s_bot) * g
-    # the side glass's bow; where the pane closes to its rear tip the bows fall with
-    # the square of its height (constant curvature), not linearly, which curled
-    # the closing pane into a pinched fan
-    q = min(1.0, (s_bot - bz) / 0.05) if y > 0.8 else 1.0
-    mx = (bx + seal_x) / 2 + 0.02 * min(1.0, (s_bot - bz) / 0.15) * q
-    mz = (bz + s_bot) / 2
-    h = [(bx, bz), (mx, mz), (seal_x, s_bot), (rail_x, r_bot), (tx, r_top)]
+    h = [(bx, bz), ((bx + seal_x) / 2, (bz + s_bot) / 2), (seal_x, s_bot), (rail_x, r_bot), (tx, r_top)]
     foot = bz
-    bulge = [b * q * q if i in (0, 1, 8, 9) else b for i, b in enumerate(CANOPY_BULGE)]
     if y >= SIDE_TIP:
-        # the band is straight across: the glass's bows made ridges in white paint
-        bulge = [0.0 if i in (0, 1, 8, 9) else b for i, b in enumerate(CANOPY_BULGE)]
         # the white band from the body (REAR_FOOT) up to the rear glass edge: at the
         # tip the rail face over the closed pane's corner; over RUNOUT the body climbs
         # it until only a 4 mm sliver lying in the sail is left. h[:4] are final
@@ -696,8 +782,48 @@ def canopy_ring(y, t=GLASS_T):
         rbx, rbz = r0x + (r1x - r0x) * u, r0z + (r1z - r0z) * u
         h = [(bx, bz), (bx + (rbx - bx) / 3, bz + (rbz - bz) / 3),
              (bx + (rbx - bx) * 2 / 3, bz + (rbz - bz) * 2 / 3), (rbx, rbz), (ex, SIL_Z(y) - 0.0055)]
+    if _top:
+        return h[4], cz
+    span = None     # x span the glass top's interior points are spaced over
+    if y < SCREEN_K_Y[1]:
+        # the windscreen is one smooth surface z = cz - k x^2 with k smooth along y,
+        # and its edge sits on it: the edge turns a corner at the A-pillar foot
+        # (hood edge to pillar line), and a parabola fitted to each section's own
+        # edge carried that corner across the screen as a trench. Its interior
+        # points are spaced over a smoothed edge x too, so their lines do not kink.
+        ex_, ez_ = h[4]
+        k_, span = _screen_k(y)
+        ez_ = cz - k_ * ex_ * ex_
+        h[4] = (ex_, ez_)
+        if h[3][1] > ez_:     # a collapsed pillar band (ahead of the foot) follows
+            h[3] = (h[3][0], ez_)
+            h[2] = (h[2][0], min(h[2][1], ez_))
     pts = h + [(0.0, cz)] + [(-x, z) for x, z in reversed(h)]
-    pts, src = refine(pts, bulge, SEG)
+    # straight sub-edges; the glass top and the side glass are bowed below (the
+    # band behind the side glass's tip stays straight across: bows made ridges in
+    # white paint)
+    pts, src = refine(pts, [0.0] * len(pts), SEG)
+    # the glass top: one parabola across from edge to edge (ROOF_CROWN)
+    ex_, ez_ = h[4]
+    e0, e1 = src.index(4), src.index(6)       # the two edge points
+    if span is not None:
+        pts = [(x * span / ex_, z) if src[i] in (4, 5) and i not in (e0, e1) else (x, z)
+               for i, (x, z) in enumerate(pts)]
+    pts = [(x, cz - (cz - ez_) * (x / ex_) ** 2) if src[i] in (4, 5) else (x, z)
+           for i, (x, z) in enumerate(pts)]
+    if y < SIDE_TIP:
+        # the side glass: one parabola from base to seal, bowed outward by
+        # SIDE_BOW on the tallest pane and with the square of its height elsewhere
+        # (constant curvature). A fixed bow down to 15 cm of height tripled its
+        # curvature toward the tips and bent the reflections there.
+        (x0, z0), (x1, z1) = h[0], h[2]
+        sag = SIDE_BOW * min(1.0, (z1 - z0) / SIDE_BOW_H) ** 2
+        n = 2 * SEG
+        for i in range(len(pts)):
+            if src[i] in (0, 1, 8, 9):
+                u = (i - src.index(0)) / n if src[i] in (0, 1) else 1 - (i - src.index(8)) / n
+                sx = 1.0 if src[i] in (0, 1) else -1.0
+                pts[i] = (sx * (x0 + (x1 - x0) * u + 4 * sag * u * (1 - u)), z0 + (z1 - z0) * u)
     # One shared deck datum closes the complete glass section. The old centre
     # crown ended above an independently depressed deck, leaving an open slot.
     # Only the roof half (edge point to edge point) is flattened; the band below
@@ -714,9 +840,22 @@ def canopy_ring(y, t=GLASS_T):
     outer, osrc = pts[:len(pts) - SEG + 1], src[:len(pts) - SEG]
     cx, cz0 = 0.0, bz - 0.2
     inner = []
+    # each offset direction is taken across INNER_SPAN of the section, not from the
+    # adjacent points: where the side glass closes to its tip the section packs a
+    # pane, seal and pillar corner into 3 mm, and a 6 mm offset along those local
+    # normals swallow-tailed (the inner skin folded through itself, a dark crease
+    # seen through the glass at the A-pillar foot)
+    run = [0.0]
+    for p, q in zip(outer, outer[1:]):
+        run.append(run[-1] + math.hypot(q[0] - p[0], q[1] - p[1]))
     for i, (px, pz) in enumerate(outer):
-        a = outer[max(i - 1, 0)]
-        b = outer[min(i + 1, len(outer) - 1)]
+        ia = i
+        while ia > 0 and run[i] - run[ia] < INNER_SPAN:
+            ia -= 1
+        ib = i
+        while ib < len(outer) - 1 and run[ib] - run[i] < INNER_SPAN:
+            ib += 1
+        a, b = outer[ia], outer[ib]
         tx_, tz_ = b[0] - a[0], b[1] - a[1]
         L = math.hypot(tx_, tz_) or 1.0
         nx, nz = -tz_ / L, tx_ / L
@@ -726,10 +865,6 @@ def canopy_ring(y, t=GLASS_T):
     ring = outer + list(reversed(inner))
     rsrc = osrc + [10] + [11] * (len(inner) - 1) + [10]
     return [Vector((x, y, z)) for x, z in ring], rsrc
-
-
-# glass bows: side glass, rail trim, roof (both halves), the hidden floor
-CANOPY_BULGE = [0.002, 0.003, 0.0, 0.0, 0.006, 0.006, 0.0, 0.0, 0.003, 0.002, 0.0]
 
 
 CANOPY_MATS = ['glass', 'glass', 'satin', 'paint', 'glass', 'glass', 'paint', 'satin', 'glass', 'glass', 'satin', 'glass']
